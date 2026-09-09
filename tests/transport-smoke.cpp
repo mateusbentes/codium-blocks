@@ -56,6 +56,10 @@ int main(int argc, char** argv)
     codium::TerminalSession terminal(nullptr, wxID_HIGHEST + 700);
     wxArrayString terminalArguments;
     terminalArguments.Add(fakeTerminal);
+    // The fake Node process validates the byte transport, not terminal emulation.
+    // Keep this smoke test deterministic on Windows; ConPTY is exercised by the
+    // native UI path and can be tested separately with a real interactive shell.
+    wxSetEnv(wxS("CODIUM_BLOCKS_DISABLE_CONPTY"), wxS("1"));
     wxString error;
     if (!terminal.Start(wxS("node"), terminalArguments, root, &error)) {
         std::cerr << "transport-smoke: terminal start failed (backend=" << terminal.BackendName().ToStdString()
@@ -81,6 +85,7 @@ int main(int argc, char** argv)
     }
     terminal.Write(wxS("exit\r\n"));
     terminal.Stop();
+    wxUnsetEnv(wxS("CODIUM_BLOCKS_DISABLE_CONPTY"));
 
     codium::DapClient dap(nullptr, wxID_HIGHEST + 701);
     wxArrayString dapArguments;

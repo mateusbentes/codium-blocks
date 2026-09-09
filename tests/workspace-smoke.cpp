@@ -10,6 +10,24 @@
 #include <fstream>
 #include <iostream>
 
+namespace {
+
+wxString PortableRelative(wxString value)
+{
+    value.Replace(wxS("\\"), wxS("/"));
+    return value;
+}
+
+bool HasRelativeFile(const codium::Workspace& workspace, const wxString& expected)
+{
+    for (const auto& file : workspace.Files()) {
+        if (PortableRelative(workspace.RelativePath(file)) == expected) return true;
+    }
+    return false;
+}
+
+} // namespace
+
 int main()
 {
     wxInitializer initializer;
@@ -38,13 +56,16 @@ int main()
     }
 
     const wxString source = root + wxFILE_SEP_PATH + wxS("src/main.cpp");
-    const wxString readme = root + wxFILE_SEP_PATH + wxS("README.md");
-    if (workspace.Files().Index(source) == wxNOT_FOUND ||
-        workspace.Files().Index(readme) == wxNOT_FOUND ||
-        workspace.Files().Index(root + wxFILE_SEP_PATH + wxS("build/generated.cpp")) != wxNOT_FOUND ||
-        workspace.Files().Index(root + wxFILE_SEP_PATH + wxS("node_modules/pkg/index.js")) != wxNOT_FOUND ||
-        workspace.RelativePath(source) != wxS("src/main.cpp")) {
+    if (!HasRelativeFile(workspace, wxS("src/main.cpp")) ||
+        !HasRelativeFile(workspace, wxS("README.md")) ||
+        HasRelativeFile(workspace, wxS("build/generated.cpp")) ||
+        HasRelativeFile(workspace, wxS("node_modules/pkg/index.js")) ||
+        PortableRelative(workspace.RelativePath(source)) != wxS("src/main.cpp")) {
         std::cerr << "workspace-smoke: discovery or filtering failed\n";
+        std::cerr << "workspace files: " << workspace.Files().GetCount() << "\n";
+        for (const auto& file : workspace.Files()) {
+            std::cerr << "  " << PortableRelative(workspace.RelativePath(file)).ToStdString() << "\n";
+        }
         return 1;
     }
     if (workspace.IsTrusted() || !workspace.SetTrusted(true, &error)) {

@@ -164,7 +164,10 @@ bool TerminalSession::Start(const wxString& program, const wxArrayString& argume
     lineBuffer_.clear();
 
 #if defined(__WXMSW__)
-    if (StartConPty(this, program, arguments, workingDirectory, error)) {
+    wxString disableConPty;
+    const bool conPtyDisabled = wxGetEnv(wxS("CODIUM_BLOCKS_DISABLE_CONPTY"), &disableConPty) &&
+        !disableConPty.empty() && disableConPty != wxS("0");
+    if (!conPtyDisabled && StartConPty(this, program, arguments, workingDirectory, error)) {
         usingPty_ = true;
         return true;
     }
