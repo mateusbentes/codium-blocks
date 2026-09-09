@@ -41,11 +41,11 @@ wxString JsonStringField(const wxString& line, const wxString& field)
     wxString decoded;
     for (size_t index = 0; index < raw.length(); ++index) {
         if (raw[index] == wxChar('\\') && index + 1 < raw.length()) {
-            const wxChar escaped = raw[++index];
-            if (escaped == wxChar('n')) decoded += wxChar('\n');
-            else if (escaped == wxChar('r')) decoded += wxChar('\r');
-            else if (escaped == wxChar('t')) decoded += wxChar('\t');
-            else decoded += escaped;
+            const wxChar escapedCharacter = raw[++index];
+            if (escapedCharacter == wxChar('n')) decoded += wxChar('\n');
+            else if (escapedCharacter == wxChar('r')) decoded += wxChar('\r');
+            else if (escapedCharacter == wxChar('t')) decoded += wxChar('\t');
+            else decoded += escapedCharacter;
         } else {
             decoded += raw[index];
         }

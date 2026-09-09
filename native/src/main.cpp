@@ -1915,9 +1915,9 @@ private:
         if (index >= tabPaths_.size()) return;
         if (editor_) {
             int previous = wxNOT_FOUND;
-            for (size_t index = 0; index < editorPages_.size(); ++index) {
-                if (editorPages_[index] == editor_) {
-                    previous = static_cast<int>(index);
+            for (size_t pageIndex = 0; pageIndex < editorPages_.size(); ++pageIndex) {
+                if (editorPages_[pageIndex] == editor_) {
+                    previous = static_cast<int>(pageIndex);
                     break;
                 }
             }

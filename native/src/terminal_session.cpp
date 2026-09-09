@@ -4,6 +4,7 @@
 
 #include <cerrno>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #if defined(__WXMSW__)
@@ -117,7 +118,8 @@ bool StartConPty(TerminalSession* session, const wxString& program, const wxArra
     for (const auto& argument : arguments) {
         command += wxS(" \"") + argument + wxS("\"");
     }
-    std::vector<wchar_t> commandLine(command.wchar_str(), command.wchar_str() + command.length() + 1);
+    std::wstring commandLine = command.ToStdWstring();
+    commandLine.push_back(L'\0');
     STARTUPINFOEXW startup{};
     startup.StartupInfo.cb = sizeof(startup);
     startup.lpAttributeList = attributes;
