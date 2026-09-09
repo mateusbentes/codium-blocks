@@ -50,9 +50,43 @@ The `0.8.3` increment adds safe OSC 8 hyperlinks, DEC synchronized updates, broa
 
 The completed `0.9.0` increment adds native breakpoint toggling and DAP `setBreakpoints`, thread enumeration, stack-trace, scopes, variables, evaluate, source mapping, persistent watches, clickable stack-frame locations, capability discovery, and automatic `configurationDone`, plus native debugging panels. Diagnostics can navigate back to editor locations. The extension installer computes SHA-256 digests, validates safe manifests, stages installations transactionally, rolls back an existing version if a commit fails, records installation metadata, and can require Ed25519 signatures when OpenSSL is available. The registry client can search Open VSX over HTTPS, cache catalog responses, and verify artifacts by digest. Workspace trust is persisted outside the source tree and gates task, terminal, debug-adapter, and VSIX execution for untrusted folders. Native Tree View, Git SCM, custom-editor registries, and per-extension compatibility reports are also available. Deeper contribution APIs and unattended download/install policy remain future work.
 
-## Release 1.0 — complete terminal compatibility and advanced UI
+## Release 1.0 — classic native workbench and complete terminal compatibility
 
-Complete the terminal compatibility layer with mathematically complete Unicode grapheme breaking and width handling, plus optional native rendering for Sixel and Kitty graphics with explicit resource limits, image lifetime management, and security policy. Deepen the native Tree Views, SCM, and custom-editor APIs, and add optional webviews. The web engine and image-rendering backends must remain optional and must not be loaded during IDE startup.
+The 1.0 goal is a **classic, compact, and polished native IDE**. The visual direction keeps the direct project-tree, editor, build, debug, and terminal workflow that makes Code::Blocks practical, while adding modern navigation and feedback patterns inspired by Xcode. The result must remain recognizably Codium::Blocks: native C++/wxWidgets, keyboard-first, fast to start, and free from Electron in the core process.
+
+### 1.0 interface
+
+The default workbench will provide a compact menu and toolbar, a scheme bar for configuration/target/toolchain selection, a project navigator, a tabbed editor, an optional inspector, and a dockable bottom workbench. The bottom workbench will contain Problems, Build, Debug, Terminal, Output, and Tasks views. Every secondary region must be collapsible so that the editor remains the visual center of the application.
+
+The visual system will offer refined light and dark themes, readable native controls, restrained accent colors, compact spacing, high-contrast support, platform font scaling, and icons or text labels in addition to color. The interface will improve the classic Code::Blocks layout without copying a proprietary product identity.
+
+### 1.0 warnings, errors, and source feedback
+
+Compiler output, language-server diagnostics, task output, terminal diagnostics, and debug-adapter messages will feed a normalized problem model. Reliable locations will appear simultaneously in raw output, the Problems view, and the source editor. Errors will have red gutter markers and underlines. Warnings will have amber markers and underlines. Information and hints will use less intrusive markers.
+
+Selecting a diagnostic will show its full message, source, code, range, related locations, and available quick actions without changing the document text. Double-clicking a problem or a recognized `path:line:column` terminal message will open the source file and move the caret to the correct location. The Problems view will provide severity/source/file filters, counts, next/previous navigation, stale-result state, and access to the originating raw output.
+
+The Build view will retain structured sessions with raw output, elapsed time, exit status, parsed warnings and errors, and a rerun action. Parsing will be conservative for GCC/Clang, MSVC, Rust, and language-server formats. Unrecognized lines will remain raw output instead of becoming false diagnostics. See [`docs/PROBLEMS.md`](PROBLEMS.md) for the diagnostic contract.
+
+### 1.0 terminal and debug workflow
+
+The terminal will retain PTY/ConPTY interactivity, ANSI and cursor behavior, scrollback, selection, hyperlinks, bracketed paste, mouse reporting, and keyboard forwarding. Recognized source locations in terminal output will be clickable without changing the child process's input or output. Failed commands will show their exit status in the terminal header and status bar.
+
+The Debug view will use the same visual language as Problems and Build. Breakpoints will appear in the editor gutter and list. Stack frames will be clickable. Variables, watches, threads, scopes, and the debug console will remain dockable. Unsupported adapter capabilities will be visible as disabled actions with explanations.
+
+### 1.0 navigation and productivity
+
+The command palette, go-to-file, go-to-symbol, go-to-line, next/previous problem, focus-terminal, and build-and-run actions will have visible shortcuts. The primary workflow must be usable with the keyboard and must not depend on hidden mouse-only controls. The interface will preserve direct double-click navigation for files, problems, stack frames, and terminal locations.
+
+### 1.0 terminal compatibility and optional media
+
+The terminal compatibility layer will add mathematically complete Unicode grapheme breaking and width handling, including difficult combining, emoji, and wide-character cases. Sixel and Kitty image rendering may be enabled through optional backends with explicit resource limits, image lifetime management, and security policy. Image and web rendering backends must remain optional and must not load during IDE startup.
+
+### 1.0 contribution and platform scope
+
+The native Tree View, SCM, and custom-editor registries will be deepened into versioned contribution contracts. Optional webviews will be isolated from the native startup path and subject to workspace trust and resource policies. The release must be validated on Windows, macOS, and Linux with high-DPI scaling, high-contrast settings, keyboard-only navigation, clean builds, failed builds, language-server diagnostics, terminal diagnostics, debugging, and workspace trust.
+
+The complete interface specification is maintained in [`docs/UI_DESIGN.md`](UI_DESIGN.md). The 1.0 release must satisfy the acceptance criteria in that document and in [`docs/PROBLEMS.md`](PROBLEMS.md).
 
 ## Compatibility criteria
 

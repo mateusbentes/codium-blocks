@@ -91,7 +91,7 @@ The current `0.9.0` increment provides:
 - per-extension compatibility reports;
 - native Tree View, Git SCM, and custom-editor registries with UI surfaces.
 
-This is not full VS Code compatibility. The implementation is deliberately layered and must still add richer completion/hover interaction, explicit user task configuration, a complete extension registry download/install workflow, and deeper Tree View/SCM contribution APIs. The remaining terminal goals — complete Unicode grapheme segmentation and width handling, plus optional Sixel/Kitty image rendering — are explicitly scheduled for the 1.0 release. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), [`docs/DEBUGGING.md`](docs/DEBUGGING.md), [`docs/EXTENSIONS_SECURITY.md`](docs/EXTENSIONS_SECURITY.md), and [`docs/CONTRIBUTIONS.md`](docs/CONTRIBUTIONS.md) for the current models.
+This is not full VS Code compatibility. The implementation is deliberately layered and must still add richer completion/hover interaction, explicit user task configuration, a complete extension registry download/install workflow, and deeper Tree View/SCM contribution APIs. The remaining terminal goals — complete Unicode grapheme segmentation and width handling, plus optional Sixel/Kitty image rendering — are explicitly scheduled for the 1.0 release. The 1.0 interface target is a polished classic native workbench with Xcode-inspired issue navigation, inline warnings and errors, structured Build output, and a practical terminal workflow. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), [`docs/DEBUGGING.md`](docs/DEBUGGING.md), [`docs/EXTENSIONS_SECURITY.md`](docs/EXTENSIONS_SECURITY.md), [`docs/CONTRIBUTIONS.md`](docs/CONTRIBUTIONS.md), [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md), and [`docs/PROBLEMS.md`](docs/PROBLEMS.md) for the current models.
 
 ## Architecture
 
@@ -153,13 +153,14 @@ The project does not promise that every VS Code extension will work. Compatibili
 ## Implementation roadmap
 
 1. Integrate the Code::Blocks core and preserve its C++ SDK.
-2. Extend the cross-platform VSIX installer with checksums, rollback, permissions, and manifest validation.
-3. Implement commands, configuration, and keybindings reflected in the wxWidgets UI.
-4. Add documents, diagnostics, and LSP, starting with `clangd`, `rust-analyzer`, `gopls`, and `pyright`.
-5. Add tasks, terminal support, and DAP for GDB/LLDB.
-6. Implement Tree Views, SCM, themes, and optional webviews.
-7. Add Open VSX and private extension registries.
-8. Publish a compatibility suite using real open-source extensions.
+2. Complete the cross-platform VSIX and Open VSX workflow with checksums, signatures, rollback, permissions, caching, and manifest validation.
+3. Deliver the classic native workbench described in [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md): project navigator, scheme bar, tabbed editor, dockable bottom panels, compact toolbar, light/dark themes, and keyboard-first navigation.
+4. Deliver the normalized diagnostics contract described in [`docs/PROBLEMS.md`](docs/PROBLEMS.md), including inline warnings and errors, gutter markers, clickable terminal/build locations, stale-result handling, and Problems navigation.
+5. Complete documents, diagnostics, and LSP for `clangd`, `rust-analyzer`, `gopls`, and `pyright` scenarios.
+6. Complete tasks, terminal support, and DAP for GDB/LLDB workflows with structured Build output and scheme-based Run/Debug actions.
+7. Deepen Tree Views, SCM, custom editors, themes, and optional webviews without loading browser backends during startup.
+8. Complete Unicode grapheme/width handling and optional Sixel/Kitty rendering with resource limits.
+9. Publish a compatibility suite using real open-source extensions on Windows, macOS, and Linux.
 
 ## Security
 
