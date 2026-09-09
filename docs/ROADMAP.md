@@ -50,9 +50,9 @@ The `0.8.3` increment adds safe OSC 8 hyperlinks, DEC synchronized updates, broa
 
 Add source breakpoints, stack frames, variables, watches, problem navigation, Open VSX, private registries, caching, checksums, rollback, workspace trust, permissions, and per-extension compatibility reports.
 
-## Release 1.0 — optional advanced UI
+## Release 1.0 — complete terminal compatibility and advanced UI
 
-Add Tree Views, SCM, webviews, and custom editors. The web engine must remain optional and must not be loaded during IDE startup.
+Complete the terminal compatibility layer with mathematically complete Unicode grapheme breaking and width handling, plus optional native rendering for Sixel and Kitty graphics with explicit resource limits, image lifetime management, and security policy. Also add Tree Views, SCM, webviews, and custom editors. The web engine and image-rendering backends must remain optional and must not be loaded during IDE startup.
 
 ## Compatibility criteria
 
