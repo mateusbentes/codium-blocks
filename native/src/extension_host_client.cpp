@@ -106,6 +106,18 @@ bool ExtensionHostClient::ExecuteCommand(const wxString& command)
         JsonEscape(command)));
 }
 
+bool ExtensionHostClient::StartLanguageServer(const wxString& command)
+{
+    return SendRaw(wxString::Format(
+        wxS("{\"type\":\"startLanguageServer\",\"command\":\"%s\"}"),
+        JsonEscape(command)));
+}
+
+bool ExtensionHostClient::StopLanguageServer()
+{
+    return SendRaw(wxS("{\"type\":\"stopLanguageServer\"}"));
+}
+
 wxArrayString ExtensionHostClient::Poll()
 {
     wxArrayString lines;

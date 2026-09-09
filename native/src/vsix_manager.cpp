@@ -1,11 +1,47 @@
 #include "codium/vsix_manager.hpp"
 
 #include <wx/dir.h>
-#include <wx/filename.h>
 #include <wx/filefn.h>
-#include <wx/utils.h>
+#include <wx/filename.h>
+#include <wx/stream.h>
+#include <wx/wfstream.h>
+#include <wx/zipstrm.h>
+
+#include <memory>
 
 namespace codium {
+
+namespace {
+
+bool IsSafeArchivePath(const wxString& name)
+{
+    if (name.empty() || name.StartsWith(wxS("/") ) || name.StartsWith(wxS("\\")) ||
+        name.Find(wxS(":")) != wxNOT_FOUND) {
+        return false;
+    }
+
+    wxString component;
+    for (const auto ch : name) {
+        if (ch == wxS('/') || ch == wxS('\\')) {
+            if (component == wxS("..")) {
+                return false;
+            }
+            component.clear();
+        } else {
+            component += ch;
+        }
+    }
+    return component != wxS("..");
+}
+
+wxString ArchiveDestination(const wxString& root, const wxString& entryName)
+{
+    wxString normalized = entryName;
+    normalized.Replace(wxS("\\"), wxS("/"));
+    return root + wxFILE_SEP_PATH + normalized;
+}
+
+} // namespace
 
 VsixManager::VsixManager(wxString extensionRoot)
     : extensionRoot_(std::move(extensionRoot))
@@ -23,17 +59,69 @@ bool VsixManager::Install(const wxString& vsixPath, wxString* message)
     }
 
     wxFileName source(vsixPath);
-    wxString destination = extensionRoot_ + wxFILE_SEP_PATH + source.GetName();
+    const wxString destination = extensionRoot_ + wxFILE_SEP_PATH + source.GetName();
     wxFileName::Mkdir(destination, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
 
-    // A VSIX is a ZIP archive. The first version uses the system unzip utility
-    // to keep the core small; package validation will be added before production.
-    const wxString command = wxString::Format(
-        wxS("unzip -q -o \"%s\" -d \"%s\""), vsixPath, destination);
-    const int exitCode = wxExecute(command, wxEXEC_SYNC);
-    if (exitCode != 0) {
+    wxFFileInputStream input(vsixPath);
+    if (!input.IsOk()) {
         if (message) {
-            *message = wxString::Format(wxS("Failed to extract the VSIX (exit code %d)."), exitCode);
+            *message = wxString::Format(wxS("Could not open the VSIX: %s."), vsixPath);
+        }
+        return false;
+    }
+
+    wxZipInputStream archive(input);
+    std::unique_ptr<wxZipEntry> entry;
+    while ((entry.reset(archive.GetNextEntry()), entry != nullptr)) {
+        const wxString entryName = entry->GetName();
+        if (!IsSafeArchivePath(entryName)) {
+            wxFileName::Rmdir(destination, wxPATH_RMDIR_RECURSIVE);
+            if (message) {
+                *message = wxString::Format(wxS("Rejected unsafe VSIX path: %s."), entryName);
+            }
+            return false;
+        }
+
+        const wxString outputPath = ArchiveDestination(destination, entryName);
+        if (entry->IsDir() || entryName.EndsWith(wxS("/")) || entryName.EndsWith(wxS("\\"))) {
+            if (!wxFileName::Mkdir(outputPath, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL) &&
+                !wxDirExists(outputPath)) {
+                if (message) {
+                    *message = wxString::Format(wxS("Could not create VSIX directory: %s."), outputPath);
+                }
+                return false;
+            }
+            continue;
+        }
+
+        const wxFileName outputFile(outputPath);
+        if (!wxFileName::Mkdir(outputFile.GetPath(), wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL) &&
+            !wxDirExists(outputFile.GetPath())) {
+            if (message) {
+                *message = wxString::Format(wxS("Could not create VSIX directory: %s."), outputFile.GetPath());
+            }
+            return false;
+        }
+
+        wxFFileOutputStream output(outputPath);
+        if (!output.IsOk()) {
+            if (message) {
+                *message = wxString::Format(wxS("Could not create VSIX file: %s."), outputPath);
+            }
+            return false;
+        }
+        archive.Read(output);
+        if (!output.IsOk()) {
+            if (message) {
+                *message = wxString::Format(wxS("Could not extract VSIX file: %s."), outputPath);
+            }
+            return false;
+        }
+    }
+
+    if (archive.GetLastError() != wxSTREAM_NO_ERROR && archive.GetLastError() != wxSTREAM_EOF) {
+        if (message) {
+            *message = wxS("The VSIX archive is invalid or could not be read.");
         }
         return false;
     }

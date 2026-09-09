@@ -23,6 +23,8 @@ public:
     bool SendRaw(const wxString& jsonLine);
     bool LoadExtension(const wxString& extensionPath);
     bool ExecuteCommand(const wxString& command);
+    bool StartLanguageServer(const wxString& command);
+    bool StopLanguageServer();
 
     // Poll is intentionally driven by the wxWidgets event loop. It keeps the
     // native UI responsive while the optional Node.js host runs out-of-process.

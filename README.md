@@ -4,9 +4,11 @@ Codium::Blocks is a native IDE prototype for multi-language development. It comb
 
 > **Goal:** keep the main application lightweight and Electron-free without giving up modern extensibility.
 
+The target desktop platforms are **Windows, macOS, and Linux**. See [`docs/PLATFORMS.md`](docs/PLATFORMS.md) for platform-specific toolchains and data directories.
+
 ## Current status
 
-This first increment provides:
+The current `0.2.0` increment provides:
 
 - a native C++/wxWidgets window;
 - no Electron dependency or linkage;
@@ -15,12 +17,18 @@ This first increment provides:
 - CommonJS extension loading through `package.json`;
 - an initial bridge for `vscode.commands`, `vscode.window`, `vscode.workspace`, `vscode.languages`, `vscode.extensions`, `vscode.Uri`, and `vscode.env`;
 - extension command execution;
-- offline `.vsix` installation through the system `unzip` utility;
+- offline `.vsix` installation through the cross-platform wxWidgets ZIP reader;
 - a local installed-extension listing;
 - an automated end-to-end smoke test;
 - a demonstration extension that displays a message through the host.
+- a native UTF-8 document model with open, edit, dirty-state, and save operations;
+- a basic source editor surface;
+- persistent extension configuration stored outside the repository;
+- manifest-contributed commands reflected as native UI buttons;
+- an LSP process manager with standard `Content-Length` framing;
+- a `clangd` launch path when `clangd` is installed on the system.
 
-This is not full VS Code compatibility. The implementation is deliberately layered and must still add real menus, configuration storage, documents, diagnostics, Tree Views, LSP, tasks, and DAP.
+This is not full VS Code compatibility. The implementation is deliberately layered and must still add native menus, complete configuration synchronization, diagnostics, Tree Views, LSP request routing, tasks, and DAP.
 
 ## Architecture
 
@@ -39,12 +47,14 @@ wxWidgets / C++
 
 Node.js is optional. The native application can start without it and launch the Extension Host only when a JavaScript or TypeScript extension is needed. Webviews are not part of the first increment.
 
+Extension settings are stored outside the source tree: under `%APPDATA%/CodiumBlocks` on Windows, `~/Library/Application Support/CodiumBlocks` on macOS, and `$XDG_STATE_HOME/codium-blocks` or `~/.local/state/codium-blocks` on Linux. The `CODIUM_BLOCKS_DATA` environment variable can override this location for testing or portable deployments.
+
 ## Build
 
 Ubuntu/Debian dependencies:
 
 ```bash
-sudo apt-get install build-essential cmake pkg-config libwxgtk3.2-dev unzip nodejs
+sudo apt-get install build-essential cmake pkg-config libwxgtk3.2-dev nodejs
 ```
 
 Configure, build, and test:
@@ -78,7 +88,7 @@ The project does not promise that every VS Code extension will work. Compatibili
 ## Implementation roadmap
 
 1. Integrate the Code::Blocks core and preserve its C++ SDK.
-2. Replace the prototype `unzip` call with a validated VSIX installer with checksums, rollback, and permissions.
+2. Extend the cross-platform VSIX installer with checksums, rollback, permissions, and manifest validation.
 3. Implement commands, configuration, and keybindings reflected in the wxWidgets UI.
 4. Add documents, diagnostics, and LSP, starting with `clangd`, `rust-analyzer`, `gopls`, and `pyright`.
 5. Add tasks, terminal support, and DAP for GDB/LLDB.

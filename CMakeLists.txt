@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CodiumBlocks VERSION 0.1.0 LANGUAGES CXX)
+project(CodiumBlocks VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -9,6 +9,7 @@ find_package(wxWidgets REQUIRED COMPONENTS core base)
 include(${wxWidgets_USE_FILE})
 
 add_executable(codium-blocks
+    native/src/document.cpp
     native/src/main.cpp
     native/src/extension_host_client.cpp
     native/src/vsix_manager.cpp
@@ -22,10 +23,27 @@ target_compile_definitions(codium-blocks PRIVATE
 target_compile_options(codium-blocks PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(codium-blocks PRIVATE ${wxWidgets_LIBRARIES})
 
+add_executable(codium-blocks-document-smoke
+    native/src/document.cpp
+    tests/document-smoke.cpp
+)
+target_include_directories(codium-blocks-document-smoke PRIVATE native/include)
+target_compile_options(codium-blocks-document-smoke PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(codium-blocks-document-smoke PRIVATE ${wxWidgets_LIBRARIES})
+
+add_executable(codium-blocks-vsix-smoke
+    native/src/vsix_manager.cpp
+    tests/vsix-smoke.cpp
+)
+target_include_directories(codium-blocks-vsix-smoke PRIVATE native/include)
+target_compile_options(codium-blocks-vsix-smoke PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(codium-blocks-vsix-smoke PRIVATE ${wxWidgets_LIBRARIES})
+
 install(TARGETS codium-blocks RUNTIME DESTINATION bin)
 install(DIRECTORY extension-host DESTINATION share/codium-blocks)
 install(DIRECTORY extensions DESTINATION share/codium-blocks)
 install(FILES README.md LICENSE COPYING DESTINATION share/doc/codium-blocks)
+install(DIRECTORY docs protocol DESTINATION share/doc/codium-blocks)
 
 include(CTest)
 if(BUILD_TESTING)
@@ -35,6 +53,8 @@ if(BUILD_TESTING)
             CODIUM_BLOCKS_ROOT=${CMAKE_SOURCE_DIR}
             node ${CMAKE_SOURCE_DIR}/tests/host-smoke.mjs
     )
+    add_test(NAME document-smoke COMMAND codium-blocks-document-smoke)
+    add_test(NAME vsix-smoke COMMAND codium-blocks-vsix-smoke)
 endif()
 
 message(STATUS "Codium::Blocks ${PROJECT_VERSION}: native wxWidgets core + optional Node.js extension host")
