@@ -2620,4 +2620,14 @@ public:
 
 } // namespace
 
+// wxIMPLEMENT_APP intentionally emits a helper accessor that is not referenced
+// in this translation unit. AppleClang diagnoses that generated helper while
+// GCC normally does not; keep the warning focused on project code.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-function"
+#endif
 wxIMPLEMENT_APP(CodiumBlocksApp);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
