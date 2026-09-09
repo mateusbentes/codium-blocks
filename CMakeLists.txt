@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CodiumBlocks VERSION 0.9.0 LANGUAGES CXX)
+project(CodiumBlocks VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -31,6 +31,7 @@ add_executable(codium-blocks
     native/src/signature_verifier.cpp
     native/src/native_contributions.cpp
     native/src/compatibility_report.cpp
+    native/src/problem_model.cpp
 )
 
 target_include_directories(codium-blocks PRIVATE native/include)
@@ -137,6 +138,14 @@ target_include_directories(codium-blocks-compatibility-smoke PRIVATE native/incl
 target_compile_options(codium-blocks-compatibility-smoke PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(codium-blocks-compatibility-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
+add_executable(codium-blocks-problem-model-smoke
+    native/src/problem_model.cpp
+    tests/problem-model-smoke.cpp
+)
+target_include_directories(codium-blocks-problem-model-smoke PRIVATE native/include)
+target_compile_options(codium-blocks-problem-model-smoke PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(codium-blocks-problem-model-smoke PRIVATE ${wxWidgets_LIBRARIES})
+
 install(TARGETS codium-blocks RUNTIME DESTINATION bin)
 install(DIRECTORY extension-host DESTINATION share/codium-blocks)
 install(DIRECTORY extensions DESTINATION share/codium-blocks)
@@ -162,6 +171,7 @@ if(BUILD_TESTING)
     add_test(NAME debug-model-smoke COMMAND codium-blocks-debug-model-smoke)
     add_test(NAME native-contributions-smoke COMMAND codium-blocks-native-contributions-smoke)
     add_test(NAME compatibility-smoke COMMAND codium-blocks-compatibility-smoke)
+    add_test(NAME problem-model-smoke COMMAND codium-blocks-problem-model-smoke)
 endif()
 
 message(STATUS "Codium::Blocks ${PROJECT_VERSION}: native wxWidgets core + optional Node.js extension host")

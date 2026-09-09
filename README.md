@@ -10,7 +10,7 @@ Every push to `main` and every pull request is checked by GitHub Actions on all 
 
 ## Current status
 
-The current `0.9.0` increment provides:
+The current `1.0.0` development increment builds on the completed `0.9.0` baseline and provides:
 
 - a native C++/wxWidgets window;
 - no Electron dependency or linkage;
@@ -90,6 +90,12 @@ The current `0.9.0` increment provides:
 - optional Ed25519 artifact verification through OpenSSL;
 - per-extension compatibility reports;
 - native Tree View, Git SCM, and custom-editor registries with UI surfaces.
+- a classic native workbench layout with a project navigator, central editor, and dockable bottom workbench;
+- Problems, Build, Terminal, Debug, and Output workbench pages;
+- a normalized problem model for GCC/Clang, MSVC, LSP, Build, and ANSI terminal diagnostics;
+- severity-aware problem summaries, stale-result state, clickable problem navigation, and inline editor underlines;
+- a native status bar showing the active document, workspace trust, language, line, and column;
+- a deterministic problem-model parser test covering compiler diagnostics and ANSI output.
 
 This is not full VS Code compatibility. The implementation is deliberately layered and must still add richer completion/hover interaction, explicit user task configuration, a complete extension registry download/install workflow, and deeper Tree View/SCM contribution APIs. The remaining terminal goals — complete Unicode grapheme segmentation and width handling, plus optional Sixel/Kitty image rendering — are explicitly scheduled for the 1.0 release. The 1.0 interface target is a polished classic native workbench with Xcode-inspired issue navigation, inline warnings and errors, structured Build output, and a practical terminal workflow. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), [`docs/DEBUGGING.md`](docs/DEBUGGING.md), [`docs/EXTENSIONS_SECURITY.md`](docs/EXTENSIONS_SECURITY.md), [`docs/CONTRIBUTIONS.md`](docs/CONTRIBUTIONS.md), [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md), and [`docs/PROBLEMS.md`](docs/PROBLEMS.md) for the current models.
 

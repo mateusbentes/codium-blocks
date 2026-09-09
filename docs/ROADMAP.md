@@ -54,6 +54,8 @@ The completed `0.9.0` increment adds native breakpoint toggling and DAP `setBrea
 
 The 1.0 goal is a **classic, compact, and polished native IDE**. The visual direction keeps the direct project-tree, editor, build, debug, and terminal workflow that makes Code::Blocks practical, while adding modern navigation and feedback patterns inspired by Xcode. The result must remain recognizably Codium::Blocks: native C++/wxWidgets, keyboard-first, fast to start, and free from Electron in the core process.
 
+The first 1.0 implementation increment now provides a native project navigator, a central tabbed editor, a dockable bottom workbench, Problems/Build/Terminal/Debug/Output pages, a status bar, a normalized compiler/LSP/terminal problem model, clickable problem navigation, and inline underlines for active diagnostics. The remaining 1.0 work is to deepen the editor gutter, source annotations, scheme bar, build parser, keyboard navigation, themes, and cross-platform visual verification.
+
 ### 1.0 interface
 
 The default workbench will provide a compact menu and toolbar, a scheme bar for configuration/target/toolchain selection, a project navigator, a tabbed editor, an optional inspector, and a dockable bottom workbench. The bottom workbench will contain Problems, Build, Debug, Terminal, Output, and Tasks views. Every secondary region must be collapsible so that the editor remains the visual center of the application.

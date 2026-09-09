@@ -9,6 +9,7 @@
 #include "codium/debug_model.hpp"
 #include "codium/native_contributions.hpp"
 #include "codium/extension_registry.hpp"
+#include "codium/problem_model.hpp"
 #include "codium/vsix_manager.hpp"
 #include "codium/workspace.hpp"
 
@@ -25,8 +26,10 @@
 #include <wx/listbox.h>
 #include <wx/menu.h>
 #include <wx/notebook.h>
+#include <wx/panel.h>
 #include <wx/richtext/richtextctrl.h>
 #include <wx/sizer.h>
+#include <wx/splitter.h>
 #include <wx/stattext.h>
 #include <wx/stdpaths.h>
 #include <wx/textctrl.h>
@@ -559,9 +562,11 @@ private:
     }
 
     template <typename Handler>
-    void AddButton(wxSizer* sizer, const wxString& label, Handler&& handler)
+    void AddButton(wxSizer* sizer, const wxString& label, Handler&& handler, wxWindow* parent = nullptr)
     {
-        auto* button = new wxButton(this, wxID_ANY, label);
+        wxWindow* owner = parent ? parent : sizer->GetContainingWindow();
+        if (!owner) owner = this;
+        auto* button = new wxButton(owner, wxID_ANY, label);
         button->Bind(wxEVT_BUTTON, std::forward<Handler>(handler));
         sizer->Add(button, 0, wxRIGHT, 6);
     }
@@ -684,14 +689,95 @@ private:
         }
     }
 
+    wxColour ProblemColour(codium::ProblemSeverity severity) const
+    {
+        if (severity == codium::ProblemSeverity::Error) return wxColour(210, 55, 55);
+        if (severity == codium::ProblemSeverity::Warning) return wxColour(190, 130, 20);
+        if (severity == codium::ProblemSeverity::Hint) return wxColour(100, 120, 180);
+        return wxColour(70, 110, 180);
+    }
+
+    void ApplyInlineProblems()
+    {
+        if (!editor_) return;
+        const long end = editor_->GetLastPosition();
+        editor_->SetStyle(0, end, editor_->GetDefaultStyle());
+        for (const auto& problem : problemStore_.Problems()) {
+            if (problem.stale || problem.path.empty() || problem.path != document_.Path()) continue;
+            const long start = editor_->XYToPosition(problem.column, problem.line);
+            if (start == -1) continue;
+            const long finish = std::min(end, std::max(start + 1, editor_->XYToPosition(problem.column + 1, problem.line)));
+            wxTextAttr style;
+            style.SetTextColour(ProblemColour(problem.severity));
+            style.SetFontUnderlined(true);
+            editor_->SetStyle(start, finish, style);
+        }
+    }
+
+    void RefreshProblems()
+    {
+        if (!problems_) return;
+        problems_->Freeze();
+        problems_->Clear();
+        problemLocations_.clear();
+        problemPaths_.clear();
+        const auto& values = problemStore_.Problems();
+        for (const auto& problem : values) {
+            const wxString stale = problem.stale ? wxS(" [stale]") : wxEmptyString;
+            const wxString text = wxString::Format(wxS("%s%s  %s:%d:%d  %s"),
+                                                   codium::ProblemParser::SeverityName(problem.severity), stale,
+                                                   problem.path, problem.line + 1, problem.column + 1, problem.message);
+            problems_->Append(text);
+            problemLocations_.push_back({problem.line, problem.column});
+            problemPaths_.push_back(problem.path);
+        }
+        problems_->Thaw();
+        if (problemSummary_) {
+            problemSummary_->SetLabel(wxString::Format(wxS("%zu problems  ·  %zu errors  ·  %zu warnings"),
+                                                       values.size(), problemStore_.Count(codium::ProblemSeverity::Error),
+                                                       problemStore_.Count(codium::ProblemSeverity::Warning)));
+        }
+        ApplyInlineProblems();
+    }
+
+    void AddLanguageProblem(const wxString& line)
+    {
+        codium::Problem problem;
+        problem.source = wxS("LSP");
+        problem.message = JsonStringField(line, wxS("message"));
+        problem.path = JsonStringField(line, wxS("uri"));
+        if (problem.path.StartsWith(wxS("file://"))) problem.path = problem.path.Mid(7);
+        problem.path.Replace(wxS("%20"), wxS(" "));
+        if (problem.path.empty()) problem.path = document_.Path();
+        problem.line = std::max(0, JsonIntField(line, wxS("line"), 0));
+        problem.column = std::max(0, JsonIntField(line, wxS("character"), 0));
+        problem.endLine = problem.line;
+        problem.endColumn = problem.column + 1;
+        problem.code = JsonStringField(line, wxS("code"));
+        problem.raw = line;
+        const int severity = JsonIntField(line, wxS("severity"), 3);
+        problem.severity = severity == 1 ? codium::ProblemSeverity::Error :
+                           severity == 2 ? codium::ProblemSeverity::Warning :
+                           severity == 4 ? codium::ProblemSeverity::Hint : codium::ProblemSeverity::Information;
+        problemStore_.Add(problem);
+        RefreshProblems();
+    }
+
     void UpdateTitle()
     {
         const wxString name = document_.IsUntitled()
-            ? wxS("Untitled")
+            ? (workspace_.IsOpen() ? workspace_.RootPath() : wxString(wxS("Untitled")))
             : wxFileName(document_.Path()).GetFullName();
         SetTitle(wxString::Format(wxS("%s%s — Codium::Blocks %s"),
                                   name, document_.IsDirty() ? wxS(" *") : wxEmptyString,
                                   CODIUM_BLOCKS_VERSION));
+        if (GetStatusBar()) {
+            SetStatusText(document_.IsUntitled() ? wxS("Untitled") : document_.Path(), 0);
+            SetStatusText(workspace_.IsOpen() ? (workspace_.IsTrusted() ? wxS("Trusted workspace") : wxS("Untrusted workspace"))
+                                              : wxS("No workspace"), 1);
+            SetStatusText(wxString::Format(wxS("%s  Ln %d, Col %d"), languageId_,
+                                           CurrentEditorLine() + 1, CurrentEditorCharacter() + 1), 2);
+        }
     }
 
     void OpenFile()
@@ -729,6 +815,7 @@ private:
         RefreshNativeContributions();
         LoadProjectConfig();
         SetTitle(wxString::Format(wxS("%s — Codium::Blocks %s"), workspace_.RootPath(), CODIUM_BLOCKS_VERSION));
+        UpdateTitle();
         AppendLog(wxS("Workspace opened: ") + workspace_.RootPath());
     }
 
@@ -779,12 +866,18 @@ private:
 
     void RunTask(const codium::ProjectTask& task)
     {
+        problemStore_.Clear(task.name);
+        if (buildOutput_) buildOutput_->AppendText(wxString::Format(wxS("\n=== %s ===\n"), task.name));
         wxString error;
         if (taskRunner_.Run(task, &error)) {
             AppendLog(wxString::Format(wxS("Started task: %s"), task.name));
+            if (buildOutput_) buildOutput_->AppendText(wxString::Format(wxS("Started %s\n"), task.name));
+            if (GetStatusBar()) SetStatusText(wxS("Building…"), 1);
         } else {
             AppendLog(wxS("Task error: ") + error);
+            if (buildOutput_) buildOutput_->AppendText(wxS("Task error: ") + error + wxS("\n"));
         }
+        RefreshProblems();
     }
 
     bool EnsureWorkspaceTrusted()
@@ -833,6 +926,9 @@ private:
     {
         taskRunner_.HandleProcessExit(event.GetPid(), event.GetExitCode());
         AppendLog(wxString::Format(wxS("Task finished with exit code %d."), event.GetExitCode()));
+        if (buildOutput_) buildOutput_->AppendText(wxString::Format(wxS("Finished with exit code %d.\n"), event.GetExitCode()));
+        if (GetStatusBar()) SetStatusText(event.GetExitCode() == 0 ? wxS("Build succeeded") : wxS("Build failed"), 1);
+        RefreshProblems();
     }
 
     wxString WorkspaceDirectory() const
@@ -868,6 +964,7 @@ private:
         wxString error;
         if (terminal_.Start(terminalShell_, arguments, WorkspaceDirectory(), &error)) {
             AppendLog(wxS("Native terminal started with backend: ") + terminal_.BackendName());
+            if (GetStatusBar()) SetStatusText(wxS("Terminal running"), 1);
             terminalScreen_.Reset();
             if (terminalOutput_) {
                 const wxSize size = terminalOutput_->GetClientSize();
@@ -1177,6 +1274,7 @@ private:
     {
         terminal_.HandleProcessExit(event.GetPid(), event.GetExitCode());
         AppendLog(wxString::Format(wxS("Terminal finished with exit code %d."), event.GetExitCode()));
+        if (GetStatusBar()) SetStatusText(event.GetExitCode() == 0 ? wxS("Terminal exited") : wxS("Terminal failed"), 1);
     }
 
     void StartDebugAdapter()
@@ -1505,6 +1603,7 @@ private:
         }
         languageId_ = document_.IsUntitled() ? wxS("plaintext") : LanguageIdForPath(document_.Path());
         UpdateTitle();
+        ApplyInlineProblems();
     }
 
     void SaveFile()
@@ -1743,22 +1842,20 @@ private:
 
     void ShowDiagnostics(const wxString& line)
     {
-        if (!diagnostics_) {
-            return;
-        }
-        diagnostics_->Clear();
-        problemLocations_.clear();
-        const wxString message = JsonStringField(line, wxS("message"));
-        const int lineNumber = std::max(0, JsonIntField(line, wxS("line"), 0));
-        const int character = std::max(0, JsonIntField(line, wxS("character"), 0));
-        problemLocations_.push_back({lineNumber, character});
-        diagnostics_->Append(wxString::Format(wxS("%d:%d %s"), lineNumber + 1, character + 1,
-                                              message.empty() ? wxS("Language-server diagnostics updated.") : message));
+        problemStore_.Clear(wxS("LSP"));
+        AddLanguageProblem(line);
     }
 
     void GoToProblem(int index)
     {
-        if (index < 0 || index >= static_cast<int>(problemLocations_.size()) || !editor_) return;
+        if (index < 0 || index >= static_cast<int>(problemLocations_.size())) return;
+        if (bottomWorkbench_) bottomWorkbench_->SetSelection(0);
+        if (index < static_cast<int>(problemPaths_.size()) && !problemPaths_[static_cast<size_t>(index)].empty() &&
+            problemPaths_[static_cast<size_t>(index)] != document_.Path() &&
+            wxFileExists(problemPaths_[static_cast<size_t>(index)])) {
+            OpenDocumentPath(problemPaths_[static_cast<size_t>(index)]);
+        }
+        if (!editor_) return;
         const auto [line, character] = problemLocations_[static_cast<size_t>(index)];
         const long position = editor_->XYToPosition(character, line);
         if (position != -1) {
@@ -1877,10 +1974,22 @@ private:
 
     void OnTimer(wxTimerEvent&)
     {
+        bool problemsChanged = false;
         for (const auto& line : taskRunner_.Poll()) {
             AppendLog(wxS("task> ") + line);
+            if (buildOutput_) buildOutput_->AppendText(line + wxS("\n"));
+            problemStore_.AddCompilerLine(line, taskRunner_.CurrentTask().name, WorkspaceDirectory());
+            problemsChanged = true;
         }
-        if (terminalScreen_.Feed(terminal_.PollRaw())) RenderTerminalScreen();
+        const wxString terminalRaw = terminal_.PollRaw();
+        if (terminalScreen_.Feed(terminalRaw)) RenderTerminalScreen();
+        if (!terminalRaw.empty()) {
+            const wxArrayString terminalLines = wxSplit(terminalRaw, wxChar('\n'));
+            for (const auto& line : terminalLines) {
+                problemStore_.AddCompilerLine(line, wxS("Terminal"), WorkspaceDirectory());
+                problemsChanged = true;
+            }
+        }
         for (const auto& message : dap_.Poll()) {
             AppendLog(wxS("dap> ") + message);
             ShowDebugMessage(message);
@@ -1893,6 +2002,7 @@ private:
             if (line.Find(wxS("\"event\":\"diagnostics\"")) != wxNOT_FOUND) {
                 AppendLog(wxS("LSP diagnostics updated."));
                 ShowDiagnostics(line);
+                problemsChanged = true;
             }
             if (line.Find(wxS("\"event\":\"languageServerResult\"")) != wxNOT_FOUND) {
                 ShowLanguageResult(line);
@@ -1909,6 +2019,7 @@ private:
                 RegisterContributedCommand(line);
             }
         }
+        if (problemsChanged) RefreshProblems();
     }
 
     void OnClose(wxCloseEvent& event)
@@ -1938,6 +2049,7 @@ private:
     codium::TreeViewRegistry treeRegistry_;
     codium::ScmModel scmModel_;
     codium::CustomEditorRegistry customEditors_;
+    codium::ProblemStore problemStore_;
     codium::Document document_;
     std::map<wxString, codium::Document> documents_;
     std::vector<wxString> tabPaths_;
@@ -1946,6 +2058,7 @@ private:
     wxListBox* scm_ = nullptr;
     wxListBox* customEditorsView_ = nullptr;
     wxNotebook* notebook_ = nullptr;
+    wxNotebook* bottomWorkbench_ = nullptr;
     wxListBox* taskList_ = nullptr;
     wxListBox* breakpoints_ = nullptr;
     wxListBox* debugThreads_ = nullptr;
@@ -1958,6 +2071,9 @@ private:
     wxBoxSizer* extensionControls_ = nullptr;
     wxTextCtrl* editor_ = nullptr;
     wxListBox* diagnostics_ = nullptr;
+    wxListBox* problems_ = nullptr;
+    wxStaticText* problemSummary_ = nullptr;
+    wxTextCtrl* buildOutput_ = nullptr;
     wxTextCtrl* debugConsole_ = nullptr;
     wxTextCtrl* hover_ = nullptr;
     wxListBox* completion_ = nullptr;
@@ -1975,6 +2091,7 @@ private:
     bool terminalSelecting_ = false;
     std::map<wxString, std::vector<int>> breakpointLines_;
     std::vector<std::pair<int, int>> problemLocations_;
+    std::vector<wxString> problemPaths_;
     int debugThreadId_ = 1;
     int debugFrameId_ = 1;
     int debugVariablesReference_ = 1;
