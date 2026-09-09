@@ -10,7 +10,7 @@ Every push to `main` and every pull request is checked by GitHub Actions on all 
 
 ## Current status
 
-The current `0.3.0` increment provides:
+The current `0.4.0` increment provides:
 
 - a native C++/wxWidgets window;
 - no Electron dependency or linkage;
@@ -34,8 +34,14 @@ The current `0.3.0` increment provides:
 - hover and completion requests;
 - normalized diagnostics and language-server result events;
 - a deterministic fake-LSP integration test.
+- native File, Language, and Extensions menus;
+- keyboard shortcuts for opening, saving, hover, and completion;
+- a diagnostics panel fed by `textDocument/publishDiagnostics`;
+- a hover/language-server result panel;
+- a native completion-items list;
+- language identification for C/C++, Python, Rust, Go, Java, JavaScript, TypeScript, JSON, HTML, CSS, Markdown, YAML, and CMake.
 
-This is not full VS Code compatibility. The implementation is deliberately layered and must still add native menus, visual diagnostic markers, richer completion/hover UI, Tree Views, tasks, and DAP.
+This is not full VS Code compatibility. The implementation is deliberately layered and must still add clickable diagnostic locations, richer completion/hover interaction, project workspaces, Tree Views, tasks, terminal support, and DAP.
 
 ## Architecture
 

@@ -12,13 +12,13 @@ The current `0.2.0` development increment adds a native UTF-8 document model wit
 
 The `0.3.0` increment adds the `initialize`/`initialized` handshake, document open/change synchronization, hover and completion requests, normalized diagnostics and result events, and a deterministic fake-LSP integration test. The native editor exposes actions for starting clangd, initializing LSP, requesting hover, and requesting completion.
 
-## Release 0.4 — declarative UI
+## Release 0.4 — native LSP presentation
 
-Implement `contributes.commands`, `menus`, `keybindings`, `configuration`, `languages`, `snippets`, and `themes` as first-class native models. Validate the manifest in C++ before activation and map contributions to menus, the command palette, settings, and the editor.
+The `0.4.0` increment adds File, Language, and Extensions menus, keyboard shortcuts, a diagnostics panel, a hover/result panel, a native completion list, and language identification for common programming languages. LSP data is now visible in the native UI instead of only being written to the log.
 
-## Release 0.5 — language tooling
+## Release 0.5 — declarative UI and project workspaces
 
-Complete the native LSP client with initialize, shutdown, diagnostics, completion, hover, definition, formatting, and workspace/document synchronization. Validate `clangd`, `rust-analyzer`, `gopls`, Pyright, and language servers for Java, C#, PHP, and Lua.
+Implement `contributes.commands`, `menus`, `keybindings`, `configuration`, `languages`, `snippets`, and `themes` as first-class native models. Add project workspaces, a file tree, multiple documents, and a command palette. Validate the manifest in C++ before activation and map contributions to menus, settings, and the editor.
 
 ## Release 0.6 — build and debugging
 
