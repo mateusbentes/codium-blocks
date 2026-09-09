@@ -118,6 +118,60 @@ bool ExtensionHostClient::StopLanguageServer()
     return SendRaw(wxS("{\"type\":\"stopLanguageServer\"}"));
 }
 
+bool ExtensionHostClient::InitializeLanguageServer(const wxString& rootUri)
+{
+    const wxString params = wxString::Format(
+        wxS("{\"processId\":null,\"rootUri\":\"%s\",\"capabilities\":{\"textDocument\":{\"completion\":{\"completionItem\":{\"snippetSupport\":false}},\"hover\":{},\"publishDiagnostics\":{}}}}"),
+        JsonEscape(rootUri));
+    const int requestId = nextLanguageRequestId_++;
+    return SendRaw(wxString::Format(
+        wxS("{\"type\":\"languageServerRequest\",\"message\":{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"initialize\",\"params\":%s}}"),
+        requestId, params));
+}
+
+bool ExtensionHostClient::OpenLanguageDocument(const wxString& uri, const wxString& languageId,
+                                               int version, const wxString& text)
+{
+    const wxString params = wxString::Format(
+        wxS("{\"textDocument\":{\"uri\":\"%s\",\"languageId\":\"%s\",\"version\":%d,\"text\":\"%s\"}}"),
+        JsonEscape(uri), JsonEscape(languageId), version, JsonEscape(text));
+    return SendRaw(wxString::Format(
+        wxS("{\"type\":\"languageServerNotification\",\"message\":{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":%s}}"),
+        params));
+}
+
+bool ExtensionHostClient::ChangeLanguageDocument(const wxString& uri, int version, const wxString& text)
+{
+    const wxString params = wxString::Format(
+        wxS("{\"textDocument\":{\"uri\":\"%s\",\"version\":%d},\"contentChanges\":[{\"text\":\"%s\"}]}"),
+        JsonEscape(uri), version, JsonEscape(text));
+    return SendRaw(wxString::Format(
+        wxS("{\"type\":\"languageServerNotification\",\"message\":{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":%s}}"),
+        params));
+}
+
+bool ExtensionHostClient::RequestLanguageHover(const wxString& uri, int line, int character)
+{
+    const wxString params = wxString::Format(
+        wxS("{\"textDocument\":{\"uri\":\"%s\"},\"position\":{\"line\":%d,\"character\":%d}}"),
+        JsonEscape(uri), line, character);
+    const int requestId = nextLanguageRequestId_++;
+    return SendRaw(wxString::Format(
+        wxS("{\"type\":\"languageServerRequest\",\"message\":{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"textDocument/hover\",\"params\":%s}}"),
+        requestId, params));
+}
+
+bool ExtensionHostClient::RequestLanguageCompletion(const wxString& uri, int line, int character)
+{
+    const wxString params = wxString::Format(
+        wxS("{\"textDocument\":{\"uri\":\"%s\"},\"position\":{\"line\":%d,\"character\":%d}}"),
+        JsonEscape(uri), line, character);
+    const int requestId = nextLanguageRequestId_++;
+    return SendRaw(wxString::Format(
+        wxS("{\"type\":\"languageServerRequest\",\"message\":{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"textDocument/completion\",\"params\":%s}}"),
+        requestId, params));
+}
+
 wxArrayString ExtensionHostClient::Poll()
 {
     wxArrayString lines;
@@ -134,10 +188,10 @@ wxArrayString ExtensionHostClient::Poll()
         }
 
         if (byte == '\n') {
-            lines.Add(inputBuffer_);
+            lines.Add(wxString::FromUTF8(inputBuffer_.data(), inputBuffer_.size()));
             inputBuffer_.clear();
         } else if (byte != '\r') {
-            inputBuffer_ += wxString::FromUTF8(&byte, 1);
+            inputBuffer_.push_back(byte);
         }
     }
 

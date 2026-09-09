@@ -5,6 +5,7 @@
 #include <wx/window.h>
 
 #include <memory>
+#include <string>
 
 namespace codium {
 
@@ -25,6 +26,12 @@ public:
     bool ExecuteCommand(const wxString& command);
     bool StartLanguageServer(const wxString& command);
     bool StopLanguageServer();
+    bool InitializeLanguageServer(const wxString& rootUri);
+    bool OpenLanguageDocument(const wxString& uri, const wxString& languageId,
+                              int version, const wxString& text);
+    bool ChangeLanguageDocument(const wxString& uri, int version, const wxString& text);
+    bool RequestLanguageHover(const wxString& uri, int line, int character);
+    bool RequestLanguageCompletion(const wxString& uri, int line, int character);
 
     // Poll is intentionally driven by the wxWidgets event loop. It keeps the
     // native UI responsive while the optional Node.js host runs out-of-process.
@@ -34,7 +41,8 @@ private:
     wxWindow* owner_;
     wxProcess* process_;
     long pid_;
-    wxString inputBuffer_;
+    std::string inputBuffer_;
+    int nextLanguageRequestId_ = 1;
 };
 
 } // namespace codium

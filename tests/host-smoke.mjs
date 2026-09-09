@@ -96,8 +96,63 @@ try {
   assert.equal(stopped.ok, true);
   assert.equal(stopped.stopped, true);
 
-  send({ id: 8, type: 'shutdown' });
-  await waitFor((message) => message.type === 'response' && message.id === 8);
+  const fakeLsp = join(root, 'tests', 'fake-lsp.mjs');
+  send({ id: 8, type: 'startLanguageServer', command: process.execPath, args: [fakeLsp] });
+  const fakeStarted = await waitFor((message) => message.type === 'response' && message.id === 8);
+  assert.equal(fakeStarted.ok, true);
+
+  send({ id: 9, type: 'languageServerRequest', message: {
+    jsonrpc: '2.0', id: 101, method: 'initialize', params: { rootUri: 'file:///workspace' },
+  } });
+  const initializeSent = await waitFor((message) => message.type === 'response' && message.id === 9);
+  assert.equal(initializeSent.sent, true);
+  const initialized = await waitFor((message) => message.type === 'event' &&
+    message.event === 'languageServerMessage' && message.message.id === 101);
+  assert.equal(initialized.message.result.capabilities.hoverProvider, true);
+  await waitFor((message) => message.type === 'event' && message.event === 'languageServerResult' &&
+    message.method === 'initialize');
+
+  send({ id: 10, type: 'languageServerNotification', message: {
+    jsonrpc: '2.0', method: 'textDocument/didOpen', params: {
+      textDocument: { uri: 'file:///workspace/main.cpp', languageId: 'cpp', version: 1, text: 'int main() {}' },
+    },
+  } });
+  const opened = await waitFor((message) => message.type === 'response' && message.id === 10);
+  assert.equal(opened.sent, true);
+  const diagnostics = await waitFor((message) => message.type === 'event' &&
+    message.event === 'languageServerMessage' && message.message.method === 'textDocument/publishDiagnostics');
+  assert.equal(diagnostics.message.params.diagnostics[0].source, 'codium-blocks-fake-lsp');
+  const normalizedDiagnostics = await waitFor((message) => message.type === 'event' && message.event === 'diagnostics');
+  assert.equal(normalizedDiagnostics.diagnostics[0].severity, 2);
+
+  send({ id: 11, type: 'languageServerRequest', message: {
+    jsonrpc: '2.0', id: 102, method: 'textDocument/hover', params: {},
+  } });
+  await waitFor((message) => message.type === 'response' && message.id === 11);
+  const hover = await waitFor((message) => message.type === 'event' &&
+    message.event === 'languageServerMessage' && message.message.id === 102);
+  assert.equal(hover.message.result.contents[0].value, 'Hover response from fake LSP');
+  const normalizedHover = await waitFor((message) => message.type === 'event' && message.event === 'languageServerResult' &&
+    message.method === 'textDocument/hover');
+  assert.equal(normalizedHover.result.contents[0].value, 'Hover response from fake LSP');
+
+  send({ id: 12, type: 'languageServerRequest', message: {
+    jsonrpc: '2.0', id: 103, method: 'textDocument/completion', params: {},
+  } });
+  await waitFor((message) => message.type === 'response' && message.id === 12);
+  const completion = await waitFor((message) => message.type === 'event' &&
+    message.event === 'languageServerMessage' && message.message.id === 103);
+  assert.equal(completion.message.result.items[0].label, 'codiumBlocksCompletion');
+  const normalizedCompletion = await waitFor((message) => message.type === 'event' && message.event === 'languageServerResult' &&
+    message.method === 'textDocument/completion');
+  assert.equal(normalizedCompletion.result.items[0].label, 'codiumBlocksCompletion');
+
+  send({ id: 13, type: 'stopLanguageServer' });
+  const fakeStopped = await waitFor((message) => message.type === 'response' && message.id === 13);
+  assert.equal(fakeStopped.stopped, true);
+
+  send({ id: 14, type: 'shutdown' });
+  await waitFor((message) => message.type === 'response' && message.id === 14);
   await once(child, 'exit');
   console.log('host-smoke: ok — commands, configuration, contributions, and LSP process manager without Electron');
 } finally {

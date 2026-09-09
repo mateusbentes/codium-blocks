@@ -8,23 +8,27 @@ This release proves the minimum architecture: a wxWidgets window, a separate Nod
 
 The current `0.2.0` development increment adds a native UTF-8 document model with open/edit/save state, an editor surface, persistent Extension Host configuration, manifest-contributed commands reflected in the native UI, and an LSP process manager using standard `Content-Length` framing. `clangd` can be started through the host when installed on the system.
 
-## Release 0.3 — declarative UI
+## Release 0.3 — functional LSP client
+
+The `0.3.0` increment adds the `initialize`/`initialized` handshake, document open/change synchronization, hover and completion requests, normalized diagnostics and result events, and a deterministic fake-LSP integration test. The native editor exposes actions for starting clangd, initializing LSP, requesting hover, and requesting completion.
+
+## Release 0.4 — declarative UI
 
 Implement `contributes.commands`, `menus`, `keybindings`, `configuration`, `languages`, `snippets`, and `themes` as first-class native models. Validate the manifest in C++ before activation and map contributions to menus, the command palette, settings, and the editor.
 
-## Release 0.4 — language tooling
+## Release 0.5 — language tooling
 
 Complete the native LSP client with initialize, shutdown, diagnostics, completion, hover, definition, formatting, and workspace/document synchronization. Validate `clangd`, `rust-analyzer`, `gopls`, Pyright, and language servers for Java, C#, PHP, and Lua.
 
-## Release 0.5 — build and debugging
+## Release 0.6 — build and debugging
 
 Add tasks, terminal support, problems, and DAP. The first matrix should cover CMake/Make/Ninja, Cargo, Python, and Java, together with GDB and LLDB.
 
-## Release 0.6 — registry and security
+## Release 0.7 — registry and security
 
 Add Open VSX, private registries, caching, checksums, rollback, workspace trust, permissions, and per-extension compatibility reports. The registry must not install extensions that depend on APIs the host has not declared as supported.
 
-## Release 0.7 — optional advanced UI
+## Release 0.8 — optional advanced UI
 
 Add Tree Views, SCM, webviews, and custom editors. The web engine must remain optional and must not be loaded during IDE startup.
 

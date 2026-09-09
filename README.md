@@ -6,9 +6,11 @@ Codium::Blocks is a native IDE prototype for multi-language development. It comb
 
 The target desktop platforms are **Windows, macOS, and Linux**. See [`docs/PLATFORMS.md`](docs/PLATFORMS.md) for platform-specific toolchains and data directories.
 
+Every push to `main` and every pull request is checked by GitHub Actions on all three target operating systems. The workflow builds the native application, runs CTest, checks JavaScript syntax, and executes the Extension Host smoke test.
+
 ## Current status
 
-The current `0.2.0` increment provides:
+The current `0.3.0` increment provides:
 
 - a native C++/wxWidgets window;
 - no Electron dependency or linkage;
@@ -27,8 +29,13 @@ The current `0.2.0` increment provides:
 - manifest-contributed commands reflected as native UI buttons;
 - an LSP process manager with standard `Content-Length` framing;
 - a `clangd` launch path when `clangd` is installed on the system.
+- LSP initialization and `initialized` handshake;
+- `textDocument/didOpen` and `textDocument/didChange` synchronization;
+- hover and completion requests;
+- normalized diagnostics and language-server result events;
+- a deterministic fake-LSP integration test.
 
-This is not full VS Code compatibility. The implementation is deliberately layered and must still add native menus, complete configuration synchronization, diagnostics, Tree Views, LSP request routing, tasks, and DAP.
+This is not full VS Code compatibility. The implementation is deliberately layered and must still add native menus, visual diagnostic markers, richer completion/hover UI, Tree Views, tasks, and DAP.
 
 ## Architecture
 

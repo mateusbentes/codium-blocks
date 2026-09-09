@@ -15,6 +15,7 @@ const configurationListeners = new Set();
 const configuration = new Map();
 let activeExtension = null;
 let languageServer = null;
+const languageRequestMethods = new Map();
 
 const defaultDataRoot = process.platform === 'win32'
   ? join(process.env.APPDATA || homedir(), 'CodiumBlocks')
@@ -200,7 +201,24 @@ function parseLanguageServerFrames(state, chunk) {
     const body = state.buffer.subarray(bodyStart, bodyStart + length).toString('utf8');
     state.buffer = state.buffer.subarray(bodyStart + length);
     try {
-      send({ type: 'event', event: 'languageServerMessage', message: JSON.parse(body) });
+      const message = JSON.parse(body);
+      send({ type: 'event', event: 'languageServerMessage', message });
+      if (message.method === 'textDocument/publishDiagnostics') {
+        send({
+          type: 'event',
+          event: 'diagnostics',
+          uri: message.params?.uri,
+          diagnostics: message.params?.diagnostics ?? [],
+        });
+      }
+      if (message.id !== undefined && languageRequestMethods.has(message.id)) {
+        const method = languageRequestMethods.get(message.id);
+        languageRequestMethods.delete(message.id);
+        send({ type: 'event', event: 'languageServerResult', method, result: message.result ?? null, error: message.error ?? null });
+        if (method === 'initialize' && !message.error) {
+          sendLanguageServerMessage({ jsonrpc: '2.0', method: 'initialized', params: {} });
+        }
+      }
     } catch {
       send({ type: 'event', event: 'languageServerMessage', message: body });
     }
@@ -212,6 +230,9 @@ function sendLanguageServerMessage(message) {
     throw new Error('No language server is running.');
   }
   const body = JSON.stringify(message);
+  if (message.id !== undefined && message.method) {
+    languageRequestMethods.set(message.id, message.method);
+  }
   const header = `Content-Length: ${Buffer.byteLength(body, 'utf8')}\r\n\r\n`;
   languageServer.child.stdin.write(header + body);
 }
@@ -327,6 +348,10 @@ async function handle(request) {
       response(request, { languageServer: startLanguageServer(request.command, request.args ?? [], request.cwd ?? process.cwd()) });
       return;
     case 'languageServerRequest':
+      sendLanguageServerMessage(request.message);
+      response(request, { sent: true });
+      return;
+    case 'languageServerNotification':
       sendLanguageServerMessage(request.message);
       response(request, { sent: true });
       return;

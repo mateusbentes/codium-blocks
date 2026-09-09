@@ -14,6 +14,7 @@
 #include <wx/timer.h>
 #include <wx/wx.h>
 
+#include <algorithm>
 #include <utility>
 
 namespace {
@@ -89,6 +90,9 @@ public:
         AddButton(fileControls, wxS("Open file"), [this](wxCommandEvent&) { OpenFile(); });
         AddButton(fileControls, wxS("Save file"), [this](wxCommandEvent&) { SaveFile(); });
         AddButton(fileControls, wxS("Start clangd"), [this](wxCommandEvent&) { StartLanguageServer(); });
+        AddButton(fileControls, wxS("Initialize LSP"), [this](wxCommandEvent&) { InitializeLanguageServer(); });
+        AddButton(fileControls, wxS("Hover"), [this](wxCommandEvent&) { RequestHover(); });
+        AddButton(fileControls, wxS("Completion"), [this](wxCommandEvent&) { RequestCompletion(); });
         AddButton(fileControls, wxS("Stop language server"), [this](wxCommandEvent&) { StopLanguageServer(); });
         root->Add(fileControls, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
 
@@ -107,6 +111,8 @@ public:
         editor_->Bind(wxEVT_TEXT, [this](wxCommandEvent&) {
             if (!loadingDocument_) {
                 document_.SetText(editor_->GetValue());
+                ++documentVersion_;
+                NotifyLanguageDocumentChanged();
                 UpdateTitle();
             }
         });
@@ -167,9 +173,11 @@ private:
         loadingDocument_ = true;
         document_ = std::move(loaded);
         editor_->SetValue(document_.Text());
+        documentVersion_ = 1;
         loadingDocument_ = false;
         UpdateTitle();
         AppendLog(wxS("Opened: ") + document_.Path());
+        NotifyLanguageDocumentOpened();
     }
 
     void SaveFile()
@@ -192,6 +200,7 @@ private:
         document_.MarkClean();
         UpdateTitle();
         AppendLog(wxS("Saved: ") + document_.Path());
+        NotifyLanguageDocumentChanged();
     }
 
     wxString HostScript() const
@@ -246,6 +255,85 @@ private:
         }
         if (host_.StartLanguageServer(wxS("clangd"))) {
             AppendLog(wxS("Request sent: start clangd through the Extension Host."));
+        }
+    }
+
+    void InitializeLanguageServer()
+    {
+        if (!host_.IsRunning()) {
+            StartHost();
+        }
+        if (host_.InitializeLanguageServer(ProjectRootUri())) {
+            languageServerInitialized_ = true;
+            AppendLog(wxS("Request sent: initialize the language server."));
+            NotifyLanguageDocumentOpened();
+        }
+    }
+
+    void NotifyLanguageDocumentOpened()
+    {
+        if (!languageServerInitialized_ || document_.IsUntitled()) {
+            return;
+        }
+        host_.OpenLanguageDocument(DocumentUri(), wxS("plaintext"), documentVersion_, document_.Text());
+    }
+
+    void NotifyLanguageDocumentChanged()
+    {
+        if (!languageServerInitialized_ || document_.IsUntitled()) {
+            return;
+        }
+        host_.ChangeLanguageDocument(DocumentUri(), documentVersion_, document_.Text());
+    }
+
+    wxString ProjectRootUri() const
+    {
+        wxString path = projectRoot_;
+        path.Replace(wxS("\\"), wxS("/"));
+        return wxString::Format(wxS("file://%s"), path);
+    }
+
+    wxString DocumentUri() const
+    {
+        wxString path = document_.Path();
+        path.Replace(wxS("\\"), wxS("/"));
+        return wxString::Format(wxS("file://%s"), path);
+    }
+
+    int CurrentEditorLine() const
+    {
+        const long position = editor_->GetInsertionPoint();
+        return static_cast<int>(editor_->GetValue().Left(position).Freq(wxS('\n')));
+    }
+
+    int CurrentEditorCharacter() const
+    {
+        const long position = editor_->GetInsertionPoint();
+        const wxString before = editor_->GetValue().Left(position);
+        const int lineBreak = before.Find(wxS('\n'), true);
+        return lineBreak == wxNOT_FOUND ? static_cast<int>(position) :
+                                          static_cast<int>(position - lineBreak - 1);
+    }
+
+    void RequestHover()
+    {
+        if (document_.IsUntitled()) {
+            AppendLog(wxS("Open a document before requesting hover information."));
+            return;
+        }
+        if (host_.RequestLanguageHover(DocumentUri(), CurrentEditorLine(), CurrentEditorCharacter())) {
+            AppendLog(wxS("Request sent: textDocument/hover."));
+        }
+    }
+
+    void RequestCompletion()
+    {
+        if (document_.IsUntitled()) {
+            AppendLog(wxS("Open a document before requesting completion."));
+            return;
+        }
+        if (host_.RequestLanguageCompletion(DocumentUri(), CurrentEditorLine(), CurrentEditorCharacter())) {
+            AppendLog(wxS("Request sent: textDocument/completion."));
         }
     }
 
@@ -306,6 +394,21 @@ private:
     {
         for (const auto& line : host_.Poll()) {
             AppendLog(wxS("host> ") + line);
+            if (line.Find(wxS("\"event\":\"languageServerMessage\"")) != wxNOT_FOUND) {
+                AppendLog(wxS("LSP message received."));
+            }
+            if (line.Find(wxS("\"event\":\"diagnostics\"")) != wxNOT_FOUND) {
+                AppendLog(wxS("LSP diagnostics updated."));
+            }
+            if (line.Find(wxS("\"event\":\"languageServerResult\"")) != wxNOT_FOUND) {
+                if (line.Find(wxS("\"method\":\"textDocument/hover\"")) != wxNOT_FOUND) {
+                    AppendLog(wxS("LSP hover result received."));
+                } else if (line.Find(wxS("\"method\":\"textDocument/completion\"")) != wxNOT_FOUND) {
+                    AppendLog(wxS("LSP completion result received."));
+                } else if (line.Find(wxS("\"method\":\"initialize\"")) != wxNOT_FOUND) {
+                    AppendLog(wxS("LSP initialized."));
+                }
+            }
             if (line.Find(wxS("\"event\":\"contribution\"")) != wxNOT_FOUND &&
                 line.Find(wxS("\"kind\":\"command\"")) != wxNOT_FOUND) {
                 RegisterContributedCommand(line);
@@ -328,6 +431,8 @@ private:
     wxTextCtrl* log_ = nullptr;
     wxTimer timer_;
     bool loadingDocument_ = false;
+    int documentVersion_ = 1;
+    bool languageServerInitialized_ = false;
 
     wxDECLARE_EVENT_TABLE();
 };
