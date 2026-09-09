@@ -48,6 +48,12 @@ add_executable(codium-blocks
     native/src/codeblocks_adapter_client.cpp
 )
 
+# wxIMPLEMENT_APP provides WinMain on Windows. Mark only the GUI target as a
+# Windows-subsystem executable; smoke tests intentionally remain console apps.
+if(WIN32)
+    set_target_properties(codium-blocks PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
+
 target_include_directories(codium-blocks PRIVATE native/include)
 target_compile_definitions(codium-blocks PRIVATE
     CODIUM_BLOCKS_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
