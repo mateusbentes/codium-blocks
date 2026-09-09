@@ -1,11 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
 project(CodiumBlocks VERSION 1.0.0 LANGUAGES CXX)
 
+option(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_SDK "Expose an optional Code::Blocks SDK include root to the native target" OFF)
+set(CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT "" CACHE PATH "Code::Blocks SDK installation or source root")
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(wxWidgets REQUIRED COMPONENTS core base richtext net)
+find_package(wxWidgets REQUIRED COMPONENTS core base richtext net xml)
 include(${wxWidgets_USE_FILE})
 find_package(OpenSSL QUIET)
 if(OpenSSL_FOUND)
@@ -32,6 +35,7 @@ add_executable(codium-blocks
     native/src/native_contributions.cpp
     native/src/compatibility_report.cpp
     native/src/problem_model.cpp
+    native/src/codeblocks_bridge.cpp
 )
 
 target_include_directories(codium-blocks PRIVATE native/include)
@@ -41,6 +45,16 @@ target_compile_definitions(codium-blocks PRIVATE
 )
 target_compile_options(codium-blocks PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(codium-blocks PRIVATE ${wxWidgets_LIBRARIES} ${CODIUM_BLOCKS_CRYPTO_LIB})
+if(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_SDK AND CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT)
+    target_include_directories(codium-blocks PRIVATE
+        "${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}/include"
+        "${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}/src/include"
+    )
+    target_compile_definitions(codium-blocks PRIVATE CODIUM_BLOCKS_CODEBLOCKS_SDK_ENABLED=1)
+    message(STATUS "Optional Code::Blocks SDK include integration enabled: ${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}")
+else()
+    message(STATUS "Code::Blocks SDK include integration is optional and disabled")
+endif()
 
 add_executable(codium-blocks-document-smoke
     native/src/document.cpp
@@ -146,6 +160,14 @@ target_include_directories(codium-blocks-problem-model-smoke PRIVATE native/incl
 target_compile_options(codium-blocks-problem-model-smoke PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(codium-blocks-problem-model-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
+add_executable(codium-blocks-codeblocks-bridge-smoke
+    native/src/codeblocks_bridge.cpp
+    tests/codeblocks-bridge-smoke.cpp
+)
+target_include_directories(codium-blocks-codeblocks-bridge-smoke PRIVATE native/include)
+target_compile_options(codium-blocks-codeblocks-bridge-smoke PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(codium-blocks-codeblocks-bridge-smoke PRIVATE ${wxWidgets_LIBRARIES})
+
 install(TARGETS codium-blocks RUNTIME DESTINATION bin)
 install(DIRECTORY extension-host DESTINATION share/codium-blocks)
 install(DIRECTORY extensions DESTINATION share/codium-blocks)
@@ -172,6 +194,7 @@ if(BUILD_TESTING)
     add_test(NAME native-contributions-smoke COMMAND codium-blocks-native-contributions-smoke)
     add_test(NAME compatibility-smoke COMMAND codium-blocks-compatibility-smoke)
     add_test(NAME problem-model-smoke COMMAND codium-blocks-problem-model-smoke)
+    add_test(NAME codeblocks-bridge-smoke COMMAND codium-blocks-codeblocks-bridge-smoke)
 endif()
 
 message(STATUS "Codium::Blocks ${PROJECT_VERSION}: native wxWidgets core + optional Node.js extension host")

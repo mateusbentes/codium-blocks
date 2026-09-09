@@ -9,6 +9,7 @@
 #include "codium/debug_model.hpp"
 #include "codium/native_contributions.hpp"
 #include "codium/extension_registry.hpp"
+#include "codium/codeblocks_bridge.hpp"
 #include "codium/problem_model.hpp"
 #include "codium/vsix_manager.hpp"
 #include "codium/workspace.hpp"
@@ -59,6 +60,7 @@ enum : int {
     ID_RUN_DEMO,
     ID_INSTALL_VSIX,
     ID_LIST_EXTENSIONS,
+    ID_DISCOVER_CODEBLOCKS,
     ID_OPEN_WORKSPACE,
     ID_COMMAND_PALETTE,
     ID_BUILD_PROJECT,
@@ -566,6 +568,7 @@ public:
         AddButton(extensionControls, wxS("Run demo"), [this](wxCommandEvent&) { ExecuteDemo(); }, outputPage);
         AddButton(extensionControls, wxS("Install VSIX"), [this](wxCommandEvent&) { InstallVsix(); }, outputPage);
         AddButton(extensionControls, wxS("Search Open VSX"), [this](wxCommandEvent&) { SearchOpenVsx(); }, outputPage);
+        AddButton(extensionControls, wxS("Discover Code::Blocks"), [this](wxCommandEvent&) { DiscoverCodeBlocks(); }, outputPage);
         outputRoot->Add(extensionControls, 0, wxBOTTOM | wxEXPAND, 4);
         hover_ = new wxTextCtrl(outputPage, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(-1, 60),
                                 wxTE_MULTILINE | wxTE_READONLY | wxHSCROLL);
@@ -594,6 +597,14 @@ public:
         timer_.Start(50);
         AppendLog(wxS("Ready. The native core does not load Electron."));
         AppendLog(wxS("Open a file or start the host to use extensions and language tooling."));
+        wxString codeBlocksError;
+        if (codeBlocksBridge_.Discover(&codeBlocksError)) {
+            AppendLog(wxString::Format(wxS("Code::Blocks SDK detected at %s (%lu plugin candidate(s))."),
+                                       codeBlocksBridge_.Root(),
+                                       static_cast<unsigned long>(codeBlocksBridge_.Plugins().size())));
+        } else {
+            AppendLog(wxS("Code::Blocks SDK discovery: ") + codeBlocksError);
+        }
     }
 
 private:
@@ -648,6 +659,7 @@ private:
         extensionMenu->Append(ID_RUN_DEMO, wxS("Run hello.codium"));
         extensionMenu->Append(ID_INSTALL_VSIX, wxS("Install VSIX"));
         extensionMenu->Append(ID_LIST_EXTENSIONS, wxS("List installed extensions"));
+        extensionMenu->Append(ID_DISCOVER_CODEBLOCKS, wxS("Discover Code::Blocks SDK"));
         menuBar->Append(extensionMenu, wxS("E&xtensions"));
 
         SetMenuBar(menuBar);
@@ -679,6 +691,7 @@ private:
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { ExecuteDemo(); }, ID_RUN_DEMO);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { InstallVsix(); }, ID_INSTALL_VSIX);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { ListExtensions(); }, ID_LIST_EXTENSIONS);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { DiscoverCodeBlocks(); }, ID_DISCOVER_CODEBLOCKS);
     }
 
     template <typename Handler>
@@ -1741,7 +1754,7 @@ private:
             wxS("Launch debug program"), wxS("Pause debug"), wxS("Stop debug"),
             wxS("Start Extension Host"), wxS("Load demo extension"),
             wxS("Run hello.codium"), wxS("Stop language server"),
-            wxS("Install VSIX"), wxS("List installed extensions")
+            wxS("Install VSIX"), wxS("List installed extensions"), wxS("Discover Code::Blocks SDK")
         };
         wxSingleChoiceDialog dialog(this, wxS("Select a command"), wxS("Command Palette"), commands);
         if (dialog.ShowModal() != wxID_OK) return;
@@ -1772,6 +1785,7 @@ private:
         case 23: StopLanguageServer(); break;
         case 24: InstallVsix(); break;
         case 25: ListExtensions(); break;
+        case 26: DiscoverCodeBlocks(); break;
         default: break;
         }
     }
@@ -2100,6 +2114,37 @@ private:
         }
     }
 
+    void DiscoverCodeBlocks()
+    {
+        if (bottomWorkbench_) bottomWorkbench_->SetSelection(4);
+        wxString error;
+        if (!codeBlocksBridge_.Discover(&error)) {
+            AppendLog(wxS("Code::Blocks SDK discovery: ") + error);
+            wxDirDialog dialog(this, wxS("Choose a Code::Blocks installation or source root"), wxEmptyString,
+                               wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
+            if (dialog.ShowModal() != wxID_OK) return;
+            codeBlocksBridge_ = codium::CodeBlocksBridge(dialog.GetPath());
+            if (!codeBlocksBridge_.Discover(&error)) {
+                AppendLog(wxS("Code::Blocks SDK discovery: ") + error);
+                return;
+            }
+        }
+        AppendLog(wxString::Format(wxS("Code::Blocks root: %s"), codeBlocksBridge_.Root()));
+        if (!codeBlocksBridge_.SdkIncludeDirectory().empty()) {
+            AppendLog(wxS("Code::Blocks SDK headers: ") + codeBlocksBridge_.SdkIncludeDirectory());
+        }
+        if (codeBlocksBridge_.Plugins().empty()) {
+            AppendLog(wxS("No native Code::Blocks plugin libraries found in discovered directories."));
+        } else {
+            for (const auto& plugin : codeBlocksBridge_.Plugins()) {
+                AppendLog(wxString::Format(wxS("Code::Blocks plugin: %s — %s (%s)"),
+                                           plugin.title, plugin.filePath,
+                                           plugin.manifestValid ? plugin.status : wxS("manifest unavailable")));
+            }
+        }
+        AppendLog(codeBlocksBridge_.LoadPolicy());
+    }
+
     void SearchOpenVsx()
     {
         if (!EnsureWorkspaceTrusted()) return;
@@ -2339,6 +2384,7 @@ private:
     int terminalRows_ = 32;
     codium::VsixManager extensions_;
     codium::ExtensionRegistry extensionRegistry_;
+    codium::CodeBlocksBridge codeBlocksBridge_;
     codium::TreeViewRegistry treeRegistry_;
     codium::ScmModel scmModel_;
     codium::CustomEditorRegistry customEditors_;

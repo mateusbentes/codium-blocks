@@ -95,6 +95,8 @@ The current `1.0.0` development increment builds on the completed `0.9.0` baseli
 - a normalized problem model for GCC/Clang, MSVC, LSP, Build, and ANSI terminal diagnostics;
 - severity-aware problem summaries, stale-result state, clickable problem navigation, and inline editor underlines;
 - a native status bar showing the active document, workspace trust, language, line, and column;
+- a native Code::Blocks SDK bridge that discovers headers, plugin directories, native libraries, and XML manifests without blindly loading foreign plugin code;
+- an Extensions command and command-palette action for Code::Blocks SDK discovery;
 - a native editor gutter with line numbers and severity markers for active problems;
 - a scheme bar for Debug/Release configuration, target, and detected toolchain selection;
 - scheme-aware CMake Build/Configure arguments and Build-panel focus;
@@ -109,7 +111,7 @@ This is not full VS Code compatibility. The implementation is deliberately layer
 wxWidgets / C++
   ├── native window
   ├── editor and project model (next stages)
-  ├── Code::Blocks C++ plugins (next integration)
+  ├── Code::Blocks SDK bridge (discovery and preflight)
   ├── VsixManager
   └── ExtensionHostClient
           │ JSON Lines / separate process
