@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <deque>
+#include <cstdint>
 
 namespace codium {
 
@@ -56,6 +57,7 @@ private:
     const std::vector<TerminalCell>& Grid() const;
     void ClearGrid(std::vector<TerminalCell>& grid);
     void PutCharacter(wxChar character);
+    void PutText(const wxString& text, uint32_t codepoint);
     void LineFeed();
     void CarriageReturn();
     void Backspace();
@@ -72,6 +74,9 @@ private:
     static bool IsCombining(wxChar character);
     static bool IsWide(wxChar character);
     static bool IsRegionalIndicator(wxChar character);
+    static bool IsCombiningCodepoint(uint32_t codepoint);
+    static bool IsWideCodepoint(uint32_t codepoint);
+    static bool IsRegionalIndicatorCodepoint(uint32_t codepoint);
     int Parameter(size_t index, int fallback = 1) const;
 
     int columns_;

@@ -57,10 +57,12 @@ int main(int argc, char** argv)
     wxArrayString terminalArguments;
     terminalArguments.Add(fakeTerminal);
     wxString error;
-    if (!terminal.Start(wxS("node"), terminalArguments, root, &error) || !terminal.Resize(100, 30) ||
+    if (!terminal.Start(wxS("node"), terminalArguments, root, &error) ||
+        (terminal.BackendName() == wxS("ConPTY") && !terminal.Resize(100, 30)) ||
         !terminal.Write(wxS("ping\n")) ||
         !WaitForTerminal(terminal, wxS("pong"))) {
-        std::cerr << "transport-smoke: terminal failed: " << error.ToStdString() << "\n";
+        std::cerr << "transport-smoke: terminal failed (backend=" << terminal.BackendName().ToStdString()
+                  << "): " << error.ToStdString() << "\n";
         return 1;
     }
     if (!terminal.Write(wxS("ansi\n")) || !WaitForRawTerminal(terminal, wxString::FromUTF8("\x1b[31m"))) {

@@ -35,6 +35,13 @@ wxString AbsolutePath(const wxString& path, const wxString& workspaceRoot)
         joined += path;
         return joined;
     }
+    if (path.StartsWith(wxS("/")) && workspaceRoot.StartsWith(wxS("/"))) {
+        if (path == workspaceRoot || path.StartsWith(workspaceRoot + wxS("/"))) return path;
+        return workspaceRoot + (workspaceRoot.EndsWith(wxS("/")) ? wxEmptyString : wxS("/")) + path.Mid(1);
+    }
+    if (workspaceRoot.StartsWith(wxS("/")) && !path.StartsWith(wxS("/")) && !path.empty()) {
+        return workspaceRoot + (workspaceRoot.EndsWith(wxS("/")) ? wxEmptyString : wxS("/")) + path;
+    }
     wxString combined = path;
     wxFileName filename(path);
     if (!filename.IsAbsolute() && !workspaceRoot.empty()) {

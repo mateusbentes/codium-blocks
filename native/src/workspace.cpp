@@ -8,6 +8,8 @@
 #include <wx/tokenzr.h>
 #include <wx/utils.h>
 
+#include <algorithm>
+
 namespace codium {
 
 namespace {
@@ -24,6 +26,19 @@ bool Contains(const wxArrayString& values, const wxString& value)
         if (item == value) return true;
     }
     return false;
+}
+
+wxString DirectoryBaseName(const wxString& path)
+{
+    wxString normalized = path;
+    while (normalized.length() > 1 &&
+           (normalized.EndsWith(wxS("/")) || normalized.EndsWith(wxS("\\")))) {
+        normalized.RemoveLast();
+    }
+    const int slash = normalized.Find(wxChar('/'), true);
+    const int backslash = normalized.Find(wxChar('\\'), true);
+    const int separator = std::max(slash, backslash);
+    return separator == wxNOT_FOUND ? normalized : normalized.Mid(separator + 1);
 }
 
 wxString TrustFilePath()
@@ -119,8 +134,7 @@ wxString Workspace::RelativePath(const wxString& absolutePath) const
 
 bool Workspace::ShouldSkip(const wxString& absolutePath) const
 {
-    const wxFileName path(absolutePath);
-    return Contains(kIgnoredDirectoryNames, path.GetFullName());
+    return Contains(kIgnoredDirectoryNames, DirectoryBaseName(absolutePath));
 }
 
 void Workspace::Refresh()

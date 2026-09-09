@@ -164,7 +164,11 @@ void TerminalScreen::MoveCursor(int column, int row)
 
 bool TerminalScreen::IsCombining(wxChar character)
 {
-    const uint32_t code = static_cast<uint32_t>(character);
+    return IsCombiningCodepoint(static_cast<uint32_t>(character));
+}
+
+bool TerminalScreen::IsCombiningCodepoint(uint32_t code)
+{
     return (code >= 0x0300 && code <= 0x036f) || (code >= 0x1ab0 && code <= 0x1aff) ||
            (code >= 0x1dc0 && code <= 0x1dff) || (code >= 0x20d0 && code <= 0x20ff) ||
            (code >= 0xfe00 && code <= 0xfe0f) || (code >= 0xfe20 && code <= 0xfe2f) ||
@@ -173,7 +177,11 @@ bool TerminalScreen::IsCombining(wxChar character)
 
 bool TerminalScreen::IsWide(wxChar character)
 {
-    const uint32_t code = static_cast<uint32_t>(character);
+    return IsWideCodepoint(static_cast<uint32_t>(character));
+}
+
+bool TerminalScreen::IsWideCodepoint(uint32_t code)
+{
     return (code >= 0x1100 && code <= 0x115f) || (code >= 0x2329 && code <= 0x232a) ||
            (code >= 0x2e80 && code <= 0xa4cf) || (code >= 0xac00 && code <= 0xd7a3) ||
            (code >= 0xf900 && code <= 0xfaff) || (code >= 0xfe10 && code <= 0xfe19) ||
@@ -183,7 +191,11 @@ bool TerminalScreen::IsWide(wxChar character)
 
 bool TerminalScreen::IsRegionalIndicator(wxChar character)
 {
-    const uint32_t code = static_cast<uint32_t>(character);
+    return IsRegionalIndicatorCodepoint(static_cast<uint32_t>(character));
+}
+
+bool TerminalScreen::IsRegionalIndicatorCodepoint(uint32_t code)
+{
     return code >= 0x1f1e6 && code <= 0x1f1ff;
 }
 
@@ -223,22 +235,30 @@ void TerminalScreen::Backspace()
 
 void TerminalScreen::PutCharacter(wxChar character)
 {
-    if (character < 0x20) return;
-    const bool joinsPrevious = IsCombining(character) || graphemeJoinPending_ ||
-        (IsRegionalIndicator(character) && regionalIndicatorPending_);
+    wxString text;
+    text += character;
+    PutText(text, static_cast<uint32_t>(character));
+}
+
+void TerminalScreen::PutText(const wxString& text, uint32_t codepoint)
+{
+    if (text.empty() || codepoint < 0x20) return;
+    const bool regionalIndicator = IsRegionalIndicatorCodepoint(codepoint);
+    const bool joinsPrevious = IsCombiningCodepoint(codepoint) || graphemeJoinPending_ ||
+        (regionalIndicator && regionalIndicatorPending_);
     if (joinsPrevious && cursorColumn_ > 0) {
         int baseColumn = cursorColumn_ - 1;
         if (Grid()[static_cast<size_t>(cursorRow_ * columns_ + baseColumn)].continuation) --baseColumn;
         TerminalCell& previous = Grid()[static_cast<size_t>(cursorRow_ * columns_ + baseColumn)];
         if (previous.text.empty()) previous.text += previous.character;
-        previous.text += character;
-        graphemeJoinPending_ = character == wxChar(0x200d);
+        previous.text += text;
+        graphemeJoinPending_ = codepoint == 0x200d;
         regionalIndicatorPending_ = false;
         return;
     }
-    const int width = IsWide(character) || IsRegionalIndicator(character) ? 2 : 1;
+    const int width = IsWideCodepoint(codepoint) || regionalIndicator ? 2 : 1;
     graphemeJoinPending_ = false;
-    regionalIndicatorPending_ = IsRegionalIndicator(character);
+    regionalIndicatorPending_ = regionalIndicator;
     if (width == 2 && cursorColumn_ == columns_ - 1 && wrapEnabled_) {
         cursorColumn_ = 0;
         LineFeed();
@@ -252,9 +272,8 @@ void TerminalScreen::PutCharacter(wxChar character)
         }
     }
     TerminalCell& cell = Grid()[static_cast<size_t>(cursorRow_ * columns_ + cursorColumn_)];
-    cell.character = character;
-    cell.text.clear();
-    cell.text += character;
+    cell.character = text[0];
+    cell.text = text;
     cell.foreground = ClampIndex(foreground_);
     cell.background = ClampIndex(background_);
     cell.bold = bold_;
@@ -459,7 +478,19 @@ bool TerminalScreen::Feed(const wxString& bytes)
             else if (character == wxChar('\b')) Backspace();
             else if (character == wxChar('\t')) MoveCursor(std::min(columns_ - 1, ((cursorColumn_ / 8) + 1) * 8), cursorRow_);
             else if (character == wxChar('\a')) {}
-            else if (character >= wxChar(' ')) PutCharacter(character);
+            else if (character >= wxChar(' ')) {
+                uint32_t codepoint = static_cast<uint32_t>(character);
+                wxString text;
+                text += character;
+                if (codepoint >= 0xd800 && codepoint <= 0xdbff && index + 1 < bytes.length()) {
+                    const uint32_t low = static_cast<uint32_t>(bytes[index + 1]);
+                    if (low >= 0xdc00 && low <= 0xdfff) {
+                        codepoint = 0x10000 + ((codepoint - 0xd800) << 10) + (low - 0xdc00);
+                        text += bytes[++index];
+                    }
+                }
+                PutText(text, codepoint);
+            }
             break;
         case ParserState::Escape:
             if (character == wxChar('[')) { csiParameters_.clear(); parserState_ = ParserState::Csi; }
