@@ -22,7 +22,14 @@ int main()
     std::filesystem::create_directories(rootPath / "include");
     std::filesystem::create_directories(rootPath / "plugins" / "resources");
     std::ofstream(rootPath / "include" / "cbplugin.h") << "// fake SDK header\n";
-    std::ofstream(rootPath / "plugins" / "libdemo.so") << "not a real shared library\n";
+#if defined(__WXMSW__)
+    const std::filesystem::path pluginLibrary = "demo.dll";
+#elif defined(__WXMAC__)
+    const std::filesystem::path pluginLibrary = "libdemo.dylib";
+#else
+    const std::filesystem::path pluginLibrary = "libdemo.so";
+#endif
+    std::ofstream(rootPath / "plugins" / pluginLibrary) << "not a real shared library\n";
     std::ofstream(rootPath / "plugins" / "resources" / "manifest.xml")
         << R"xml(<?xml version="1.0" encoding="UTF-8"?>
 <CodeBlocks_plugin_manifest_file>
