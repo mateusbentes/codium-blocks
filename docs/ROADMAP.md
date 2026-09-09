@@ -20,15 +20,19 @@ The `0.4.0` increment adds File, Language, and Extensions menus, keyboard shortc
 
 The `0.5.0` increment adds native workspace folder opening, recursive file discovery with generated/dependency filtering, a file tree, multiple document tabs, independent buffers, workspace-relative paths, and a native command palette. The next increment will add project configuration, file watching, and richer declarative contributions.
 
-## Release 0.6 — build and debugging
+## Release 0.6 — build tasks and project configuration
 
-Add tasks, terminal support, problems, and DAP. The first matrix should cover CMake/Make/Ninja, Cargo, Python, and Java, together with GDB and LLDB.
+The `0.6.0` increment adds automatic CMake, Make, Cargo, and npm detection, built-in Configure/Build/Test tasks, structured executable argument vectors, asynchronous output capture, task cancellation, a native task list, and Build menu integration. The next increment will add explicit user task configuration, terminal support, and problem navigation.
 
-## Release 0.7 — registry and security
+## Release 0.7 — debugging and terminal
+
+Add terminal support, problems, and DAP. The first matrix should cover CMake/Make/Ninja, Cargo, Python, and Java, together with GDB and LLDB.
+
+## Release 0.8 — registry and security
 
 Add Open VSX, private registries, caching, checksums, rollback, workspace trust, permissions, and per-extension compatibility reports. The registry must not install extensions that depend on APIs the host has not declared as supported.
 
-## Release 0.8 — optional advanced UI
+## Release 0.9 — optional advanced UI
 
 Add Tree Views, SCM, webviews, and custom editors. The web engine must remain optional and must not be loaded during IDE startup.
 

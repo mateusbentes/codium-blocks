@@ -10,7 +10,7 @@ Every push to `main` and every pull request is checked by GitHub Actions on all 
 
 ## Current status
 
-The current `0.5.0` increment provides:
+The current `0.6.0` increment provides:
 
 - a native C++/wxWidgets window;
 - no Electron dependency or linkage;
@@ -45,8 +45,13 @@ The current `0.5.0` increment provides:
 - multiple document tabs;
 - a native command palette;
 - workspace-relative paths and independent document buffers.
+- automatic CMake, Make, Cargo, and npm toolchain detection;
+- built-in Configure, Build, and Test tasks;
+- an asynchronous native task runner using executable argument vectors;
+- a task list, Build menu, and task output panel;
+- task cancellation without requiring Electron or a POSIX shell.
 
-This is not full VS Code compatibility. The implementation is deliberately layered and must still add clickable diagnostic locations, richer completion/hover interaction, project configuration, Tree Views, tasks, terminal support, and DAP.
+This is not full VS Code compatibility. The implementation is deliberately layered and must still add clickable diagnostic locations, richer completion/hover interaction, explicit user task configuration, Tree Views, terminal support, and DAP. See [`docs/TASKS.md`](docs/TASKS.md) for the current task model.
 
 ## Architecture
 
