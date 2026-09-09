@@ -23,12 +23,14 @@ bool ProjectConfig::Load(const wxString& workspaceRoot, wxString* error)
 {
     toolchains_.Clear();
     tasks_.clear();
+    schemes_.clear();
     if (!wxDirExists(workspaceRoot)) {
         if (error) *error = wxString::Format(wxS("Project directory does not exist: %s."), workspaceRoot);
         return false;
     }
 
     AddBuiltInTasks(workspaceRoot);
+    AddBuiltInSchemes();
     LoadCustomTasks(workspaceRoot);
     return true;
 }
@@ -61,6 +63,22 @@ void ProjectConfig::AddBuiltInTasks(const wxString& workspaceRoot)
         toolchains_.Add(wxS("npm"));
         tasks_.push_back(Task(wxS("npm: Build"), wxS("npm"), {wxS("run"), wxS("build")}, workspaceRoot));
         tasks_.push_back(Task(wxS("npm: Test"), wxS("npm"), {wxS("test")}, workspaceRoot));
+    }
+}
+
+void ProjectConfig::AddBuiltInSchemes()
+{
+    for (const auto& toolchain : toolchains_) {
+        const wxString target = toolchain == wxS("CMake") ? wxS("all") :
+                                toolchain == wxS("Make") ? wxS("default") :
+                                toolchain == wxS("Cargo") ? wxS("workspace") : wxS("package");
+        for (const auto& configuration : {wxString(wxS("Debug")), wxString(wxS("Release"))}) {
+            schemes_.push_back(ProjectScheme{
+                wxString::Format(wxS("%s — %s"), configuration, toolchain),
+                configuration,
+                target,
+                toolchain});
+        }
     }
 }
 

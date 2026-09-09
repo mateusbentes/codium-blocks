@@ -95,9 +95,13 @@ The current `1.0.0` development increment builds on the completed `0.9.0` baseli
 - a normalized problem model for GCC/Clang, MSVC, LSP, Build, and ANSI terminal diagnostics;
 - severity-aware problem summaries, stale-result state, clickable problem navigation, and inline editor underlines;
 - a native status bar showing the active document, workspace trust, language, line, and column;
-- a deterministic problem-model parser test covering compiler diagnostics and ANSI output.
+- a native editor gutter with line numbers and severity markers for active problems;
+- a scheme bar for Debug/Release configuration, target, and detected toolchain selection;
+- scheme-aware CMake Build/Configure arguments and Build-panel focus;
+- conservative multiline Rust diagnostics in addition to GCC/Clang, MSVC, and ANSI formats;
+- a deterministic problem-model parser test covering compiler, Rust, Windows-path, and ANSI diagnostics.
 
-This is not full VS Code compatibility. The implementation is deliberately layered and must still add richer completion/hover interaction, explicit user task configuration, a complete extension registry download/install workflow, and deeper Tree View/SCM contribution APIs. The remaining terminal goals — complete Unicode grapheme segmentation and width handling, plus optional Sixel/Kitty image rendering — are explicitly scheduled for the 1.0 release. The 1.0 interface target is a polished classic native workbench with Xcode-inspired issue navigation, inline warnings and errors, structured Build output, and a practical terminal workflow. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), [`docs/DEBUGGING.md`](docs/DEBUGGING.md), [`docs/EXTENSIONS_SECURITY.md`](docs/EXTENSIONS_SECURITY.md), [`docs/CONTRIBUTIONS.md`](docs/CONTRIBUTIONS.md), [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md), and [`docs/PROBLEMS.md`](docs/PROBLEMS.md) for the current models.
+This is not full VS Code compatibility. The implementation is deliberately layered and must still add richer completion/hover interaction, explicit user task configuration, a complete extension registry download/install workflow, and deeper Tree View/SCM contribution APIs. The remaining 1.0 interface work includes richer source annotations, keyboard navigation, themes, and cross-platform visual verification. The remaining terminal goals — complete Unicode grapheme segmentation and width handling, plus optional Sixel/Kitty image rendering — remain separately scheduled. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), [`docs/DEBUGGING.md`](docs/DEBUGGING.md), [`docs/EXTENSIONS_SECURITY.md`](docs/EXTENSIONS_SECURITY.md), [`docs/CONTRIBUTIONS.md`](docs/CONTRIBUTIONS.md), [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md), and [`docs/PROBLEMS.md`](docs/PROBLEMS.md) for the current models.
 
 ## Architecture
 

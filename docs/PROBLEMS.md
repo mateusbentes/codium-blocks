@@ -25,6 +25,8 @@ Each problem contains a source identifier, severity, message, file path or URI, 
 
 The editor displays a gutter marker and an underline for active problems. Red represents errors, amber represents warnings, blue or neutral styling represents information, and a subdued marker represents hints. Color is never the only signal: every marker has an accessible label and a tooltip.
 
+The current native implementation renders line numbers and severity markers in a dedicated editor gutter, keeps the gutter synchronized with vertical editor scrolling when the platform emits scroll events, and applies colored underlines to the active document. Problems in inactive tabs retain their file association and receive markers when that tab becomes active.
+
 Selecting a marker opens a compact inline detail containing the complete message, source, code, and actions. The detail is an overlay or an editor-adjacent view. It must not modify the source buffer. If a problem has a quick fix or related location, those actions are shown beside the detail.
 
 A document with several problems must display all markers without replacing one diagnostic with another. When multiple diagnostics overlap, the editor must provide a deterministic selection order and the Problems view must list every entry.
@@ -44,7 +46,7 @@ The view must support the following practical operations:
 
 ## Build and compiler parsing
 
-The parser begins with conservative support for GCC/Clang, MSVC, Rust, and common language-server formats. A line becomes a structured problem only when the parser can identify a plausible path and location. Unrecognized lines remain raw text.
+The parser begins with conservative support for GCC/Clang, MSVC, Rust, ANSI-prefixed output, and common language-server formats. A line becomes a structured problem only when the parser can identify a plausible path and location. Rust diagnostics are assembled from an `error[...]` or `warning[...]` header followed by a `--> path:line:column` location. Unrecognized lines remain raw text.
 
 Compiler output commonly appears in the following forms:
 

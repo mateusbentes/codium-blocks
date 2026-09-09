@@ -25,8 +25,9 @@ int main()
 
     codium::ProjectConfig config;
     wxString error;
-    if (!config.Load(root, &error) || config.Tasks().size() < 3 || config.Toolchains().Index(wxS("CMake")) == wxNOT_FOUND ||
-        config.Toolchains().Index(wxS("Make")) == wxNOT_FOUND) {
+    if (!config.Load(root, &error) || config.Tasks().size() < 3 || config.Schemes().size() < 4 ||
+        config.Toolchains().Index(wxS("CMake")) == wxNOT_FOUND || config.Toolchains().Index(wxS("Make")) == wxNOT_FOUND ||
+        config.Schemes()[0].configuration != wxS("Debug") || config.Schemes()[1].configuration != wxS("Release")) {
         std::cerr << "task-smoke: project detection failed\n";
         return 1;
     }

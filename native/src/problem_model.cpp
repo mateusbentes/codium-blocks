@@ -20,6 +20,21 @@ ProblemSeverity ParseSeverity(const wxString& value)
 
 wxString AbsolutePath(const wxString& path, const wxString& workspaceRoot)
 {
+    const bool windowsDrivePath = path.length() >= 3 &&
+        ((path[0] >= wxChar('A') && path[0] <= wxChar('Z')) || (path[0] >= wxChar('a') && path[0] <= wxChar('z'))) &&
+        path[1] == wxChar(':') && (path[2] == wxChar('/') || path[2] == wxChar('\\'));
+    if (windowsDrivePath) return path;
+    const bool windowsDriveRoot = workspaceRoot.length() >= 3 &&
+        ((workspaceRoot[0] >= wxChar('A') && workspaceRoot[0] <= wxChar('Z')) ||
+         (workspaceRoot[0] >= wxChar('a') && workspaceRoot[0] <= wxChar('z'))) &&
+        workspaceRoot[1] == wxChar(':') &&
+        (workspaceRoot[2] == wxChar('/') || workspaceRoot[2] == wxChar('\\'));
+    if (windowsDriveRoot && !path.empty()) {
+        wxString joined = workspaceRoot;
+        if (!joined.EndsWith(wxS("/")) && !joined.EndsWith(wxS("\\"))) joined += wxS("/");
+        joined += path;
+        return joined;
+    }
     wxString combined = path;
     wxFileName filename(path);
     if (!filename.IsAbsolute() && !workspaceRoot.empty()) {
@@ -83,7 +98,7 @@ bool ProblemParser::ParseCompilerLine(const wxString& line, const wxString& sour
                                       const wxString& workspaceRoot, Problem* problem)
 {
     if (!problem || line.empty()) return false;
-    wxRegEx gcc(wxS("^(.+):([0-9]+):([0-9]+):[[:space:]]*(fatal error|error|warning|note|information|hint)[[:space:]]*:[[:space:]]*(.*)$"));
+    wxRegEx gcc(wxS("^(.+):([0-9]+):([0-9]+):[[:space:]]*(fatal error|error|warning|note|information|info|hint)[[:space:]]*:[[:space:]]*(.*)$"));
     if (gcc.IsValid() && ParseRegex(gcc, line, source, workspaceRoot, problem)) return true;
 
     wxRegEx msvc(wxS("^(.+)\\(([0-9]+),([0-9]+)\\):[[:space:]]*(warning|error)[[:space:]]+([^:[:space:]]+):[[:space:]]*(.*)$"));
@@ -105,15 +120,65 @@ wxString ProblemParser::SeverityName(ProblemSeverity severity)
     return wxS("Info");
 }
 
+bool BuildDiagnosticParser::ParseLine(const wxString& rawLine, const wxString& source,
+                                      const wxString& workspaceRoot, Problem* problem)
+{
+    if (!problem) return false;
+    const wxString line = StripAnsi(rawLine);
+    wxString candidate = line;
+    if (candidate.StartsWith(wxS("[stderr] "))) candidate = candidate.Mid(9);
+
+    Problem direct;
+    if (ProblemParser::ParseCompilerLine(candidate, source, workspaceRoot, &direct)) {
+        hasPending_ = false;
+        *problem = direct;
+        return true;
+    }
+
+    wxRegEx rustHeader(wxS("^[[:space:]]*(error|warning)(\\[([^]]+)\\])?:[[:space:]]*(.*)$"));
+    if (rustHeader.IsValid() && rustHeader.Matches(candidate)) {
+        hasPending_ = true;
+        pendingProblem_.source = source;
+        pendingProblem_.severity = ParseSeverity(rustHeader.GetMatch(candidate, 1));
+        pendingProblem_.code = rustHeader.GetMatch(candidate, 3);
+        pendingProblem_.message = rustHeader.GetMatch(candidate, 4);
+        pendingProblem_.raw = candidate;
+        return false;
+    }
+
+    wxRegEx rustLocation(wxS("^[[:space:]]*-->[[:space:]]+(.+):([0-9]+):([0-9]+)[[:space:]]*$"));
+    if (hasPending_ && rustLocation.IsValid() && rustLocation.Matches(candidate)) {
+        pendingProblem_.path = AbsolutePath(rustLocation.GetMatch(candidate, 1), workspaceRoot);
+        pendingProblem_.line = std::max(0, wxAtoi(rustLocation.GetMatch(candidate, 2)) - 1);
+        pendingProblem_.column = std::max(0, wxAtoi(rustLocation.GetMatch(candidate, 3)) - 1);
+        pendingProblem_.endLine = pendingProblem_.line;
+        pendingProblem_.endColumn = pendingProblem_.column + 1;
+        pendingProblem_.raw += wxS("\n") + candidate;
+        *problem = pendingProblem_;
+        hasPending_ = false;
+        pendingProblem_ = Problem();
+        return true;
+    }
+    return false;
+}
+
+void BuildDiagnosticParser::Reset()
+{
+    hasPending_ = false;
+    pendingProblem_ = Problem();
+}
+
 void ProblemStore::Clear(const wxString& source)
 {
     if (source.empty()) {
         problems_.clear();
+        parsers_.clear();
         return;
     }
     problems_.erase(std::remove_if(problems_.begin(), problems_.end(), [&](const Problem& problem) {
         return problem.source == source;
     }), problems_.end());
+    parsers_.erase(source);
 }
 
 void ProblemStore::Add(const Problem& problem)
@@ -123,10 +188,8 @@ void ProblemStore::Add(const Problem& problem)
 
 void ProblemStore::AddCompilerLine(const wxString& line, const wxString& source, const wxString& workspaceRoot)
 {
-    wxString candidate = StripAnsi(line);
-    if (candidate.StartsWith(wxS("[stderr] "))) candidate = candidate.Mid(9);
     Problem problem;
-    if (ProblemParser::ParseCompilerLine(candidate, source, workspaceRoot, &problem)) Add(problem);
+    if (parsers_[source].ParseLine(line, source, workspaceRoot, &problem)) Add(problem);
 }
 
 wxArrayString ProblemStore::DisplayLines(bool errorsAndWarningsOnly) const

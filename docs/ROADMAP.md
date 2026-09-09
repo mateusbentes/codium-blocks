@@ -54,7 +54,7 @@ The completed `0.9.0` increment adds native breakpoint toggling and DAP `setBrea
 
 The 1.0 goal is a **classic, compact, and polished native IDE**. The visual direction keeps the direct project-tree, editor, build, debug, and terminal workflow that makes Code::Blocks practical, while adding modern navigation and feedback patterns inspired by Xcode. The result must remain recognizably Codium::Blocks: native C++/wxWidgets, keyboard-first, fast to start, and free from Electron in the core process.
 
-The first 1.0 implementation increment now provides a native project navigator, a central tabbed editor, a dockable bottom workbench, Problems/Build/Terminal/Debug/Output pages, a status bar, a normalized compiler/LSP/terminal problem model, clickable problem navigation, and inline underlines for active diagnostics. The remaining 1.0 work is to deepen the editor gutter, source annotations, scheme bar, build parser, keyboard navigation, themes, and cross-platform visual verification.
+The first 1.0 implementation increment now provides a native project navigator, a central tabbed editor with a real line-number gutter, a dockable bottom workbench, Problems/Build/Terminal/Debug/Output pages, a status bar, a normalized compiler/LSP/terminal problem model, clickable problem navigation, severity markers and inline underlines for active diagnostics, a Debug/Release scheme bar with target/toolchain selection, and conservative GCC/Clang, MSVC, Rust, and ANSI Build parsing. The remaining 1.0 work is to deepen source annotations, keyboard navigation, themes, filtering, rerun actions, and cross-platform visual verification.
 
 ### 1.0 interface
 
@@ -68,7 +68,7 @@ Compiler output, language-server diagnostics, task output, terminal diagnostics,
 
 Selecting a diagnostic will show its full message, source, code, range, related locations, and available quick actions without changing the document text. Double-clicking a problem or a recognized `path:line:column` terminal message will open the source file and move the caret to the correct location. The Problems view will provide severity/source/file filters, counts, next/previous navigation, stale-result state, and access to the originating raw output.
 
-The Build view will retain structured sessions with raw output, elapsed time, exit status, parsed warnings and errors, and a rerun action. Parsing will be conservative for GCC/Clang, MSVC, Rust, and language-server formats. Unrecognized lines will remain raw output instead of becoming false diagnostics. See [`docs/PROBLEMS.md`](PROBLEMS.md) for the diagnostic contract.
+The Build view will retain structured sessions with raw output, elapsed time, exit status, parsed warnings and errors, and a rerun action. The current parser handles GCC/Clang, MSVC, ANSI-prefixed output, and Rust's header-plus-location format; unrecognized lines remain raw output instead of becoming false diagnostics. The scheme bar selects Debug or Release configuration, a target, and the detected toolchain, and CMake Build/Configure tasks receive the selected configuration. See [`docs/PROBLEMS.md`](PROBLEMS.md) for the diagnostic contract.
 
 ### 1.0 terminal and debug workflow
 

@@ -3,6 +3,7 @@
 #include <wx/arrstr.h>
 #include <wx/string.h>
 
+#include <map>
 #include <vector>
 
 namespace codium {
@@ -35,6 +36,17 @@ public:
     static wxString SeverityName(ProblemSeverity severity);
 };
 
+class BuildDiagnosticParser final {
+public:
+    bool ParseLine(const wxString& line, const wxString& source,
+                   const wxString& workspaceRoot, Problem* problem);
+    void Reset();
+
+private:
+    bool hasPending_ = false;
+    Problem pendingProblem_;
+};
+
 class ProblemStore final {
 public:
     void Clear(const wxString& source = wxEmptyString);
@@ -47,6 +59,7 @@ public:
 
 private:
     std::vector<Problem> problems_;
+    std::map<wxString, BuildDiagnosticParser> parsers_;
 };
 
 } // namespace codium

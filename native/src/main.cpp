@@ -18,11 +18,13 @@
 #include <wx/clipbrd.h>
 #include <wx/dataobj.h>
 #include <wx/dcclient.h>
+#include <wx/dcbuffer.h>
 #include <wx/dir.h>
 #include <wx/dirdlg.h>
 #include <wx/filedlg.h>
 #include <wx/filename.h>
 #include <wx/frame.h>
+#include <wx/choice.h>
 #include <wx/listbox.h>
 #include <wx/menu.h>
 #include <wx/notebook.h>
@@ -236,6 +238,71 @@ wxString DefaultShell()
 #endif
 }
 
+struct GutterMarker final {
+    int line = 0;
+    codium::ProblemSeverity severity = codium::ProblemSeverity::Information;
+};
+
+class ProblemGutter final : public wxPanel {
+public:
+    explicit ProblemGutter(wxWindow* parent)
+        : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(58, -1), wxBORDER_NONE)
+    {
+        SetBackgroundStyle(wxBG_STYLE_PAINT);
+        Bind(wxEVT_PAINT, &ProblemGutter::OnPaint, this);
+        Bind(wxEVT_ERASE_BACKGROUND, [](wxEraseEvent&) {});
+    }
+
+    void SetMarkers(const std::vector<GutterMarker>& markers)
+    {
+        markers_ = markers;
+        Refresh();
+    }
+
+    void SetFirstLine(int firstLine)
+    {
+        firstLine_ = std::max(0, firstLine);
+        Refresh();
+    }
+
+private:
+    wxColour MarkerColour(codium::ProblemSeverity severity) const
+    {
+        if (severity == codium::ProblemSeverity::Error) return wxColour(215, 65, 65);
+        if (severity == codium::ProblemSeverity::Warning) return wxColour(205, 145, 30);
+        if (severity == codium::ProblemSeverity::Hint) return wxColour(100, 125, 180);
+        return wxColour(70, 120, 190);
+    }
+
+    void OnPaint(wxPaintEvent&)
+    {
+        wxAutoBufferedPaintDC dc(this);
+        dc.SetBackground(wxBrush(GetBackgroundColour()));
+        dc.Clear();
+        dc.SetFont(GetFont());
+        const int lineHeight = std::max(1, dc.GetCharHeight() + 2);
+        const int visibleLines = GetClientSize().GetHeight() / lineHeight + 1;
+        for (int line = 0; line < visibleLines; ++line) {
+            const int documentLine = firstLine_ + line;
+            const wxString number = wxString::Format(wxS("%d"), documentLine + 1);
+            int width = 0;
+            dc.GetTextExtent(number, &width, nullptr);
+            dc.SetTextForeground(wxColour(125, 125, 125));
+            dc.DrawText(number, std::max(20, GetClientSize().GetWidth() - width - 6), line * lineHeight);
+            for (const auto& marker : markers_) {
+                if (marker.line != documentLine) continue;
+                dc.SetBrush(wxBrush(MarkerColour(marker.severity)));
+                dc.SetPen(*wxTRANSPARENT_PEN);
+                dc.DrawCircle(8, line * lineHeight + lineHeight / 2, 4);
+                break;
+            }
+        }
+    }
+
+    std::vector<GutterMarker> markers_;
+    int firstLine_ = 0;
+};
+
 class FileTreeData final : public wxTreeItemData {
 public:
     explicit FileTreeData(wxString path)
@@ -283,44 +350,114 @@ public:
         historyIndex_ = terminalHistory_.size();
         auto* root = new wxBoxSizer(wxVERTICAL);
         auto* title = new wxStaticText(this, wxID_ANY,
-            wxS("Native C++/wxWidgets IDE — optional Node.js Extension Host — no Electron"));
+            wxS("Codium::Blocks — native classic IDE — no Electron"));
         title->SetFont(title->GetFont().Bold());
-        root->Add(title, 0, wxALL | wxEXPAND, 10);
+        root->Add(title, 0, wxALL | wxEXPAND, 8);
 
+        auto* mainSplitter = new wxSplitterWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+                                                  wxSP_LIVE_UPDATE | wxSP_3D);
+        auto* navigatorPanel = new wxPanel(mainSplitter);
+        auto* centerPanel = new wxPanel(mainSplitter);
+        mainSplitter->SetMinimumPaneSize(190);
+        mainSplitter->SplitVertically(navigatorPanel, centerPanel, 270);
+        root->Add(mainSplitter, 1, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
+
+        auto* navigatorRoot = new wxBoxSizer(wxVERTICAL);
+        auto* navigatorTitle = new wxStaticText(navigatorPanel, wxID_ANY, wxS("PROJECT NAVIGATOR"));
+        navigatorTitle->SetFont(navigatorTitle->GetFont().Bold());
+        navigatorRoot->Add(navigatorTitle, 0, wxALL | wxEXPAND, 6);
         auto* workspaceControls = new wxBoxSizer(wxHORIZONTAL);
-        AddButton(workspaceControls, wxS("Open workspace"), [this](wxCommandEvent&) { OpenWorkspace(); });
-        AddButton(workspaceControls, wxS("Build project"), [this](wxCommandEvent&) { BuildProject(); });
-        AddButton(workspaceControls, wxS("Run task"), [this](wxCommandEvent&) { RunSelectedTask(); });
-        AddButton(workspaceControls, wxS("Stop task"), [this](wxCommandEvent&) { StopTask(); });
-        AddButton(workspaceControls, wxS("Refresh SCM"), [this](wxCommandEvent&) { RefreshScm(); });
-        root->Add(workspaceControls, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
-
-        fileTree_ = new wxTreeCtrl(this, wxID_ANY, wxDefaultPosition, wxSize(-1, 150),
+        AddButton(workspaceControls, wxS("Open"), [this](wxCommandEvent&) { OpenWorkspace(); }, navigatorPanel);
+        AddButton(workspaceControls, wxS("SCM"), [this](wxCommandEvent&) { RefreshScm(); }, navigatorPanel);
+        navigatorRoot->Add(workspaceControls, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 6);
+        fileTree_ = new wxTreeCtrl(navigatorPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                                    wxTR_DEFAULT_STYLE | wxTR_SINGLE);
         fileTree_->Bind(wxEVT_TREE_ITEM_ACTIVATED, [this](wxTreeEvent& event) { OpenTreeItem(event); });
-        root->Add(fileTree_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
-
-        root->Add(new wxStaticText(this, wxID_ANY, wxS("Tree Views")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
-        treeViewsList_ = new wxListBox(this, wxID_ANY);
-        root->Add(treeViewsList_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
-        root->Add(new wxStaticText(this, wxID_ANY, wxS("Source Control")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
-        scm_ = new wxListBox(this, wxID_ANY);
-        root->Add(scm_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
-        root->Add(new wxStaticText(this, wxID_ANY, wxS("Custom editors")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
-        customEditorsView_ = new wxListBox(this, wxID_ANY);
+        navigatorRoot->Add(fileTree_, 1, wxLEFT | wxRIGHT | wxEXPAND, 6);
+        navigatorRoot->Add(new wxStaticText(navigatorPanel, wxID_ANY, wxS("Tree Views")), 0, wxLEFT | wxRIGHT | wxTOP, 6);
+        treeViewsList_ = new wxListBox(navigatorPanel, wxID_ANY, wxDefaultPosition, wxSize(-1, 50));
+        navigatorRoot->Add(treeViewsList_, 0, wxLEFT | wxRIGHT | wxEXPAND, 6);
+        navigatorRoot->Add(new wxStaticText(navigatorPanel, wxID_ANY, wxS("Source Control")), 0, wxLEFT | wxRIGHT | wxTOP, 6);
+        scm_ = new wxListBox(navigatorPanel, wxID_ANY, wxDefaultPosition, wxSize(-1, 60));
+        navigatorRoot->Add(scm_, 0, wxLEFT | wxRIGHT | wxEXPAND, 6);
+        navigatorRoot->Add(new wxStaticText(navigatorPanel, wxID_ANY, wxS("Custom editors")), 0, wxLEFT | wxRIGHT | wxTOP, 6);
+        customEditorsView_ = new wxListBox(navigatorPanel, wxID_ANY, wxDefaultPosition, wxSize(-1, 48));
         for (const auto& entry : customEditors_.Entries()) customEditorsView_->Append(entry);
-        root->Add(customEditorsView_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
+        navigatorRoot->Add(customEditorsView_, 0, wxLEFT | wxRIGHT | wxEXPAND, 6);
+        navigatorRoot->Add(new wxStaticText(navigatorPanel, wxID_ANY, wxS("Tasks")), 0, wxLEFT | wxRIGHT | wxTOP, 6);
+        taskList_ = new wxListBox(navigatorPanel, wxID_ANY, wxDefaultPosition, wxSize(-1, 70));
+        navigatorRoot->Add(taskList_, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 6);
+        navigatorPanel->SetSizer(navigatorRoot);
 
-        taskList_ = new wxListBox(this, wxID_ANY, wxDefaultPosition, wxSize(-1, 60));
-        root->Add(taskList_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
+        auto* centerRoot = new wxBoxSizer(wxVERTICAL);
+        auto* schemeBar = new wxBoxSizer(wxHORIZONTAL);
+        schemeBar->Add(new wxStaticText(centerPanel, wxID_ANY, wxS("Scheme")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+        schemeChoice_ = new wxChoice(centerPanel, wxID_ANY);
+        schemeChoice_->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { SelectScheme(); });
+        schemeBar->Add(schemeChoice_, 0, wxRIGHT, 8);
+        schemeBar->Add(new wxStaticText(centerPanel, wxID_ANY, wxS("Target")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+        targetChoice_ = new wxChoice(centerPanel, wxID_ANY);
+        targetChoice_->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { UpdateSchemeStatus(); UpdateTitle(); });
+        schemeBar->Add(targetChoice_, 0, wxRIGHT, 8);
+        schemeBar->Add(new wxStaticText(centerPanel, wxID_ANY, wxS("Toolchain")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+        toolchainChoice_ = new wxChoice(centerPanel, wxID_ANY);
+        toolchainChoice_->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { SelectToolchain(); });
+        schemeBar->Add(toolchainChoice_, 0, wxRIGHT, 8);
+        schemeStatus_ = new wxStaticText(centerPanel, wxID_ANY, wxS("No project scheme"));
+        schemeBar->Add(schemeStatus_, 1, wxALIGN_CENTER_VERTICAL | wxLEFT, 4);
+        centerRoot->Add(schemeBar, 0, wxBOTTOM | wxEXPAND, 6);
 
+        auto* commandBar = new wxBoxSizer(wxHORIZONTAL);
+        AddButton(commandBar, wxS("Open file"), [this](wxCommandEvent&) { OpenFile(); }, centerPanel);
+        AddButton(commandBar, wxS("Save"), [this](wxCommandEvent&) { SaveFile(); }, centerPanel);
+        AddButton(commandBar, wxS("Build"), [this](wxCommandEvent&) { BuildProject(); }, centerPanel);
+        AddButton(commandBar, wxS("Run task"), [this](wxCommandEvent&) { RunSelectedTask(); }, centerPanel);
+        AddButton(commandBar, wxS("Palette"), [this](wxCommandEvent&) { ShowCommandPalette(); }, centerPanel);
+        centerRoot->Add(commandBar, 0, wxBOTTOM | wxEXPAND, 6);
+
+        notebook_ = new wxNotebook(centerPanel, wxID_ANY);
+        ProblemGutter* initialGutter = nullptr;
+        wxPanel* initialPage = CreateEditorPage(notebook_, wxEmptyString, &editor_, &initialGutter);
+        notebook_->AddPage(initialPage, wxS("Untitled"), true);
+        tabPaths_.push_back(wxEmptyString);
+        editorPages_.push_back(editor_);
+        editorGutters_.push_back(initialGutter);
+        notebook_->Bind(wxEVT_NOTEBOOK_PAGE_CHANGED, [this](wxBookCtrlEvent& event) {
+            SwitchToTab(static_cast<size_t>(event.GetSelection()));
+            event.Skip();
+        });
+        centerRoot->Add(notebook_, 1, wxEXPAND);
+
+        bottomWorkbench_ = new wxNotebook(centerPanel, wxID_ANY);
+        bottomWorkbench_->SetMinSize(wxSize(-1, 245));
+        auto* problemsPage = new wxPanel(bottomWorkbench_);
+        auto* problemsRoot = new wxBoxSizer(wxVERTICAL);
+        problemSummary_ = new wxStaticText(problemsPage, wxID_ANY, wxS("No problems"));
+        problemsRoot->Add(problemSummary_, 0, wxALL | wxEXPAND, 6);
+        problems_ = new wxListBox(problemsPage, wxID_ANY);
+        problems_->Bind(wxEVT_LISTBOX, [this](wxCommandEvent& event) { GoToProblem(event.GetSelection()); });
+        diagnostics_ = problems_;
+        problemsRoot->Add(problems_, 1, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 6);
+        problemsPage->SetSizer(problemsRoot);
+        bottomWorkbench_->AddPage(problemsPage, wxS("Problems"), true);
+
+        auto* buildPage = new wxPanel(bottomWorkbench_);
+        auto* buildRoot = new wxBoxSizer(wxVERTICAL);
+        buildOutput_ = new wxTextCtrl(buildPage, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
+                                      wxTE_MULTILINE | wxTE_READONLY | wxTE_RICH2 | wxHSCROLL);
+        buildRoot->Add(buildOutput_, 1, wxALL | wxEXPAND, 6);
+        buildPage->SetSizer(buildRoot);
+        bottomWorkbench_->AddPage(buildPage, wxS("Build"));
+
+        auto* terminalPage = new wxPanel(bottomWorkbench_);
+        auto* terminalRoot = new wxBoxSizer(wxVERTICAL);
         auto* terminalControls = new wxBoxSizer(wxHORIZONTAL);
-        AddButton(terminalControls, wxS("Start terminal"), [this](wxCommandEvent&) { StartTerminal(); });
-        AddButton(terminalControls, wxS("Send input"), [this](wxCommandEvent&) { SendTerminalInput(); });
-        AddButton(terminalControls, wxS("Stop terminal"), [this](wxCommandEvent&) { StopTerminal(); });
-        AddButton(terminalControls, wxS("Select shell"), [this](wxCommandEvent&) { SelectShell(); });
-        root->Add(terminalControls, 0, wxLEFT | wxRIGHT | wxTOP, 10);
-        terminalInput_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(-1, 28));
+        AddButton(terminalControls, wxS("Start"), [this](wxCommandEvent&) { StartTerminal(); }, terminalPage);
+        AddButton(terminalControls, wxS("Send input"), [this](wxCommandEvent&) { SendTerminalInput(); }, terminalPage);
+        AddButton(terminalControls, wxS("Stop"), [this](wxCommandEvent&) { StopTerminal(); }, terminalPage);
+        AddButton(terminalControls, wxS("Shell"), [this](wxCommandEvent&) { SelectShell(); }, terminalPage);
+        terminalRoot->Add(terminalControls, 0, wxBOTTOM | wxEXPAND, 4);
+        terminalInput_ = new wxTextCtrl(terminalPage, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(-1, 28));
         terminalInput_->Bind(wxEVT_KEY_DOWN, [this](wxKeyEvent& event) {
             if (event.GetKeyCode() == WXK_UP && !terminalHistory_.empty()) {
                 if (historyIndex_ > 0) --historyIndex_;
@@ -335,13 +472,10 @@ public:
                     terminalInput_->Clear();
                 }
                 terminalInput_->SetInsertionPointEnd();
-            } else {
-                event.Skip();
-            }
+            } else event.Skip();
         });
-        root->Add(terminalInput_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
-        root->Add(new wxStaticText(this, wxID_ANY, wxS("Terminal")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
-        terminalOutput_ = new wxRichTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(-1, 120),
+        terminalRoot->Add(terminalInput_, 0, wxBOTTOM | wxEXPAND, 4);
+        terminalOutput_ = new wxRichTextCtrl(terminalPage, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
                                              wxRE_MULTILINE | wxRE_READONLY | wxHSCROLL);
         terminalOutput_->SetBackgroundColour(wxColour(20, 20, 20));
         terminalOutput_->BeginTextColour(wxColour(230, 230, 230));
@@ -349,12 +483,10 @@ public:
         terminalOutput_->Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
             if (terminal_.IsRunning()) {
                 const wxSize size = terminalOutput_->GetClientSize();
-                const int columns = std::max(20, size.GetWidth() / 8);
-                const int rows = std::max(4, size.GetHeight() / 16);
-                terminalColumns_ = columns;
-                terminalRows_ = rows;
-                terminal_.Resize(columns, rows);
-                terminalScreen_.Resize(columns, rows);
+                terminalColumns_ = std::max(20, size.GetWidth() / 8);
+                terminalRows_ = std::max(4, size.GetHeight() / 16);
+                terminal_.Resize(terminalColumns_, terminalRows_);
+                terminalScreen_.Resize(terminalColumns_, terminalRows_);
                 RenderTerminalScreen();
             }
             event.Skip();
@@ -368,103 +500,91 @@ public:
         terminalOutput_->Bind(wxEVT_MIDDLE_DOWN, [this](wxMouseEvent& event) { BeginTerminalSelection(event); });
         terminalOutput_->Bind(wxEVT_MIDDLE_UP, [this](wxMouseEvent& event) { EndTerminalSelection(event); });
         terminalOutput_->Bind(wxEVT_MOUSEWHEEL, [this](wxMouseEvent& event) { HandleTerminalWheel(event); });
-        root->Add(terminalOutput_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
+        terminalRoot->Add(terminalOutput_, 1, wxEXPAND);
+        terminalPage->SetSizer(terminalRoot);
+        bottomWorkbench_->AddPage(terminalPage, wxS("Terminal"));
 
+        auto* debugPage = new wxPanel(bottomWorkbench_);
+        auto* debugRoot = new wxBoxSizer(wxVERTICAL);
         auto* debugControls = new wxBoxSizer(wxHORIZONTAL);
-        AddButton(debugControls, wxS("Start debug adapter"), [this](wxCommandEvent&) { StartDebugAdapter(); });
-        AddButton(debugControls, wxS("Initialize debug"), [this](wxCommandEvent&) { InitializeDebug(); });
-        AddButton(debugControls, wxS("Launch"), [this](wxCommandEvent&) { LaunchDebug(); });
-        AddButton(debugControls, wxS("Toggle breakpoint"), [this](wxCommandEvent&) { ToggleBreakpoint(); });
-        AddButton(debugControls, wxS("Threads"), [this](wxCommandEvent&) { RequestDebugThreads(); });
-        AddButton(debugControls, wxS("Stack trace"), [this](wxCommandEvent&) { RequestStackTrace(); });
-        AddButton(debugControls, wxS("Evaluate"), [this](wxCommandEvent&) { EvaluateDebugExpression(); });
-        AddButton(debugControls, wxS("Add watch"), [this](wxCommandEvent&) { AddWatch(); });
-        AddButton(debugControls, wxS("Source map"), [this](wxCommandEvent&) { ConfigureSourceMap(); });
-        AddButton(debugControls, wxS("Continue"), [this](wxCommandEvent&) { ContinueDebug(); });
-        AddButton(debugControls, wxS("Pause"), [this](wxCommandEvent&) { PauseDebug(); });
-        AddButton(debugControls, wxS("Stop debug"), [this](wxCommandEvent&) { StopDebug(); });
-        root->Add(debugControls, 0, wxLEFT | wxRIGHT | wxTOP, 10);
-
-        root->Add(new wxStaticText(this, wxID_ANY, wxS("Breakpoints")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
-        breakpoints_ = new wxListBox(this, wxID_ANY);
-        root->Add(breakpoints_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
-        root->Add(new wxStaticText(this, wxID_ANY, wxS("Threads")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
-        debugThreads_ = new wxListBox(this, wxID_ANY);
-        root->Add(debugThreads_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
-        root->Add(new wxStaticText(this, wxID_ANY, wxS("Call stack")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
-        callStack_ = new wxListBox(this, wxID_ANY);
+        AddButton(debugControls, wxS("Start adapter"), [this](wxCommandEvent&) { StartDebugAdapter(); }, debugPage);
+        AddButton(debugControls, wxS("Initialize"), [this](wxCommandEvent&) { InitializeDebug(); }, debugPage);
+        AddButton(debugControls, wxS("Launch"), [this](wxCommandEvent&) { LaunchDebug(); }, debugPage);
+        AddButton(debugControls, wxS("Breakpoint"), [this](wxCommandEvent&) { ToggleBreakpoint(); }, debugPage);
+        AddButton(debugControls, wxS("Continue"), [this](wxCommandEvent&) { ContinueDebug(); }, debugPage);
+        AddButton(debugControls, wxS("Pause"), [this](wxCommandEvent&) { PauseDebug(); }, debugPage);
+        AddButton(debugControls, wxS("Stop"), [this](wxCommandEvent&) { StopDebug(); }, debugPage);
+        AddButton(debugControls, wxS("Watch"), [this](wxCommandEvent&) { AddWatch(); }, debugPage);
+        AddButton(debugControls, wxS("Source map"), [this](wxCommandEvent&) { ConfigureSourceMap(); }, debugPage);
+        debugRoot->Add(debugControls, 0, wxBOTTOM | wxEXPAND, 4);
+        auto* debugColumns = new wxBoxSizer(wxHORIZONTAL);
+        auto* debugLeft = new wxBoxSizer(wxVERTICAL);
+        breakpoints_ = new wxListBox(debugPage, wxID_ANY);
+        debugLeft->Add(new wxStaticText(debugPage, wxID_ANY, wxS("Breakpoints")), 0, wxBOTTOM, 2);
+        debugLeft->Add(breakpoints_, 1, wxEXPAND);
+        debugThreads_ = new wxListBox(debugPage, wxID_ANY);
+        debugLeft->Add(new wxStaticText(debugPage, wxID_ANY, wxS("Threads")), 0, wxTOP | wxBOTTOM, 2);
+        debugLeft->Add(debugThreads_, 1, wxEXPAND);
+        debugColumns->Add(debugLeft, 1, wxRIGHT | wxEXPAND, 6);
+        auto* debugMiddle = new wxBoxSizer(wxVERTICAL);
+        callStack_ = new wxListBox(debugPage, wxID_ANY);
         callStack_->Bind(wxEVT_LISTBOX, [this](wxCommandEvent& event) { GoToStackFrame(event.GetSelection()); });
-        root->Add(callStack_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
-        root->Add(new wxStaticText(this, wxID_ANY, wxS("Variables / evaluate")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
-        variables_ = new wxListBox(this, wxID_ANY);
-        root->Add(variables_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
-        root->Add(new wxStaticText(this, wxID_ANY, wxS("Watches")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
-        watches_ = new wxListBox(this, wxID_ANY);
-        root->Add(watches_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
-        root->Add(new wxStaticText(this, wxID_ANY, wxS("Adapter capabilities")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
-        debugCapabilities_ = new wxListBox(this, wxID_ANY);
-        root->Add(debugCapabilities_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
-        debugConsole_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(-1, 70),
+        debugMiddle->Add(new wxStaticText(debugPage, wxID_ANY, wxS("Call stack")), 0, wxBOTTOM, 2);
+        debugMiddle->Add(callStack_, 1, wxEXPAND);
+        watches_ = new wxListBox(debugPage, wxID_ANY);
+        debugMiddle->Add(new wxStaticText(debugPage, wxID_ANY, wxS("Watches")), 0, wxTOP | wxBOTTOM, 2);
+        debugMiddle->Add(watches_, 1, wxEXPAND);
+        debugColumns->Add(debugMiddle, 1, wxRIGHT | wxEXPAND, 6);
+        auto* debugRight = new wxBoxSizer(wxVERTICAL);
+        variables_ = new wxListBox(debugPage, wxID_ANY);
+        debugRight->Add(new wxStaticText(debugPage, wxID_ANY, wxS("Variables")), 0, wxBOTTOM, 2);
+        debugRight->Add(variables_, 1, wxEXPAND);
+        debugCapabilities_ = new wxListBox(debugPage, wxID_ANY);
+        debugRight->Add(new wxStaticText(debugPage, wxID_ANY, wxS("Capabilities")), 0, wxTOP | wxBOTTOM, 2);
+        debugRight->Add(debugCapabilities_, 1, wxEXPAND);
+        debugColumns->Add(debugRight, 1, wxEXPAND);
+        debugRoot->Add(debugColumns, 1, wxEXPAND);
+        debugConsole_ = new wxTextCtrl(debugPage, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
                                        wxTE_MULTILINE | wxTE_READONLY | wxHSCROLL);
-        root->Add(debugConsole_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
+        debugRoot->Add(debugConsole_, 0, wxTOP | wxEXPAND, 4);
+        debugPage->SetSizer(debugRoot);
+        bottomWorkbench_->AddPage(debugPage, wxS("Debug"));
 
+        auto* outputPage = new wxPanel(bottomWorkbench_);
+        auto* outputRoot = new wxBoxSizer(wxVERTICAL);
         auto* fileControls = new wxBoxSizer(wxHORIZONTAL);
-        AddButton(fileControls, wxS("Open file"), [this](wxCommandEvent&) { OpenFile(); });
-        AddButton(fileControls, wxS("Save file"), [this](wxCommandEvent&) { SaveFile(); });
-        AddButton(fileControls, wxS("Start clangd"), [this](wxCommandEvent&) { StartLanguageServer(); });
-        AddButton(fileControls, wxS("Initialize LSP"), [this](wxCommandEvent&) { InitializeLanguageServer(); });
-        AddButton(fileControls, wxS("Hover"), [this](wxCommandEvent&) { RequestHover(); });
-        AddButton(fileControls, wxS("Completion"), [this](wxCommandEvent&) { RequestCompletion(); });
-        AddButton(fileControls, wxS("Stop language server"), [this](wxCommandEvent&) { StopLanguageServer(); });
-        root->Add(fileControls, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
-
+        AddButton(fileControls, wxS("Start clangd"), [this](wxCommandEvent&) { StartLanguageServer(); }, outputPage);
+        AddButton(fileControls, wxS("Initialize LSP"), [this](wxCommandEvent&) { InitializeLanguageServer(); }, outputPage);
+        AddButton(fileControls, wxS("Hover"), [this](wxCommandEvent&) { RequestHover(); }, outputPage);
+        AddButton(fileControls, wxS("Completion"), [this](wxCommandEvent&) { RequestCompletion(); }, outputPage);
+        AddButton(fileControls, wxS("Stop LSP"), [this](wxCommandEvent&) { StopLanguageServer(); }, outputPage);
+        outputRoot->Add(fileControls, 0, wxBOTTOM | wxEXPAND, 4);
         auto* extensionControls = new wxBoxSizer(wxHORIZONTAL);
         extensionControls_ = extensionControls;
-        AddButton(extensionControls, wxS("Start Extension Host"), [this](wxCommandEvent&) { StartHost(); });
-        AddButton(extensionControls, wxS("Load demo"), [this](wxCommandEvent&) { LoadDemo(); });
-        AddButton(extensionControls, wxS("Run hello.codium"), [this](wxCommandEvent&) { ExecuteDemo(); });
-        AddButton(extensionControls, wxS("Install VSIX"), [this](wxCommandEvent&) { InstallVsix(); });
-        AddButton(extensionControls, wxS("List extensions"), [this](wxCommandEvent&) { ListExtensions(); });
-        AddButton(extensionControls, wxS("Search Open VSX"), [this](wxCommandEvent&) { SearchOpenVsx(); });
-        root->Add(extensionControls, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
-
-        notebook_ = new wxNotebook(this, wxID_ANY);
-        editor_ = new wxTextCtrl(notebook_, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
-                                 wxTE_MULTILINE | wxTE_RICH2 | wxHSCROLL);
-        editor_->SetFont(wxFont(11, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
-        editor_->Bind(wxEVT_TEXT, [this](wxCommandEvent& event) {
-            OnEditorChanged(static_cast<wxTextCtrl*>(event.GetEventObject()));
-        });
-        notebook_->AddPage(editor_, wxS("Untitled"), true);
-        tabPaths_.push_back(wxEmptyString);
-        notebook_->Bind(wxEVT_NOTEBOOK_PAGE_CHANGED, [this](wxBookCtrlEvent& event) {
-            SwitchToTab(static_cast<size_t>(event.GetSelection()));
-            event.Skip();
-        });
-        root->Add(notebook_, 1, wxLEFT | wxRIGHT | wxEXPAND, 10);
-
-        auto* diagnosticsLabel = new wxStaticText(this, wxID_ANY, wxS("Diagnostics"));
-        root->Add(diagnosticsLabel, 0, wxLEFT | wxRIGHT | wxTOP, 10);
-        diagnostics_ = new wxListBox(this, wxID_ANY);
-        diagnostics_->Bind(wxEVT_LISTBOX, [this](wxCommandEvent& event) { GoToProblem(event.GetSelection()); });
-        root->Add(diagnostics_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
-
-        auto* hoverLabel = new wxStaticText(this, wxID_ANY, wxS("Hover / language-server result"));
-        root->Add(hoverLabel, 0, wxLEFT | wxRIGHT | wxTOP, 10);
-        hover_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(-1, 70),
+        AddButton(extensionControls, wxS("Start Host"), [this](wxCommandEvent&) { StartHost(); }, outputPage);
+        AddButton(extensionControls, wxS("Load demo"), [this](wxCommandEvent&) { LoadDemo(); }, outputPage);
+        AddButton(extensionControls, wxS("Run demo"), [this](wxCommandEvent&) { ExecuteDemo(); }, outputPage);
+        AddButton(extensionControls, wxS("Install VSIX"), [this](wxCommandEvent&) { InstallVsix(); }, outputPage);
+        AddButton(extensionControls, wxS("Search Open VSX"), [this](wxCommandEvent&) { SearchOpenVsx(); }, outputPage);
+        outputRoot->Add(extensionControls, 0, wxBOTTOM | wxEXPAND, 4);
+        hover_ = new wxTextCtrl(outputPage, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(-1, 60),
                                 wxTE_MULTILINE | wxTE_READONLY | wxHSCROLL);
-        root->Add(hover_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
-
-        auto* completionLabel = new wxStaticText(this, wxID_ANY, wxS("Completion items"));
-        root->Add(completionLabel, 0, wxLEFT | wxRIGHT | wxTOP, 10);
-        completion_ = new wxListBox(this, wxID_ANY);
-        root->Add(completion_, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
-
-        root->Add(new wxStaticText(this, wxID_ANY, wxS("Output / task log")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
-        log_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(-1, 180),
+        outputRoot->Add(hover_, 0, wxBOTTOM | wxEXPAND, 4);
+        completion_ = new wxListBox(outputPage, wxID_ANY, wxDefaultPosition, wxSize(-1, 55));
+        outputRoot->Add(completion_, 0, wxBOTTOM | wxEXPAND, 4);
+        log_ = new wxTextCtrl(outputPage, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
                               wxTE_MULTILINE | wxTE_READONLY | wxTE_RICH2 | wxHSCROLL);
-        root->Add(log_, 0, wxALL | wxEXPAND, 10);
+        outputRoot->Add(log_, 1, wxEXPAND);
+        outputPage->SetSizer(outputRoot);
+        bottomWorkbench_->AddPage(outputPage, wxS("Output"));
+
+        centerRoot->Add(bottomWorkbench_, 0, wxEXPAND | wxTOP, 6);
+        centerPanel->SetSizer(centerRoot);
         SetSizer(root);
+        CreateStatusBar(3);
+        SetStatusText(wxS("Ready"), 0);
+        SetStatusText(wxS("No workspace"), 1);
+        SetStatusText(wxS("UTF-8"), 2);
         Centre();
 
         Bind(wxEVT_END_PROCESS, [this](wxProcessEvent& event) { OnTaskFinished(event); }, ID_TASK_PROCESS);
@@ -569,6 +689,38 @@ private:
         auto* button = new wxButton(owner, wxID_ANY, label);
         button->Bind(wxEVT_BUTTON, std::forward<Handler>(handler));
         sizer->Add(button, 0, wxRIGHT, 6);
+    }
+
+    wxPanel* CreateEditorPage(wxWindow* parent, const wxString& text,
+                              wxTextCtrl** editorOut, ProblemGutter** gutterOut)
+    {
+        auto* page = new wxPanel(parent);
+        auto* layout = new wxBoxSizer(wxHORIZONTAL);
+        auto* gutter = new ProblemGutter(page);
+        auto* editor = new wxTextCtrl(page, wxID_ANY, text, wxDefaultPosition, wxDefaultSize,
+                                      wxTE_MULTILINE | wxTE_RICH2 | wxHSCROLL);
+        editor->SetFont(wxFont(11, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+        editor->Bind(wxEVT_TEXT, [this](wxCommandEvent& event) {
+            OnEditorChanged(static_cast<wxTextCtrl*>(event.GetEventObject()));
+        });
+        const auto onScroll = [gutter, editor](wxScrollWinEvent& event) {
+            gutter->SetFirstLine(editor->GetScrollPos(wxVERTICAL));
+            event.Skip();
+        };
+        editor->Bind(wxEVT_SCROLLWIN_TOP, onScroll);
+        editor->Bind(wxEVT_SCROLLWIN_BOTTOM, onScroll);
+        editor->Bind(wxEVT_SCROLLWIN_LINEUP, onScroll);
+        editor->Bind(wxEVT_SCROLLWIN_LINEDOWN, onScroll);
+        editor->Bind(wxEVT_SCROLLWIN_PAGEUP, onScroll);
+        editor->Bind(wxEVT_SCROLLWIN_PAGEDOWN, onScroll);
+        editor->Bind(wxEVT_SCROLLWIN_THUMBTRACK, onScroll);
+        editor->Bind(wxEVT_SCROLLWIN_THUMBRELEASE, onScroll);
+        layout->Add(gutter, 0, wxEXPAND);
+        layout->Add(editor, 1, wxEXPAND);
+        page->SetSizer(layout);
+        if (editorOut) *editorOut = editor;
+        if (gutterOut) *gutterOut = gutter;
+        return page;
     }
 
     void ApplyAnsiCode(const wxString& code)
@@ -737,7 +889,22 @@ private:
                                                        values.size(), problemStore_.Count(codium::ProblemSeverity::Error),
                                                        problemStore_.Count(codium::ProblemSeverity::Warning)));
         }
+        RefreshGutters();
         ApplyInlineProblems();
+    }
+
+    void RefreshGutters()
+    {
+        for (size_t tab = 0; tab < editorGutters_.size() && tab < tabPaths_.size(); ++tab) {
+            if (!editorGutters_[tab]) continue;
+            std::vector<GutterMarker> markers;
+            for (const auto& problem : problemStore_.Problems()) {
+                if (!problem.stale && !problem.path.empty() && problem.path == tabPaths_[tab]) {
+                    markers.push_back(GutterMarker{problem.line, problem.severity});
+                }
+            }
+            editorGutters_[tab]->SetMarkers(markers);
+        }
     }
 
     void AddLanguageProblem(const wxString& line)
@@ -773,8 +940,12 @@ private:
                                   CODIUM_BLOCKS_VERSION));
         if (GetStatusBar()) {
             SetStatusText(document_.IsUntitled() ? wxS("Untitled") : document_.Path(), 0);
-            SetStatusText(workspace_.IsOpen() ? (workspace_.IsTrusted() ? wxS("Trusted workspace") : wxS("Untrusted workspace"))
-                                              : wxS("No workspace"), 1);
+            wxString workspaceStatus = workspace_.IsOpen() ? (workspace_.IsTrusted() ? wxS("Trusted workspace") : wxS("Untrusted workspace"))
+                                                             : wxS("No workspace");
+            if (selectedSchemeIndex_ >= 0 && selectedSchemeIndex_ < static_cast<int>(projectConfig_.Schemes().size())) {
+                workspaceStatus += wxS(" · ") + projectConfig_.Schemes()[static_cast<size_t>(selectedSchemeIndex_)].name;
+            }
+            SetStatusText(workspaceStatus, 1);
             SetStatusText(wxString::Format(wxS("%s  Ln %d, Col %d"), languageId_,
                                            CurrentEditorLine() + 1, CurrentEditorCharacter() + 1), 2);
         }
@@ -862,16 +1033,113 @@ private:
         }
         for (const auto& task : projectConfig_.Tasks()) taskList_->Append(task.name);
         if (!projectConfig_.Tasks().empty()) taskList_->SetSelection(0);
+        PopulateSchemeBar();
+    }
+
+    void PopulateSchemeBar()
+    {
+        if (!schemeChoice_ || !targetChoice_ || !toolchainChoice_) return;
+        schemeChoice_->Clear();
+        targetChoice_->Clear();
+        toolchainChoice_->Clear();
+        selectedSchemeIndex_ = wxNOT_FOUND;
+        for (const auto& scheme : projectConfig_.Schemes()) {
+            schemeChoice_->Append(scheme.name);
+            if (targetChoice_->FindString(scheme.target) == wxNOT_FOUND) targetChoice_->Append(scheme.target);
+            if (toolchainChoice_->FindString(scheme.toolchain) == wxNOT_FOUND) toolchainChoice_->Append(scheme.toolchain);
+        }
+        if (schemeChoice_->GetCount() == 0) {
+            if (schemeStatus_) schemeStatus_->SetLabel(wxS("Open a project with a detected toolchain"));
+            return;
+        }
+        selectedSchemeIndex_ = 0;
+        schemeChoice_->SetSelection(0);
+        const auto& selected = projectConfig_.Schemes().front();
+        targetChoice_->SetStringSelection(selected.target);
+        toolchainChoice_->SetStringSelection(selected.toolchain);
+        UpdateSchemeStatus();
+        UpdateTitle();
+    }
+
+    void SelectScheme()
+    {
+        if (!schemeChoice_ || schemeChoice_->GetSelection() == wxNOT_FOUND) return;
+        selectedSchemeIndex_ = schemeChoice_->GetSelection();
+        if (selectedSchemeIndex_ >= static_cast<int>(projectConfig_.Schemes().size())) return;
+        const auto& selected = projectConfig_.Schemes()[static_cast<size_t>(selectedSchemeIndex_)];
+        targetChoice_->SetStringSelection(selected.target);
+        toolchainChoice_->SetStringSelection(selected.toolchain);
+        UpdateSchemeStatus();
+        UpdateTitle();
+        AppendLog(wxString::Format(wxS("Selected scheme: %s (%s, target %s)"), selected.name,
+                                   selected.configuration, selected.target));
+    }
+
+    void SelectToolchain()
+    {
+        if (!toolchainChoice_ || toolchainChoice_->GetSelection() == wxNOT_FOUND) return;
+        const wxString toolchain = toolchainChoice_->GetStringSelection();
+        const wxString configuration = selectedSchemeIndex_ >= 0 &&
+            selectedSchemeIndex_ < static_cast<int>(projectConfig_.Schemes().size())
+                ? projectConfig_.Schemes()[static_cast<size_t>(selectedSchemeIndex_)].configuration
+                : wxString(wxS("Debug"));
+        for (size_t index = 0; index < projectConfig_.Schemes().size(); ++index) {
+            const auto& scheme = projectConfig_.Schemes()[index];
+            if (scheme.toolchain == toolchain && scheme.configuration == configuration) {
+                selectedSchemeIndex_ = static_cast<int>(index);
+                schemeChoice_->SetSelection(selectedSchemeIndex_);
+                targetChoice_->SetStringSelection(scheme.target);
+                UpdateSchemeStatus();
+                UpdateTitle();
+                return;
+            }
+        }
+    }
+
+    void UpdateSchemeStatus()
+    {
+        if (!schemeStatus_ || selectedSchemeIndex_ < 0 ||
+            selectedSchemeIndex_ >= static_cast<int>(projectConfig_.Schemes().size())) return;
+        const auto& selected = projectConfig_.Schemes()[static_cast<size_t>(selectedSchemeIndex_)];
+        const wxString target = targetChoice_ && targetChoice_->GetSelection() != wxNOT_FOUND
+            ? targetChoice_->GetStringSelection() : selected.target;
+        const wxString toolchain = toolchainChoice_ && toolchainChoice_->GetSelection() != wxNOT_FOUND
+            ? toolchainChoice_->GetStringSelection() : selected.toolchain;
+        schemeStatus_->SetLabel(wxString::Format(wxS("%s · %s · %s"), selected.configuration, target, toolchain));
     }
 
     void RunTask(const codium::ProjectTask& task)
     {
-        problemStore_.Clear(task.name);
-        if (buildOutput_) buildOutput_->AppendText(wxString::Format(wxS("\n=== %s ===\n"), task.name));
+        if (bottomWorkbench_) bottomWorkbench_->SetSelection(1);
+        codium::ProjectTask effectiveTask = task;
+        const codium::ProjectScheme* selected = nullptr;
+        if (selectedSchemeIndex_ >= 0 && selectedSchemeIndex_ < static_cast<int>(projectConfig_.Schemes().size())) {
+            selected = &projectConfig_.Schemes()[static_cast<size_t>(selectedSchemeIndex_)];
+        }
+        const wxString selectedToolchain = toolchainChoice_ && toolchainChoice_->GetSelection() != wxNOT_FOUND
+            ? toolchainChoice_->GetStringSelection() : selected ? selected->toolchain : wxString(wxEmptyString);
+        const wxString selectedTarget = targetChoice_ && targetChoice_->GetSelection() != wxNOT_FOUND
+            ? targetChoice_->GetStringSelection() : selected ? selected->target : wxString(wxEmptyString);
+        if (selected && selectedToolchain == wxS("CMake")) {
+            if (effectiveTask.name.Contains(wxS("Configure"))) {
+                effectiveTask.arguments.Add(wxString::Format(wxS("-DCMAKE_BUILD_TYPE=%s"), selected->configuration));
+            } else if (effectiveTask.name.Contains(wxS("Build"))) {
+                effectiveTask.arguments.Add(wxS("--config"));
+                effectiveTask.arguments.Add(selected->configuration);
+                if (selectedTarget != wxS("all")) {
+                    effectiveTask.arguments.Add(wxS("--target"));
+                    effectiveTask.arguments.Add(selectedTarget);
+                }
+            }
+        }
+        const wxString problemSource = effectiveTask.name;
+        problemStore_.Clear(problemSource);
+        if (buildOutput_) buildOutput_->AppendText(wxString::Format(wxS("\n=== %s [%s] ===\n"), effectiveTask.name,
+                                                                      selected ? selected->name : wxS("default")));
         wxString error;
-        if (taskRunner_.Run(task, &error)) {
-            AppendLog(wxString::Format(wxS("Started task: %s"), task.name));
-            if (buildOutput_) buildOutput_->AppendText(wxString::Format(wxS("Started %s\n"), task.name));
+        if (taskRunner_.Run(effectiveTask, &error)) {
+            AppendLog(wxString::Format(wxS("Started task: %s"), effectiveTask.name));
+            if (buildOutput_) buildOutput_->AppendText(wxString::Format(wxS("Started %s\n"), effectiveTask.name));
             if (GetStatusBar()) SetStatusText(wxS("Building…"), 1);
         } else {
             AppendLog(wxS("Task error: ") + error);
@@ -893,6 +1161,19 @@ private:
         if (!workspace_.IsOpen()) {
             AppendLog(wxS("Open a workspace before building."));
             return;
+        }
+        wxString preferredToolchain;
+        if (toolchainChoice_ && toolchainChoice_->GetSelection() != wxNOT_FOUND) {
+            preferredToolchain = toolchainChoice_->GetStringSelection();
+        } else if (selectedSchemeIndex_ >= 0 && selectedSchemeIndex_ < static_cast<int>(projectConfig_.Schemes().size())) {
+            preferredToolchain = projectConfig_.Schemes()[static_cast<size_t>(selectedSchemeIndex_)].toolchain;
+        }
+        for (const auto& task : projectConfig_.Tasks()) {
+            if (task.name.Contains(wxS("Build")) &&
+                (preferredToolchain.empty() || task.name.StartsWith(preferredToolchain + wxS(":")))) {
+                RunTask(task);
+                return;
+            }
         }
         for (const auto& task : projectConfig_.Tasks()) {
             if (task.name.Contains(wxS("Build"))) {
@@ -1550,14 +1831,13 @@ private:
             return;
         }
 
-        auto* page = new wxTextCtrl(notebook_, wxID_ANY, loaded.Text(), wxDefaultPosition, wxDefaultSize,
-                                    wxTE_MULTILINE | wxTE_RICH2 | wxHSCROLL);
-        page->SetFont(wxFont(11, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
-        page->Bind(wxEVT_TEXT, [this](wxCommandEvent& event) {
-            OnEditorChanged(static_cast<wxTextCtrl*>(event.GetEventObject()));
-        });
+        wxTextCtrl* editorPage = nullptr;
+        ProblemGutter* gutterPage = nullptr;
+        auto* page = CreateEditorPage(notebook_, loaded.Text(), &editorPage, &gutterPage);
         documents_[path] = loaded;
         tabPaths_.push_back(path);
+        editorPages_.push_back(editorPage);
+        editorGutters_.push_back(gutterPage);
         notebook_->AddPage(page, wxFileName(path).GetFullName(), true);
         SwitchToTab(tabPaths_.size() - 1);
         const wxString customEditor = customEditors_.Resolve(path);
@@ -1569,7 +1849,13 @@ private:
     void OnEditorChanged(wxTextCtrl* source)
     {
         if (loadingDocument_ || !source) return;
-        const int pageIndex = notebook_->FindPage(source);
+        int pageIndex = wxNOT_FOUND;
+        for (size_t index = 0; index < editorPages_.size(); ++index) {
+            if (editorPages_[index] == source) {
+                pageIndex = static_cast<int>(index);
+                break;
+            }
+        }
         if (pageIndex == wxNOT_FOUND || pageIndex >= static_cast<int>(tabPaths_.size())) return;
         const wxString path = tabPaths_[pageIndex];
         if (path.empty()) {
@@ -1589,12 +1875,18 @@ private:
     {
         if (index >= tabPaths_.size()) return;
         if (editor_) {
-            const int previous = notebook_->FindPage(editor_);
+            int previous = wxNOT_FOUND;
+            for (size_t index = 0; index < editorPages_.size(); ++index) {
+                if (editorPages_[index] == editor_) {
+                    previous = static_cast<int>(index);
+                    break;
+                }
+            }
             if (previous != wxNOT_FOUND && previous < static_cast<int>(tabPaths_.size()) && !tabPaths_[previous].empty()) {
                 documents_[tabPaths_[previous]].SetText(editor_->GetValue());
             }
         }
-        editor_ = dynamic_cast<wxTextCtrl*>(notebook_->GetPage(static_cast<int>(index)));
+        editor_ = index < editorPages_.size() ? editorPages_[index] : nullptr;
         if (!tabPaths_[index].empty()) {
             document_ = documents_[tabPaths_[index]];
         } else {
@@ -1603,6 +1895,7 @@ private:
         }
         languageId_ = document_.IsUntitled() ? wxS("plaintext") : LanguageIdForPath(document_.Path());
         UpdateTitle();
+        RefreshGutters();
         ApplyInlineProblems();
     }
 
@@ -2059,6 +2352,11 @@ private:
     wxListBox* customEditorsView_ = nullptr;
     wxNotebook* notebook_ = nullptr;
     wxNotebook* bottomWorkbench_ = nullptr;
+    wxChoice* schemeChoice_ = nullptr;
+    wxChoice* targetChoice_ = nullptr;
+    wxChoice* toolchainChoice_ = nullptr;
+    wxStaticText* schemeStatus_ = nullptr;
+    int selectedSchemeIndex_ = wxNOT_FOUND;
     wxListBox* taskList_ = nullptr;
     wxListBox* breakpoints_ = nullptr;
     wxListBox* debugThreads_ = nullptr;
@@ -2070,6 +2368,8 @@ private:
     wxRichTextCtrl* terminalOutput_ = nullptr;
     wxBoxSizer* extensionControls_ = nullptr;
     wxTextCtrl* editor_ = nullptr;
+    std::vector<wxTextCtrl*> editorPages_;
+    std::vector<ProblemGutter*> editorGutters_;
     wxListBox* diagnostics_ = nullptr;
     wxListBox* problems_ = nullptr;
     wxStaticText* problemSummary_ = nullptr;
