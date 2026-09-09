@@ -4,6 +4,7 @@
 #include <wx/filefn.h>
 #include <wx/init.h>
 #include <wx/stdpaths.h>
+#include <wx/utils.h>
 
 #include <filesystem>
 #include <fstream>
@@ -18,6 +19,8 @@ int main()
     }
 
     const wxString root = wxStandardPaths::Get().GetTempDir() + wxFILE_SEP_PATH + wxS("codium-blocks-workspace-smoke");
+    const wxString dataRoot = root + wxFILE_SEP_PATH + wxS("data");
+    wxSetEnv(wxS("CODIUM_BLOCKS_DATA"), dataRoot);
     std::filesystem::remove_all(root.ToStdString());
     wxFileName::Mkdir(root + wxFILE_SEP_PATH + wxS("src"), wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
     wxFileName::Mkdir(root + wxFILE_SEP_PATH + wxS("build"), wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
@@ -42,6 +45,16 @@ int main()
         workspace.Files().Index(root + wxFILE_SEP_PATH + wxS("node_modules/pkg/index.js")) != wxNOT_FOUND ||
         workspace.RelativePath(source) != wxS("src/main.cpp")) {
         std::cerr << "workspace-smoke: discovery or filtering failed\n";
+        return 1;
+    }
+    if (workspace.IsTrusted() || !workspace.SetTrusted(true, &error)) {
+        std::cerr << "workspace-smoke: trust enable failed: " << error.ToStdString() << "\n";
+        return 1;
+    }
+    workspace.Close();
+    codium::Workspace reopened;
+    if (!reopened.Open(root, &error) || !reopened.IsTrusted() || !reopened.SetTrusted(false, &error)) {
+        std::cerr << "workspace-smoke: trust persistence failed: " << error.ToStdString() << "\n";
         return 1;
     }
 

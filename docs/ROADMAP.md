@@ -48,7 +48,7 @@ The `0.8.3` increment adds safe OSC 8 hyperlinks, DEC synchronized updates, broa
 
 ## Release 0.9 — debugging views and registry security
 
-Add source breakpoints, stack frames, variables, watches, problem navigation, Open VSX, private registries, caching, checksums, rollback, workspace trust, permissions, and per-extension compatibility reports.
+The `0.9.0` increment adds native breakpoint toggling and DAP `setBreakpoints`, thread enumeration, stack-trace, scopes, variables, and evaluate requests, plus native debugging panels. Diagnostics can navigate back to editor locations. The extension installer now computes SHA-256 digests, validates safe manifests, stages installations transactionally, rolls back an existing version if a commit fails, and records installation metadata. Registry configuration accepts HTTPS endpoints without embedded credentials and verifies downloaded artifacts by digest. Workspace trust is persisted outside the source tree and gates task, terminal, debug-adapter, extension-host, and VSIX execution for untrusted folders. A complete registry client, source mapping, watches, and richer compatibility reports remain follow-up work.
 
 ## Release 1.0 — complete terminal compatibility and advanced UI
 

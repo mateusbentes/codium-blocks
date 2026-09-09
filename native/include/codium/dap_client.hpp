@@ -15,6 +15,12 @@ public:
     bool Start(const wxString& program, const wxArrayString& arguments,
                const wxString& workingDirectory, wxString* error = nullptr);
     bool SendRequest(const wxString& command, const wxString& argumentsJson = wxS("{}"));
+    bool SetBreakpoints(const wxString& sourcePath, const wxArrayInt& lines);
+    bool RequestThreads();
+    bool RequestStackTrace(int threadId = 1);
+    bool RequestScopes(int frameId);
+    bool RequestVariables(int variablesReference);
+    bool Evaluate(const wxString& expression, int frameId = 0);
     bool Stop();
     void HandleProcessExit(long pid, int exitCode);
     bool IsRunning() const { return process_ != nullptr && pid_ != 0; }

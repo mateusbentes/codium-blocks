@@ -10,6 +10,8 @@ public:
     explicit VsixManager(wxString extensionRoot);
 
     bool Install(const wxString& vsixPath, wxString* message = nullptr);
+    bool InstallVerified(const wxString& vsixPath, const wxString& expectedSha256,
+                         wxString* message = nullptr);
     wxArrayString ListInstalled() const;
     const wxString& ExtensionRoot() const { return extensionRoot_; }
 

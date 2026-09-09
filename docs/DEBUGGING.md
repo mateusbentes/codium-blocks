@@ -1,9 +1,13 @@
-# Terminal and Debugging
+# Native Debugging
 
-Codium::Blocks 0.7.0 adds two independent native transports. `TerminalSession` launches the platform shell with an explicit workspace directory, exposes stdin for interactive input, and streams stdout/stderr into the native output panel. On Windows it uses `cmd.exe`; on macOS and Linux it uses the system POSIX shell. Terminal support is optional and is not loaded during application startup.
+Codium::Blocks 0.9.0 communicates with a Debug Adapter Protocol implementation through standard `Content-Length` framing. The adapter path is selected at runtime, so installations can use `codelldb`, `OpenDebugAD7`, GDB's adapter, or another DAP-compatible process without bundling a debugger into the IDE.
 
-`DapClient` communicates with a Debug Adapter Protocol implementation through the standard `Content-Length` framing used by DAP. The native UI can start an adapter executable, send `initialize`, `launch`, `continue`, `pause`, and `disconnect` requests, and display adapter responses in the output panel. The adapter path is selected at runtime, so installations can use `codelldb`, `OpenDebugAD7`, or another DAP-compatible adapter without bundling one into the IDE.
+The native UI can start an adapter, initialize it, launch a program, continue, pause, and disconnect. A source file's current editor line can be toggled as a breakpoint. The client sends a DAP `setBreakpoints` request with the source path and the complete line list for that file. Breakpoints are displayed in a native list and are kept as session state until the application exits.
 
-The 0.7.0 transport test starts deterministic fake terminal and fake DAP processes. It verifies interactive stdin/stdout, DAP framing, initialization events, launch responses, thread enumeration, and continue responses without requiring a debugger installation. This validates the transport independently from adapter-specific behavior.
+The 0.9.0 client exposes requests for `threads`, `stackTrace`, `scopes`, `variables`, and `evaluate`. Responses are displayed in native Threads, Call stack, Variables/evaluate, and Debug console panels. When a stopped event supplies a thread identifier, Codium::Blocks automatically requests the thread list and stack trace. The implementation intentionally keeps the transport and basic presentation independent of any adapter-specific source mapping.
 
-The current UI is a transport foundation rather than a complete debugger. Breakpoint markers, source mapping, stack frames, variables, watches, and clickable stop locations are planned for the next debugging increment.
+Language-server diagnostics are displayed as problems with line and character coordinates. Selecting a problem moves the editor caret to the reported location. A future increment will add richer diagnostic ranges, source mapping, clickable stack frames, watches, and adapter capability discovery.
+
+The deterministic fake DAP process and transport test cover initialization, launch, threads, breakpoints, stack trace, scopes, variables, evaluate, continue, and clean shutdown. This validates the protocol layer without requiring a debugger installation.
+
+A DAP adapter is an executable process and inherits the user's permissions. Workspace trust gates starting the adapter from a trusted workspace. The project does not claim that this process boundary is a security sandbox.

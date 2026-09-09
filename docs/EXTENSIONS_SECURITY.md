@@ -1,0 +1,11 @@
+# Extension Security and Workspace Trust
+
+The extension installer treats a VSIX as untrusted input. It rejects absolute archive paths, drive-qualified paths, and parent-directory traversal. The archive is extracted into a staging directory rather than directly into the installed directory. The installer then locates `extension/package.json` (or a root `package.json`), validates safe `name`, `publisher`, and `version` fields, writes a `.codium-manifest.json` metadata record, and atomically commits the staged directory. An existing installation is moved to a rollback directory until the new commit succeeds.
+
+Every VSIX receives a SHA-256 digest. Callers may provide an expected digest through `InstallVerified`; a mismatch rejects the artifact before extraction. The metadata record contains the extension identity, version, digest, and trust marker. The current native installer does not download packages itself; registry transport and signature policy remain explicit responsibilities of the caller.
+
+`ExtensionRegistry` maintains an in-memory allowlist of registry endpoints. Only HTTPS URLs without embedded credentials or backslashes are accepted. Registry artifacts must be verified with an expected SHA-256 digest before installation. Open VSX and private registries can be added by configuration in a later increment without weakening this policy.
+
+Workspace trust is persisted in `trusted-workspaces.txt` below the platform configuration directory, or below `CODIUM_BLOCKS_DATA` in portable/test deployments. Opening an untrusted workspace shows a warning. Build tasks, terminal sessions, debug adapters, Extension Host startup, and VSIX installation are blocked until the user explicitly trusts that workspace. Trust is not a sandbox: trusted or untrusted child processes still run with the user's operating-system permissions.
+
+The deterministic security tests cover SHA-256, manifest validation, unsafe registry rejection, artifact verification, malicious archive paths, and workspace trust persistence. Production distribution should add signature verification, permission prompts, package size limits, extension allowlists, audit logging, and a real registry client before enabling unattended downloads.

@@ -92,6 +92,43 @@ bool DapClient::SendRequest(const wxString& command, const wxString& argumentsJs
         sequence, JsonEscape(command), argumentsJson));
 }
 
+bool DapClient::SetBreakpoints(const wxString& sourcePath, const wxArrayInt& lines)
+{
+    wxString json = wxS("{\"source\":{\"path\":\"") + JsonEscape(sourcePath) + wxS("\"},\"breakpoints\":[");
+    for (size_t index = 0; index < lines.size(); ++index) {
+        if (index != 0) json += wxS(",");
+        json += wxString::Format(wxS("{\"line\":%d}"), lines[index]);
+    }
+    json += wxS("]}");
+    return SendRequest(wxS("setBreakpoints"), json);
+}
+
+bool DapClient::RequestThreads()
+{
+    return SendRequest(wxS("threads"));
+}
+
+bool DapClient::RequestStackTrace(int threadId)
+{
+    return SendRequest(wxS("stackTrace"), wxString::Format(wxS("{\"threadId\":%d,\"startFrame\":0,\"levels\":50}"), threadId));
+}
+
+bool DapClient::RequestScopes(int frameId)
+{
+    return SendRequest(wxS("scopes"), wxString::Format(wxS("{\"frameId\":%d}"), frameId));
+}
+
+bool DapClient::RequestVariables(int variablesReference)
+{
+    return SendRequest(wxS("variables"), wxString::Format(wxS("{\"variablesReference\":%d}"), variablesReference));
+}
+
+bool DapClient::Evaluate(const wxString& expression, int frameId)
+{
+    return SendRequest(wxS("evaluate"), wxString::Format(wxS("{\"expression\":\"%s\",\"frameId\":%d,\"context\":\"repl\"}"),
+                                                           JsonEscape(expression), frameId));
+}
+
 bool DapClient::Stop()
 {
     if (!process_) return true;

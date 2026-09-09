@@ -10,7 +10,7 @@ Every push to `main` and every pull request is checked by GitHub Actions on all 
 
 ## Current status
 
-The current `0.8.3` increment provides:
+The current `0.9.0` increment provides:
 
 - a native C++/wxWidgets window;
 - no Electron dependency or linkage;
@@ -75,8 +75,16 @@ The current `0.8.3` increment provides:
 - expanded grapheme joining for combining marks, variation selectors, ZWJ sequences, and regional-indicator pairs;
 - double-click word selection and triple-click line selection;
 - safe DCS/APC graphics policy that consumes Sixel/Kitty payloads without corrupting the screen.
+- native DAP breakpoint toggling and `setBreakpoints` requests;
+- native threads, call-stack, scopes, variables, and evaluate panels;
+- problem-list navigation from diagnostics to editor locations;
+- SHA-256 verification for VSIX artifacts;
+- manifest validation before an extension is committed to the installed directory;
+- transactional VSIX installation with staging and rollback of the previous version;
+- HTTPS-only extension registry configuration without embedded credentials;
+- workspace trust persisted outside the source tree and execution gates for tasks, terminals, adapters, hosts, and VSIX installation.
 
-This is not full VS Code compatibility. The implementation is deliberately layered and must still add clickable diagnostic locations, richer completion/hover interaction, explicit user task configuration, complete Unicode grapheme segmentation, optional image rendering policy, debugger source/stack/variable views, and advanced Tree Views. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), and [`docs/DEBUGGING.md`](docs/DEBUGGING.md) for the current models.
+This is not full VS Code compatibility. The implementation is deliberately layered and must still add richer completion/hover interaction, explicit user task configuration, source mapping, advanced Tree Views, and a complete extension registry client. The remaining terminal goals — complete Unicode grapheme segmentation and width handling, plus optional Sixel/Kitty image rendering — are explicitly scheduled for the 1.0 release. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), [`docs/DEBUGGING.md`](docs/DEBUGGING.md), and [`docs/EXTENSIONS_SECURITY.md`](docs/EXTENSIONS_SECURITY.md) for the current models.
 
 ## Architecture
 

@@ -1,4 +1,5 @@
 #include "codium/vsix_manager.hpp"
+#include "codium/extension_security.hpp"
 
 #include <wx/filename.h>
 #include <wx/dir.h>
@@ -29,7 +30,7 @@ int main()
         wxFFileOutputStream output(vsixPath);
         wxZipOutputStream archive(output);
         archive.PutNextEntry(wxS("extension/package.json"));
-        const wxString manifest = wxS("{\"name\":\"demo\",\"publisher\":\"test\"}\n");
+        const wxString manifest = wxS("{\"name\":\"demo\",\"publisher\":\"test\",\"version\":\"1.0.0\"}\n");
         archive.Write(manifest.utf8_str().data(), manifest.utf8_str().length());
         archive.PutNextEntry(wxS("extension/extension.js"));
         const wxString script = wxS("module.exports = {};\n");
@@ -39,7 +40,9 @@ int main()
 
     codium::VsixManager manager(installRoot);
     wxString message;
-    if (!manager.Install(vsixPath, &message)) {
+    wxString digest;
+    if (!codium::ExtensionSecurity::ComputeSha256(vsixPath, &digest, &message) ||
+        !manager.InstallVerified(vsixPath, digest, &message)) {
         std::cerr << "vsix-smoke: install failed: " << message.ToStdString() << "\n";
         return 1;
     }
@@ -48,6 +51,10 @@ int main()
                                wxFILE_SEP_PATH + wxS("extension/package.json");
     if (!wxFileExists(extracted) || manager.ListInstalled().GetCount() != 1) {
         std::cerr << "vsix-smoke: extracted file or listing missing\n";
+        return 1;
+    }
+    if (manager.InstallVerified(vsixPath, wxS("0000000000000000000000000000000000000000000000000000000000000000"), &message)) {
+        std::cerr << "vsix-smoke: invalid checksum was accepted\n";
         return 1;
     }
 

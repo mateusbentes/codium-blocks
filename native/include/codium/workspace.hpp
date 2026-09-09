@@ -10,6 +10,8 @@ public:
     bool Open(const wxString& rootPath, wxString* error = nullptr);
     void Close();
     void Refresh();
+    bool IsTrusted() const { return trusted_; }
+    bool SetTrusted(bool trusted, wxString* error = nullptr);
 
     bool IsOpen() const { return !rootPath_.empty(); }
     const wxString& RootPath() const { return rootPath_; }
@@ -21,6 +23,7 @@ private:
 
     wxString rootPath_;
     wxArrayString files_;
+    bool trusted_ = false;
 };
 
 } // namespace codium

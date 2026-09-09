@@ -34,6 +34,7 @@
 
 #include <algorithm>
 #include <map>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -119,6 +120,43 @@ wxString JsonStringField(const wxString& line, const wxString& field)
         ++valueEnd;
     }
     return line.Mid(valueStart, valueEnd - valueStart);
+}
+
+int JsonIntField(const wxString& line, const wxString& field, int fallback = 0)
+{
+    const wxString marker = wxString::Format(wxS("\"%s\":"), field);
+    const int start = line.Find(marker);
+    if (start == wxNOT_FOUND) return fallback;
+    int index = start + static_cast<int>(marker.length());
+    while (index < static_cast<int>(line.length()) && (line[index] == wxChar(' ') || line[index] == wxChar('\t'))) ++index;
+    int sign = 1;
+    if (index < static_cast<int>(line.length()) && line[index] == wxChar('-')) { sign = -1; ++index; }
+    int value = 0;
+    bool found = false;
+    while (index < static_cast<int>(line.length()) && line[index] >= wxChar('0') && line[index] <= wxChar('9')) {
+        value = value * 10 + static_cast<int>(line[index] - wxChar('0'));
+        found = true;
+        ++index;
+    }
+    return found ? sign * value : fallback;
+}
+
+wxArrayString JsonStringFields(const wxString& line, const wxString& field)
+{
+    wxArrayString values;
+    const wxString marker = wxString::Format(wxS("\"%s\":\""), field);
+    int searchFrom = 0;
+    while (searchFrom < static_cast<int>(line.length())) {
+        const int relativeStart = line.Mid(searchFrom).Find(marker);
+        if (relativeStart == wxNOT_FOUND) break;
+        const int start = searchFrom + relativeStart;
+        const int valueStart = start + static_cast<int>(marker.length());
+        int valueEnd = valueStart;
+        while (valueEnd < static_cast<int>(line.length()) && line[valueEnd] != wxChar('"')) ++valueEnd;
+        values.Add(line.Mid(valueStart, valueEnd - valueStart));
+        searchFrom = valueEnd + 1;
+    }
+    return values;
 }
 
 wxString LanguageIdForPath(const wxString& path)
@@ -272,10 +310,30 @@ public:
         AddButton(debugControls, wxS("Start debug adapter"), [this](wxCommandEvent&) { StartDebugAdapter(); });
         AddButton(debugControls, wxS("Initialize debug"), [this](wxCommandEvent&) { InitializeDebug(); });
         AddButton(debugControls, wxS("Launch"), [this](wxCommandEvent&) { LaunchDebug(); });
+        AddButton(debugControls, wxS("Toggle breakpoint"), [this](wxCommandEvent&) { ToggleBreakpoint(); });
+        AddButton(debugControls, wxS("Threads"), [this](wxCommandEvent&) { RequestDebugThreads(); });
+        AddButton(debugControls, wxS("Stack trace"), [this](wxCommandEvent&) { RequestStackTrace(); });
+        AddButton(debugControls, wxS("Evaluate"), [this](wxCommandEvent&) { EvaluateDebugExpression(); });
         AddButton(debugControls, wxS("Continue"), [this](wxCommandEvent&) { ContinueDebug(); });
         AddButton(debugControls, wxS("Pause"), [this](wxCommandEvent&) { PauseDebug(); });
         AddButton(debugControls, wxS("Stop debug"), [this](wxCommandEvent&) { StopDebug(); });
         root->Add(debugControls, 0, wxLEFT | wxRIGHT | wxTOP, 10);
+
+        root->Add(new wxStaticText(this, wxID_ANY, wxS("Breakpoints")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
+        breakpoints_ = new wxListBox(this, wxID_ANY);
+        root->Add(breakpoints_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
+        root->Add(new wxStaticText(this, wxID_ANY, wxS("Threads")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
+        debugThreads_ = new wxListBox(this, wxID_ANY);
+        root->Add(debugThreads_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
+        root->Add(new wxStaticText(this, wxID_ANY, wxS("Call stack")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
+        callStack_ = new wxListBox(this, wxID_ANY);
+        root->Add(callStack_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
+        root->Add(new wxStaticText(this, wxID_ANY, wxS("Variables / evaluate")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
+        variables_ = new wxListBox(this, wxID_ANY);
+        root->Add(variables_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
+        debugConsole_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(-1, 70),
+                                       wxTE_MULTILINE | wxTE_READONLY | wxHSCROLL);
+        root->Add(debugConsole_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
 
         auto* fileControls = new wxBoxSizer(wxHORIZONTAL);
         AddButton(fileControls, wxS("Open file"), [this](wxCommandEvent&) { OpenFile(); });
@@ -314,6 +372,7 @@ public:
         auto* diagnosticsLabel = new wxStaticText(this, wxID_ANY, wxS("Diagnostics"));
         root->Add(diagnosticsLabel, 0, wxLEFT | wxRIGHT | wxTOP, 10);
         diagnostics_ = new wxListBox(this, wxID_ANY);
+        diagnostics_->Bind(wxEVT_LISTBOX, [this](wxCommandEvent& event) { GoToProblem(event.GetSelection()); });
         root->Add(diagnostics_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
 
         auto* hoverLabel = new wxStaticText(this, wxID_ANY, wxS("Hover / language-server result"));
@@ -586,6 +645,13 @@ private:
             AppendLog(wxS("Error: ") + error);
             return;
         }
+        if (!workspace_.IsTrusted()) {
+            const int answer = wxMessageBox(
+                wxString::Format(wxS("Trust the workspace '%s'? Trust enables tasks, terminals, debug adapters, and extensions."), workspace_.RootPath()),
+                wxS("Workspace trust"), wxYES_NO | wxICON_WARNING, this);
+            if (answer == wxYES && workspace_.SetTrusted(true, &error)) AppendLog(wxS("Workspace trusted."));
+            else AppendLog(wxS("Workspace is untrusted; execution features remain restricted."));
+        }
         PopulateFileTree();
         LoadProjectConfig();
         SetTitle(wxString::Format(wxS("%s — Codium::Blocks %s"), workspace_.RootPath(), CODIUM_BLOCKS_VERSION));
@@ -617,8 +683,16 @@ private:
         }
     }
 
+    bool EnsureWorkspaceTrusted()
+    {
+        if (!workspace_.IsOpen() || workspace_.IsTrusted()) return true;
+        AppendLog(wxS("Execution blocked: trust the current workspace first."));
+        return false;
+    }
+
     void BuildProject()
     {
+        if (!EnsureWorkspaceTrusted()) return;
         if (!workspace_.IsOpen()) {
             AppendLog(wxS("Open a workspace before building."));
             return;
@@ -634,6 +708,7 @@ private:
 
     void RunSelectedTask()
     {
+        if (!EnsureWorkspaceTrusted()) return;
         const int selection = taskList_ ? taskList_->GetSelection() : wxNOT_FOUND;
         if (selection == wxNOT_FOUND || selection >= static_cast<int>(projectConfig_.Tasks().size())) {
             AppendLog(wxS("Select a task before running it."));
@@ -675,6 +750,7 @@ private:
 
     void StartTerminal()
     {
+        if (!EnsureWorkspaceTrusted()) return;
         if (terminal_.IsRunning()) {
             AppendLog(wxS("Terminal is already running."));
             return;
@@ -1001,6 +1077,7 @@ private:
 
     void StartDebugAdapter()
     {
+        if (!EnsureWorkspaceTrusted()) return;
         if (dap_.IsRunning()) {
             AppendLog(wxS("Debug adapter is already running."));
             return;
@@ -1045,6 +1122,64 @@ private:
                                                                program, WorkspaceDirectory()))) {
             AppendLog(wxS("DAP launch request sent."));
         }
+    }
+
+    void RefreshBreakpointView()
+    {
+        if (!breakpoints_) return;
+        breakpoints_->Clear();
+        const auto found = breakpointLines_.find(document_.Path());
+        if (found == breakpointLines_.end()) return;
+        for (const int line : found->second) breakpoints_->Append(wxString::Format(wxS("%s:%d"), document_.Path(), line));
+    }
+
+    void ToggleBreakpoint()
+    {
+        if (document_.IsUntitled()) {
+            AppendLog(wxS("Open a source file before toggling a breakpoint."));
+            return;
+        }
+        const int line = CurrentEditorLine() + 1;
+        auto& lines = breakpointLines_[document_.Path()];
+        const auto found = std::find(lines.begin(), lines.end(), line);
+        if (found == lines.end()) lines.push_back(line);
+        else lines.erase(found);
+        std::sort(lines.begin(), lines.end());
+        RefreshBreakpointView();
+        if (dap_.IsRunning()) {
+            wxArrayInt dapLines;
+            for (const int value : lines) dapLines.Add(value);
+            if (dap_.SetBreakpoints(document_.Path(), dapLines)) AppendLog(wxS("DAP setBreakpoints request sent."));
+        }
+    }
+
+    void RequestDebugThreads()
+    {
+        if (dap_.RequestThreads()) AppendLog(wxS("DAP threads request sent."));
+        else AppendLog(wxS("Start and initialize a debug adapter first."));
+    }
+
+    void RequestStackTrace()
+    {
+        if (dap_.RequestStackTrace(debugThreadId_)) AppendLog(wxS("DAP stackTrace request sent."));
+        else AppendLog(wxS("Start and initialize a debug adapter first."));
+    }
+
+    void RequestDebugScopes()
+    {
+        if (dap_.RequestScopes(debugFrameId_)) AppendLog(wxS("DAP scopes request sent."));
+    }
+
+    void RequestDebugVariables()
+    {
+        if (dap_.RequestVariables(debugVariablesReference_)) AppendLog(wxS("DAP variables request sent."));
+    }
+
+    void EvaluateDebugExpression()
+    {
+        wxTextEntryDialog dialog(this, wxS("Expression to evaluate"), wxS("Debug evaluate"), wxEmptyString);
+        if (dialog.ShowModal() != wxID_OK || dialog.GetValue().empty()) return;
+        if (dap_.Evaluate(dialog.GetValue(), debugFrameId_)) AppendLog(wxS("DAP evaluate request sent."));
     }
 
     void ContinueDebug()
@@ -1268,6 +1403,7 @@ private:
 
     void StartHost()
     {
+        if (!EnsureWorkspaceTrusted()) return;
         if (host_.IsRunning()) {
             AppendLog(wxS("Extension Host is already running."));
             return;
@@ -1399,6 +1535,7 @@ private:
 
     void InstallVsix()
     {
+        if (!EnsureWorkspaceTrusted()) return;
         wxFileDialog dialog(this, wxS("Choose a VSIX extension"), wxEmptyString, wxEmptyString,
                             wxS("VS Code extensions (*.vsix)|*.vsix"), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
         if (dialog.ShowModal() != wxID_OK) {
@@ -1449,8 +1586,67 @@ private:
             return;
         }
         diagnostics_->Clear();
+        problemLocations_.clear();
         const wxString message = JsonStringField(line, wxS("message"));
-        diagnostics_->Append(message.empty() ? wxS("Language-server diagnostics updated.") : message);
+        const int lineNumber = std::max(0, JsonIntField(line, wxS("line"), 0));
+        const int character = std::max(0, JsonIntField(line, wxS("character"), 0));
+        problemLocations_.push_back({lineNumber, character});
+        diagnostics_->Append(wxString::Format(wxS("%d:%d %s"), lineNumber + 1, character + 1,
+                                              message.empty() ? wxS("Language-server diagnostics updated.") : message));
+    }
+
+    void GoToProblem(int index)
+    {
+        if (index < 0 || index >= static_cast<int>(problemLocations_.size()) || !editor_) return;
+        const auto [line, character] = problemLocations_[static_cast<size_t>(index)];
+        const long position = editor_->XYToPosition(character, line);
+        if (position != -1) {
+            editor_->SetInsertionPoint(position);
+            editor_->ShowPosition(position);
+            editor_->SetFocus();
+        }
+    }
+
+    void ShowDebugMessage(const wxString& line)
+    {
+        if (debugConsole_) debugConsole_->AppendText(line + wxS("\n"));
+        const wxString command = JsonStringField(line, wxS("command"));
+        const wxString event = JsonStringField(line, wxS("event"));
+        if (event == wxS("stopped")) {
+            debugThreadId_ = JsonIntField(line, wxS("threadId"), debugThreadId_);
+            RequestDebugThreads();
+            return;
+        }
+        if (command == wxS("threads")) {
+            if (debugThreads_) {
+                debugThreads_->Clear();
+                const wxArrayString names = JsonStringFields(line, wxS("name"));
+                for (const auto& name : names) debugThreads_->Append(name);
+                if (names.IsEmpty()) debugThreads_->Append(line);
+            }
+            debugThreadId_ = JsonIntField(line, wxS("id"), debugThreadId_);
+            RequestStackTrace();
+        } else if (command == wxS("stackTrace")) {
+            if (callStack_) {
+                callStack_->Clear();
+                const wxArrayString names = JsonStringFields(line, wxS("name"));
+                for (const auto& name : names) callStack_->Append(name);
+                if (names.IsEmpty()) callStack_->Append(line);
+            }
+            debugFrameId_ = JsonIntField(line, wxS("id"), debugFrameId_);
+            RequestDebugScopes();
+        } else if (command == wxS("scopes")) {
+            debugVariablesReference_ = JsonIntField(line, wxS("variablesReference"), debugVariablesReference_);
+            RequestDebugVariables();
+        } else if (command == wxS("variables") || command == wxS("evaluate")) {
+            if (variables_) {
+                variables_->Append(line);
+                const wxArrayString names = JsonStringFields(line, wxS("name"));
+                for (const auto& name : names) variables_->Append(name);
+            }
+        } else if (command == wxS("setBreakpoints")) {
+            AppendLog(wxS("DAP breakpoints response received."));
+        }
     }
 
     void ShowLanguageResult(const wxString& line)
@@ -1482,6 +1678,7 @@ private:
         if (terminalScreen_.Feed(terminal_.PollRaw())) RenderTerminalScreen();
         for (const auto& message : dap_.Poll()) {
             AppendLog(wxS("dap> ") + message);
+            ShowDebugMessage(message);
         }
         for (const auto& line : host_.Poll()) {
             AppendLog(wxS("host> ") + line);
@@ -1538,11 +1735,16 @@ private:
     wxTreeCtrl* fileTree_ = nullptr;
     wxNotebook* notebook_ = nullptr;
     wxListBox* taskList_ = nullptr;
+    wxListBox* breakpoints_ = nullptr;
+    wxListBox* debugThreads_ = nullptr;
+    wxListBox* callStack_ = nullptr;
+    wxListBox* variables_ = nullptr;
     wxTextCtrl* terminalInput_ = nullptr;
     wxRichTextCtrl* terminalOutput_ = nullptr;
     wxBoxSizer* extensionControls_ = nullptr;
     wxTextCtrl* editor_ = nullptr;
     wxListBox* diagnostics_ = nullptr;
+    wxTextCtrl* debugConsole_ = nullptr;
     wxTextCtrl* hover_ = nullptr;
     wxListBox* completion_ = nullptr;
     wxTextCtrl* log_ = nullptr;
@@ -1557,6 +1759,11 @@ private:
     wxPoint terminalSelectionAnchor_;
     wxPoint terminalSelectionActive_;
     bool terminalSelecting_ = false;
+    std::map<wxString, std::vector<int>> breakpointLines_;
+    std::vector<std::pair<int, int>> problemLocations_;
+    int debugThreadId_ = 1;
+    int debugFrameId_ = 1;
+    int debugVariablesReference_ = 1;
 
     wxDECLARE_EVENT_TABLE();
 };

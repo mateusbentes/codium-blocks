@@ -1,7 +1,12 @@
 #include "codium/workspace.hpp"
 
 #include <wx/dir.h>
+#include <wx/file.h>
 #include <wx/filename.h>
+#include <wx/filefn.h>
+#include <wx/stdpaths.h>
+#include <wx/tokenzr.h>
+#include <wx/utils.h>
 
 namespace codium {
 
@@ -21,6 +26,30 @@ bool Contains(const wxArrayString& values, const wxString& value)
     return false;
 }
 
+wxString TrustFilePath()
+{
+    wxString dataRoot;
+    if (!wxGetEnv(wxS("CODIUM_BLOCKS_DATA"), &dataRoot) || dataRoot.empty()) {
+        dataRoot = wxStandardPaths::Get().GetUserConfigDir() + wxFILE_SEP_PATH + wxS("CodiumBlocks");
+    }
+    wxFileName::Mkdir(dataRoot, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+    return dataRoot + wxFILE_SEP_PATH + wxS("trusted-workspaces.txt");
+}
+
+wxArrayString ReadTrustedWorkspaces()
+{
+    wxArrayString paths;
+    const wxString filePath = TrustFilePath();
+    if (!wxFileExists(filePath)) return paths;
+    wxFile file;
+    if (!file.Open(filePath, wxFile::read)) return paths;
+    wxString text;
+    if (!file.ReadAll(&text)) return paths;
+    wxStringTokenizer tokenizer(text, wxS("\n"), wxTOKEN_STRTOK);
+    while (tokenizer.HasMoreTokens()) paths.Add(tokenizer.GetNextToken().Trim(true).Trim(false));
+    return paths;
+}
+
 } // namespace
 
 bool Workspace::Open(const wxString& rootPath, wxString* error)
@@ -36,6 +65,7 @@ bool Workspace::Open(const wxString& rootPath, wxString* error)
         return false;
     }
     rootPath_ = normalizedRoot;
+    trusted_ = Contains(ReadTrustedWorkspaces(), rootPath_);
     Refresh();
     return true;
 }
@@ -44,6 +74,39 @@ void Workspace::Close()
 {
     rootPath_.clear();
     files_.Clear();
+    trusted_ = false;
+}
+
+bool Workspace::SetTrusted(bool trusted, wxString* error)
+{
+    if (!IsOpen()) {
+        if (error) *error = wxS("Open a workspace before changing trust.");
+        return false;
+    }
+    wxArrayString paths = ReadTrustedWorkspaces();
+    wxArrayString updated;
+    for (const auto& path : paths) {
+        if (path != rootPath_ && !path.empty()) updated.Add(path);
+    }
+    if (trusted) updated.Add(rootPath_);
+
+    const wxString filePath = TrustFilePath();
+    const wxString temporary = filePath + wxS(".tmp");
+    wxFile output;
+    if (!output.Open(temporary, wxFile::write)) {
+        if (error) *error = wxString::Format(wxS("Could not write workspace trust file: %s."), temporary);
+        return false;
+    }
+    wxString content;
+    for (const auto& path : updated) content += path + wxS("\n");
+    const wxScopedCharBuffer bytes = content.utf8_str();
+    if (output.Write(bytes.data(), bytes.length()) != bytes.length() || !output.Close() || !wxRenameFile(temporary, filePath, true)) {
+        wxRemoveFile(temporary);
+        if (error) *error = wxString::Format(wxS("Could not commit workspace trust file: %s."), filePath);
+        return false;
+    }
+    trusted_ = trusted;
+    return true;
 }
 
 wxString Workspace::RelativePath(const wxString& absolutePath) const

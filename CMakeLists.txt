@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CodiumBlocks VERSION 0.8.3 LANGUAGES CXX)
+project(CodiumBlocks VERSION 0.9.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,6 +20,8 @@ add_executable(codium-blocks
     native/src/terminal_screen.cpp
     native/src/terminal_profile.cpp
     native/src/dap_client.cpp
+    native/src/extension_security.cpp
+    native/src/extension_registry.cpp
 )
 
 target_include_directories(codium-blocks PRIVATE native/include)
@@ -40,11 +42,21 @@ target_link_libraries(codium-blocks-document-smoke PRIVATE ${wxWidgets_LIBRARIES
 
 add_executable(codium-blocks-vsix-smoke
     native/src/vsix_manager.cpp
+    native/src/extension_security.cpp
     tests/vsix-smoke.cpp
 )
 target_include_directories(codium-blocks-vsix-smoke PRIVATE native/include)
 target_compile_options(codium-blocks-vsix-smoke PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(codium-blocks-vsix-smoke PRIVATE ${wxWidgets_LIBRARIES})
+
+add_executable(codium-blocks-security-smoke
+    native/src/extension_security.cpp
+    native/src/extension_registry.cpp
+    tests/security-smoke.cpp
+)
+target_include_directories(codium-blocks-security-smoke PRIVATE native/include)
+target_compile_options(codium-blocks-security-smoke PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(codium-blocks-security-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
 add_executable(codium-blocks-workspace-smoke
     native/src/workspace.cpp
@@ -105,6 +117,7 @@ if(BUILD_TESTING)
     )
     add_test(NAME document-smoke COMMAND codium-blocks-document-smoke)
     add_test(NAME vsix-smoke COMMAND codium-blocks-vsix-smoke)
+    add_test(NAME security-smoke COMMAND codium-blocks-security-smoke)
     add_test(NAME workspace-smoke COMMAND codium-blocks-workspace-smoke)
     add_test(NAME task-smoke COMMAND codium-blocks-task-smoke)
     add_test(NAME transport-smoke COMMAND codium-blocks-transport-smoke ${CMAKE_SOURCE_DIR})

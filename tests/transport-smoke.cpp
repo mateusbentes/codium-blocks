@@ -85,6 +85,16 @@ int main(int argc, char** argv)
         std::cerr << "transport-smoke: DAP failed: " << error.ToStdString() << "\n";
         return 1;
     }
+    wxArrayInt breakpoints;
+    breakpoints.Add(12);
+    if (!dap.SetBreakpoints(wxS("demo.cpp"), breakpoints) || !WaitForDap(dap, wxS("\"verified\":true")) ||
+        !dap.RequestStackTrace(1) || !WaitForDap(dap, wxS("\"stackFrames\"")) ||
+        !dap.RequestScopes(7) || !WaitForDap(dap, wxS("\"variablesReference\":42")) ||
+        !dap.RequestVariables(42) || !WaitForDap(dap, wxS("\"answer\"")) ||
+        !dap.Evaluate(wxS("answer"), 7) || !WaitForDap(dap, wxS("\"result\":\"42\""))) {
+        std::cerr << "transport-smoke: DAP 0.9 requests failed\n";
+        return 1;
+    }
     dap.Stop();
 
     std::cout << "transport-smoke: ok — interactive terminal and DAP Content-Length transport\n";
