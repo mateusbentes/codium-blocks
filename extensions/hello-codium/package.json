@@ -1,0 +1,32 @@
+{
+  "name": "hello-codium",
+  "displayName": "Hello Codium::Blocks",
+  "description": "A minimal extension for validating the Electron-free Extension Host.",
+  "version": "0.1.0",
+  "publisher": "codium-blocks",
+  "license": "GPL-3.0-only",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "main": "./extension.cjs",
+  "activationEvents": [
+    "onCommand:hello.codium"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "hello.codium",
+        "title": "Codium::Blocks: Hello"
+      }
+    ],
+    "configuration": {
+      "title": "Hello Codium::Blocks",
+      "properties": {
+        "helloCodium.greeting": {
+          "type": "string",
+          "default": "Hello from Codium::Blocks"
+        }
+      }
+    }
+  }
+}

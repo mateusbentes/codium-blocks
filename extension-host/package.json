@@ -1,0 +1,11 @@
+{
+  "name": "@codium-blocks/extension-host",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "description": "Optional Codium::Blocks Extension Host; does not use Electron.",
+  "scripts": {
+    "test": "node ../tests/host-smoke.mjs"
+  }
+}

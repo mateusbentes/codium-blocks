@@ -1,0 +1,210 @@
+# -----------------------------------------------------------------------------
+# Codium::Blocks cross-platform .gitignore
+# Target platforms: Windows, macOS, Linux
+# -----------------------------------------------------------------------------
+
+# Build directories and generated CMake files
+build/
+out/
+bin/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+makefile
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+_install/
+install_manifest.txt
+
+# Native compiler and linker outputs
+*.o
+*.obj
+*.lo
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.app/
+*.pdb
+*.ilk
+*.exp
+*.def
+*.dSYM/
+*.gch
+*.pch
+*.idb
+*.ipch
+*.suo
+*.sln.docstates
+
+# C/C++ dependency and coverage files
+*.d
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+coverage/
+
+# Visual Studio / MSBuild / Windows tooling
+.vs/
+.vscode/
+*.vcxproj.user
+*.user
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.VC.opendb
+[Bb]in/
+[Oo]bj/
+Debug/
+Release/
+x64/
+ARM/
+ARM64/
+
+# Code::Blocks and other native IDE user files
+*.cbp.user
+*.workspace.user
+*.layout
+*.depend
+*.bak
+*.orig
+
+# CLion / IntelliJ / Eclipse / Qt Creator / Xcode user state
+.idea/
+*.iml
+.project
+.cproject
+.settings/
+.qmake.stash
+*.pro.user*
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Node.js / JavaScript / TypeScript
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.npm/
+.pnpm-store/
+.yarn/
+.yarn-cache/
+.yarn-integrity
+*.tsbuildinfo
+.nyc_output/
+.nyc_output/
+coverage-final.json
+
+# Local extension development and package output
+extensions-installed/
+.vsix/
+*.vsix
+*.vsixmanifest
+*.extension.vsixmanifest
+extension-host/dist/
+extension-host/out/
+extension-host/.cache/
+
+# Runtime data, logs, caches, and local settings
+*.log
+*.pid
+*.seed
+*.pid.lock
+.cache/
+.cache-*/
+tmp/
+temp/
+.tmp/
+.local/
+.local-*/
+*.local
+*.lock
+!.gitkeep
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Operating-system files: Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Operating-system files: macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100/
+.fseventsd/
+.Spotlight-V100/
+.TemporaryItems/
+.Trashes/
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Operating-system files: Linux / Unix
+*~
+.nfs*
+.directory
+.Trash-*
+.gvfs/
+core
+core.*
+vgcore.*
+
+# Archives and generated release artifacts
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+*.dmg
+*.msi
+*.deb
+*.rpm
+*.AppImage
+
+# Generated documentation and diagrams
+_site/
+docs/_build/
+docs/.cache/
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.idx
+*.ilg
+*.ind
+*.lof
+*.log
+*.lot
+*.out
+*.toc
+*.synctex.gz
+
+# Keep empty directories when intentionally committed
+!.gitkeep
