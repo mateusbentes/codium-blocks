@@ -33,16 +33,18 @@ A document with several problems must display all markers without replacing one 
 
 ## Problems view
 
-The Problems view is a dockable bottom-workbench panel. It provides filters for errors, warnings, information, hints, source, file, and current document. The header shows counts by severity. Double-clicking an entry opens its file and moves the caret to its range.
+The Problems view is a dockable bottom-workbench panel. The current native implementation provides severity and source filters, a shown-versus-total summary, and direct navigation to the selected file and range. File/current-document filters and grouped presentation remain planned refinements. Double-clicking an entry opens its file and moves the caret to its range.
 
 The view must support the following practical operations:
 
-1. Navigate to the next or previous visible problem.
-2. Show only errors and warnings.
-3. Group entries by file or by source.
+1. Navigate to the next or previous visible problem; `F8` and `Shift+F8` wrap at the ends of the filtered list.
+2. Filter by error, warning, information, hint, or all severities.
+3. Filter by diagnostic source or show all sources.
 4. Clear a build result without deleting language-server state.
-5. Re-run the originating task when the provider exposes a rerun command.
+5. Re-run the last Build or Configure task after a workspace-trust check.
 6. Preserve raw output access for every structured entry.
+
+The Build menu, the Problems toolbar, and the command palette expose the same rerun action. Its stored task includes the selected scheme arguments, so rerunning a CMake Debug/Release build does not silently fall back to another configuration.
 
 ## Build and compiler parsing
 

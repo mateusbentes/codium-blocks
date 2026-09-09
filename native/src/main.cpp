@@ -69,6 +69,9 @@ enum : int {
     ID_BUILD_PROJECT,
     ID_RUN_TASK,
     ID_STOP_TASK,
+    ID_RERUN_BUILD,
+    ID_NEXT_PROBLEM,
+    ID_PREVIOUS_PROBLEM,
     ID_TASK_PROCESS = wxID_HIGHEST + 500,
     ID_START_TERMINAL,
     ID_SEND_TERMINAL,
@@ -440,6 +443,29 @@ public:
         auto* problemsRoot = new wxBoxSizer(wxVERTICAL);
         problemSummary_ = new wxStaticText(problemsPage, wxID_ANY, wxS("No problems"));
         problemsRoot->Add(problemSummary_, 0, wxALL | wxEXPAND, 6);
+        auto* problemFilters = new wxBoxSizer(wxHORIZONTAL);
+        problemFilters->Add(new wxStaticText(problemsPage, wxID_ANY, wxS("Severity")),
+                            0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+        problemSeverityChoice_ = new wxChoice(problemsPage, wxID_ANY);
+        problemSeverityChoice_->Append(wxS("All"));
+        problemSeverityChoice_->Append(wxS("Errors"));
+        problemSeverityChoice_->Append(wxS("Warnings"));
+        problemSeverityChoice_->Append(wxS("Information"));
+        problemSeverityChoice_->Append(wxS("Hints"));
+        problemSeverityChoice_->SetSelection(0);
+        problemSeverityChoice_->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { RefreshProblems(); });
+        problemFilters->Add(problemSeverityChoice_, 0, wxRIGHT, 8);
+        problemFilters->Add(new wxStaticText(problemsPage, wxID_ANY, wxS("Source")),
+                            0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+        problemSourceChoice_ = new wxChoice(problemsPage, wxID_ANY);
+        problemSourceChoice_->Append(wxS("All sources"));
+        problemSourceChoice_->SetSelection(0);
+        problemSourceChoice_->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { RefreshProblems(); });
+        problemFilters->Add(problemSourceChoice_, 0, wxRIGHT, 8);
+        AddButton(problemFilters, wxS("Previous"), [this](wxCommandEvent&) { SelectAdjacentProblem(-1); }, problemsPage);
+        AddButton(problemFilters, wxS("Next"), [this](wxCommandEvent&) { SelectAdjacentProblem(1); }, problemsPage);
+        AddButton(problemFilters, wxS("Rerun Build"), [this](wxCommandEvent&) { RunLastBuild(); }, problemsPage);
+        problemsRoot->Add(problemFilters, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 6);
         problems_ = new wxListBox(problemsPage, wxID_ANY);
         problems_->Bind(wxEVT_LISTBOX, [this](wxCommandEvent& event) { GoToProblem(event.GetSelection()); });
         diagnostics_ = problems_;
@@ -639,8 +665,12 @@ private:
 
         auto* buildMenu = new wxMenu();
         buildMenu->Append(ID_BUILD_PROJECT, wxS("Build project"));
+        buildMenu->Append(ID_RERUN_BUILD, wxS("Rerun last build\tCtrl+Shift+B"));
         buildMenu->Append(ID_RUN_TASK, wxS("Run selected task"));
         buildMenu->Append(ID_STOP_TASK, wxS("Stop task"));
+        buildMenu->AppendSeparator();
+        buildMenu->Append(ID_PREVIOUS_PROBLEM, wxS("Previous problem\tShift+F8"));
+        buildMenu->Append(ID_NEXT_PROBLEM, wxS("Next problem\tF8"));
         menuBar->Append(buildMenu, wxS("&Build"));
 
         auto* terminalMenu = new wxMenu();
@@ -682,8 +712,11 @@ private:
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { RequestCompletion(); }, ID_COMPLETION);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StopLanguageServer(); }, ID_STOP_LSP);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { BuildProject(); }, ID_BUILD_PROJECT);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { RunLastBuild(); }, ID_RERUN_BUILD);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { RunSelectedTask(); }, ID_RUN_TASK);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StopTask(); }, ID_STOP_TASK);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { SelectAdjacentProblem(-1); }, ID_PREVIOUS_PROBLEM);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { SelectAdjacentProblem(1); }, ID_NEXT_PROBLEM);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StartTerminal(); }, ID_START_TERMINAL);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { SendTerminalInput(); }, ID_SEND_TERMINAL);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StopTerminal(); }, ID_STOP_TERMINAL);
@@ -889,15 +922,48 @@ private:
         }
     }
 
+    bool ProblemMatchesFilter(const codium::Problem& problem) const
+    {
+        const int severity = problemSeverityChoice_ ? problemSeverityChoice_->GetSelection() : 0;
+        if (severity == 1 && problem.severity != codium::ProblemSeverity::Error) return false;
+        if (severity == 2 && problem.severity != codium::ProblemSeverity::Warning) return false;
+        if (severity == 3 && problem.severity != codium::ProblemSeverity::Information) return false;
+        if (severity == 4 && problem.severity != codium::ProblemSeverity::Hint) return false;
+        if (problemSourceChoice_ && problemSourceChoice_->GetSelection() > 0 &&
+            problemSourceChoice_->GetStringSelection() != problem.source) return false;
+        return true;
+    }
+
     void RefreshProblems()
     {
         if (!problems_) return;
+        const wxString selectedSource = problemSourceChoice_ ? problemSourceChoice_->GetStringSelection()
+                                                              : wxString(wxEmptyString);
+        if (problemSourceChoice_) {
+            std::set<wxString> sources;
+            for (const auto& problem : problemStore_.Problems()) {
+                if (!problem.source.empty()) sources.insert(problem.source);
+            }
+            problemSourceChoice_->Freeze();
+            problemSourceChoice_->Clear();
+            problemSourceChoice_->Append(wxS("All sources"));
+            for (const auto& source : sources) problemSourceChoice_->Append(source);
+            if (!selectedSource.empty() && problemSourceChoice_->FindString(selectedSource) != wxNOT_FOUND) {
+                problemSourceChoice_->SetStringSelection(selectedSource);
+            } else {
+                problemSourceChoice_->SetSelection(0);
+            }
+            problemSourceChoice_->Thaw();
+        }
         problems_->Freeze();
         problems_->Clear();
         problemLocations_.clear();
         problemPaths_.clear();
+        problemIndices_.clear();
         const auto& values = problemStore_.Problems();
-        for (const auto& problem : values) {
+        for (size_t index = 0; index < values.size(); ++index) {
+            const auto& problem = values[index];
+            if (!ProblemMatchesFilter(problem)) continue;
             const wxString stale = problem.stale ? wxS(" [stale]") : wxEmptyString;
             const wxString text = wxString::Format(wxS("%s%s  %s:%d:%d  %s"),
                                                    codium::ProblemParser::SeverityName(problem.severity), stale,
@@ -905,11 +971,13 @@ private:
             problems_->Append(text);
             problemLocations_.push_back({problem.line, problem.column});
             problemPaths_.push_back(problem.path);
+            problemIndices_.push_back(index);
         }
         problems_->Thaw();
         if (problemSummary_) {
-            problemSummary_->SetLabel(wxString::Format(wxS("%zu problems  ·  %zu errors  ·  %zu warnings"),
-                                                       values.size(), problemStore_.Count(codium::ProblemSeverity::Error),
+            problemSummary_->SetLabel(wxString::Format(wxS("%zu shown / %zu problems  ·  %zu errors  ·  %zu warnings"),
+                                                       problemIndices_.size(), values.size(),
+                                                       problemStore_.Count(codium::ProblemSeverity::Error),
                                                        problemStore_.Count(codium::ProblemSeverity::Warning)));
         }
         RefreshGutters();
@@ -1131,7 +1199,7 @@ private:
         schemeStatus_->SetLabel(wxString::Format(wxS("%s · %s · %s"), selected.configuration, target, toolchain));
     }
 
-    void RunTask(const codium::ProjectTask& task)
+    void RunTask(const codium::ProjectTask& task, bool applySelectedScheme = true)
     {
         if (bottomWorkbench_) bottomWorkbench_->SetSelection(1);
         codium::ProjectTask effectiveTask = task;
@@ -1155,7 +1223,7 @@ private:
             }
             AppendLog(wxS("Code::Blocks adapter rejected the build request; falling back to the imported task."));
         }
-        if (selected && selectedToolchain == wxS("CMake")) {
+        if (applySelectedScheme && selected && selectedToolchain == wxS("CMake")) {
             if (effectiveTask.name.Contains(wxS("Configure"))) {
                 effectiveTask.arguments.Add(wxString::Format(wxS("-DCMAKE_BUILD_TYPE=%s"), selected->configuration));
             } else if (effectiveTask.name.Contains(wxS("Build"))) {
@@ -1166,6 +1234,10 @@ private:
                     effectiveTask.arguments.Add(selectedTarget);
                 }
             }
+        }
+        if (effectiveTask.name.Contains(wxS("Build")) || effectiveTask.name.Contains(wxS("Configure"))) {
+            lastBuildTask_ = effectiveTask;
+            hasLastBuildTask_ = true;
         }
         const wxString problemSource = effectiveTask.name;
         problemStore_.Clear(problemSource);
@@ -1217,6 +1289,17 @@ private:
             }
         }
         AppendLog(wxS("No build task detected in this workspace."));
+    }
+
+    void RunLastBuild()
+    {
+        if (!EnsureWorkspaceTrusted()) return;
+        if (!hasLastBuildTask_) {
+            AppendLog(wxS("No previous Build or Configure task is available."));
+            return;
+        }
+        AppendLog(wxS("Rerunning: ") + lastBuildTask_.name);
+        RunTask(lastBuildTask_, false);
     }
 
     void RunSelectedTask()
@@ -1770,14 +1853,15 @@ private:
             wxS("Open workspace"), wxS("Open file"), wxS("Save file"),
             wxS("Start clangd"), wxS("Initialize language server"),
             wxS("Request hover"), wxS("Request completion"),
-            wxS("Build project"), wxS("Run selected task"), wxS("Stop task"),
+            wxS("Build project"), wxS("Rerun last build"), wxS("Run selected task"), wxS("Stop task"),
             wxS("Start terminal"), wxS("Send terminal input"), wxS("Stop terminal"), wxS("Select shell"),
             wxS("Start debug adapter"), wxS("Initialize debug"), wxS("Continue debug"),
             wxS("Launch debug program"), wxS("Pause debug"), wxS("Stop debug"),
             wxS("Start Extension Host"), wxS("Load demo extension"),
             wxS("Run hello.codium"), wxS("Stop language server"),
             wxS("Install VSIX"), wxS("List installed extensions"), wxS("Discover Code::Blocks SDK"),
-            wxS("Start Code::Blocks adapter"), wxS("Stop Code::Blocks adapter")
+            wxS("Start Code::Blocks adapter"), wxS("Stop Code::Blocks adapter"),
+            wxS("Previous problem"), wxS("Next problem")
         };
         wxSingleChoiceDialog dialog(this, wxS("Select a command"), wxS("Command Palette"), commands);
         if (dialog.ShowModal() != wxID_OK) return;
@@ -1790,27 +1874,30 @@ private:
         case 5: RequestHover(); break;
         case 6: RequestCompletion(); break;
         case 7: BuildProject(); break;
-        case 8: RunSelectedTask(); break;
-        case 9: StopTask(); break;
-        case 10: StartTerminal(); break;
-        case 11: SendTerminalInput(); break;
-        case 12: StopTerminal(); break;
-        case 13: SelectShell(); break;
-        case 14: StartDebugAdapter(); break;
-        case 15: InitializeDebug(); break;
-        case 16: LaunchDebug(); break;
-        case 17: ContinueDebug(); break;
-        case 18: PauseDebug(); break;
-        case 19: StopDebug(); break;
-        case 20: StartHost(); break;
-        case 21: LoadDemo(); break;
-        case 22: ExecuteDemo(); break;
-        case 23: StopLanguageServer(); break;
-        case 24: InstallVsix(); break;
-        case 25: ListExtensions(); break;
-        case 26: DiscoverCodeBlocks(); break;
-        case 27: StartCodeBlocksAdapter(); break;
-        case 28: StopCodeBlocksAdapter(); break;
+        case 8: RunLastBuild(); break;
+        case 9: RunSelectedTask(); break;
+        case 10: StopTask(); break;
+        case 11: StartTerminal(); break;
+        case 12: SendTerminalInput(); break;
+        case 13: StopTerminal(); break;
+        case 14: SelectShell(); break;
+        case 15: StartDebugAdapter(); break;
+        case 16: InitializeDebug(); break;
+        case 17: LaunchDebug(); break;
+        case 18: ContinueDebug(); break;
+        case 19: PauseDebug(); break;
+        case 20: StopDebug(); break;
+        case 21: StartHost(); break;
+        case 22: LoadDemo(); break;
+        case 23: ExecuteDemo(); break;
+        case 24: StopLanguageServer(); break;
+        case 25: InstallVsix(); break;
+        case 26: ListExtensions(); break;
+        case 27: DiscoverCodeBlocks(); break;
+        case 28: StartCodeBlocksAdapter(); break;
+        case 29: StopCodeBlocksAdapter(); break;
+        case 30: SelectAdjacentProblem(-1); break;
+        case 31: SelectAdjacentProblem(1); break;
         default: break;
         }
     }
@@ -2307,21 +2394,41 @@ private:
 
     void GoToProblem(int index)
     {
-        if (index < 0 || index >= static_cast<int>(problemLocations_.size())) return;
+        if (index < 0 || index >= static_cast<int>(problemLocations_.size()) ||
+            index >= static_cast<int>(problemIndices_.size())) return;
+        const size_t storeIndex = problemIndices_[static_cast<size_t>(index)];
+        if (storeIndex >= problemStore_.Problems().size()) return;
+        const codium::Problem& selectedProblem = problemStore_.Problems()[storeIndex];
         if (bottomWorkbench_) bottomWorkbench_->SetSelection(0);
-        if (index < static_cast<int>(problemPaths_.size()) && !problemPaths_[static_cast<size_t>(index)].empty() &&
-            problemPaths_[static_cast<size_t>(index)] != document_.Path() &&
-            wxFileExists(problemPaths_[static_cast<size_t>(index)])) {
-            OpenDocumentPath(problemPaths_[static_cast<size_t>(index)]);
+        if (!selectedProblem.path.empty() && selectedProblem.path != document_.Path() &&
+            wxFileExists(selectedProblem.path)) {
+            OpenDocumentPath(selectedProblem.path);
         }
         if (!editor_) return;
-        const auto [line, character] = problemLocations_[static_cast<size_t>(index)];
-        const long position = editor_->XYToPosition(character, line);
+        const long position = editor_->XYToPosition(selectedProblem.column, selectedProblem.line);
         if (position != -1) {
             editor_->SetInsertionPoint(position);
             editor_->ShowPosition(position);
             editor_->SetFocus();
         }
+    }
+
+    void SelectAdjacentProblem(int direction)
+    {
+        if (!problems_ || problems_->GetCount() == 0) {
+            AppendLog(wxS("No visible problems match the current filters."));
+            return;
+        }
+        int selection = problems_->GetSelection();
+        if (selection == wxNOT_FOUND) {
+            selection = direction < 0 ? static_cast<int>(problems_->GetCount()) - 1 : 0;
+        } else {
+            selection += direction;
+            if (selection < 0) selection = static_cast<int>(problems_->GetCount()) - 1;
+            if (selection >= static_cast<int>(problems_->GetCount())) selection = 0;
+        }
+        problems_->SetSelection(selection);
+        GoToProblem(selection);
     }
 
     void ShowDebugMessage(const wxString& line)
@@ -2574,6 +2681,8 @@ private:
     wxListBox* diagnostics_ = nullptr;
     wxListBox* problems_ = nullptr;
     wxStaticText* problemSummary_ = nullptr;
+    wxChoice* problemSeverityChoice_ = nullptr;
+    wxChoice* problemSourceChoice_ = nullptr;
     wxTextCtrl* buildOutput_ = nullptr;
     wxTextCtrl* debugConsole_ = nullptr;
     wxTextCtrl* hover_ = nullptr;
@@ -2599,6 +2708,9 @@ private:
     codium::SourceMapper sourceMapper_;
     wxArrayString watchExpressions_;
     std::vector<DebugFrameLocation> debugFrameLocations_;
+    std::vector<size_t> problemIndices_;
+    codium::ProjectTask lastBuildTask_;
+    bool hasLastBuildTask_ = false;
 
     wxDECLARE_EVENT_TABLE();
 };

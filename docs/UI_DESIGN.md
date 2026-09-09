@@ -34,7 +34,7 @@ Color must not be the only indicator of state. Errors, warnings, notes, breakpoi
 
 Warnings and errors must appear directly in the source editor, not only in a separate panel. The diagnostics pipeline merges messages from language servers, compiler output, task output, and debug adapters into one normalized problem model.
 
-Each problem has a source, severity, message, file, line, column, optional range, optional code, and optional related information. The editor renders a severity-specific underline, a gutter marker, and a hover tooltip. Selecting a marker opens the complete message and exposes navigation to related locations. The Problems panel remains the authoritative list and provides filtering by source, severity, file, and active document.
+Each problem has a source, severity, message, file, line, column, optional range, optional code, and optional related information. The editor renders a severity-specific underline, a gutter marker, and a hover tooltip. Selecting a marker opens the complete message and exposes navigation to related locations. The Problems panel remains the authoritative list and currently provides filtering by source and severity; file and active-document filters remain planned refinements.
 
 The editor must distinguish the following states:
 
@@ -55,7 +55,7 @@ The editor must provide a lightweight inline summary at the end of a line when t
 
 The scheme bar must expose the active configuration, target, and toolchain. The first-class actions are **Build**, **Run**, **Test**, **Clean**, **Build and Run**, and **Debug**. These actions use the existing task model and must work with CMake, Make, Cargo, npm-based projects, and explicit user tasks.
 
-Build output must be retained as a structured session. The Build panel should provide raw output, a problem summary, elapsed time, exit status, and a rerun action. The terminal remains available for interactive commands, while the Build panel is optimized for repeatable tasks and navigation.
+Build output must be retained as a structured session. The Build panel provides raw output, a problem summary, elapsed time, exit status, and a rerun action. The current implementation preserves the last Build or Configure task with its selected scheme arguments and exposes rerun from the Build menu, Problems panel, command palette, and `Ctrl+Shift+B`. The terminal remains available for interactive commands, while the Build panel is optimized for repeatable tasks and navigation.
 
 The terminal and Build panel must recognize common compiler formats, including GCC/Clang, MSVC, Rust, and language-server diagnostics. Parsing must be conservative: when a line cannot be identified reliably, it remains raw output and is never presented as a false error.
 
@@ -80,8 +80,8 @@ The interface must be keyboard-first without requiring the user to memorize hidd
 | Go to file | Search workspace-relative files and open the selected result |
 | Go to symbol | Search symbols supplied by the language server or project index |
 | Go to line | Move to a line and column in the active document |
-| Next problem | Move to the next visible error or warning across the workspace |
-| Previous problem | Move to the previous visible error or warning |
+| Next problem | Move to the next visible filtered problem across the workspace (`F8`, wrapping at the end) |
+| Previous problem | Move to the previous visible filtered problem (`Shift+F8`, wrapping at the beginning) |
 | Toggle problem panel | Focus or collapse the Problems view |
 | Command palette | Search all visible commands and show their shortcuts |
 | Build and run | Build the active scheme and launch it when the build succeeds |

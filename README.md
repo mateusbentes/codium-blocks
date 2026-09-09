@@ -10,7 +10,7 @@ Every push to `main` and every pull request is checked by GitHub Actions on all 
 
 ## Current status
 
-The current `1.0.0` development increment builds on the completed `0.9.0` baseline and provides:
+The current `1.0.1` development increment builds on the completed `0.9.0` baseline and provides:
 
 - a native C++/wxWidgets window;
 - no Electron dependency or linkage;
@@ -94,6 +94,8 @@ The current `1.0.0` development increment builds on the completed `0.9.0` baseli
 - Problems, Build, Terminal, Debug, and Output workbench pages;
 - a normalized problem model for GCC/Clang, MSVC, LSP, Build, and ANSI terminal diagnostics;
 - severity-aware problem summaries, stale-result state, clickable problem navigation, and inline editor underlines;
+- Problems filters by severity and source, circular next/previous problem navigation, and keyboard shortcuts (`F8` and `Shift+F8`);
+- a rerun action for the last Build or Configure task, available from the Build menu, Problems panel, command palette, and `Ctrl+Shift+B`;
 - a native status bar showing the active document, workspace trust, language, line, and column;
 - a native Code::Blocks SDK bridge that discovers headers, plugin directories, native libraries, and XML manifests without blindly loading foreign plugin code;
 - a native `.cbp` importer that exposes Code::Blocks build targets in the scheme bar and task list;

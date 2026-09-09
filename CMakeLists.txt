@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CodiumBlocks VERSION 1.0.0 LANGUAGES CXX)
+project(CodiumBlocks VERSION 1.0.1 LANGUAGES CXX)
 
 option(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_SDK "Expose an optional Code::Blocks SDK include root to the native target" OFF)
 set(CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT "" CACHE PATH "Code::Blocks SDK installation or source root")
