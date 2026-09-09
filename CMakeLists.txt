@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CodiumBlocks VERSION 0.4.0 LANGUAGES CXX)
+project(CodiumBlocks VERSION 0.5.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,6 +13,7 @@ add_executable(codium-blocks
     native/src/main.cpp
     native/src/extension_host_client.cpp
     native/src/vsix_manager.cpp
+    native/src/workspace.cpp
 )
 
 target_include_directories(codium-blocks PRIVATE native/include)
@@ -39,6 +40,14 @@ target_include_directories(codium-blocks-vsix-smoke PRIVATE native/include)
 target_compile_options(codium-blocks-vsix-smoke PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(codium-blocks-vsix-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
+add_executable(codium-blocks-workspace-smoke
+    native/src/workspace.cpp
+    tests/workspace-smoke.cpp
+)
+target_include_directories(codium-blocks-workspace-smoke PRIVATE native/include)
+target_compile_options(codium-blocks-workspace-smoke PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(codium-blocks-workspace-smoke PRIVATE ${wxWidgets_LIBRARIES})
+
 install(TARGETS codium-blocks RUNTIME DESTINATION bin)
 install(DIRECTORY extension-host DESTINATION share/codium-blocks)
 install(DIRECTORY extensions DESTINATION share/codium-blocks)
@@ -55,6 +64,7 @@ if(BUILD_TESTING)
     )
     add_test(NAME document-smoke COMMAND codium-blocks-document-smoke)
     add_test(NAME vsix-smoke COMMAND codium-blocks-vsix-smoke)
+    add_test(NAME workspace-smoke COMMAND codium-blocks-workspace-smoke)
 endif()
 
 message(STATUS "Codium::Blocks ${PROJECT_VERSION}: native wxWidgets core + optional Node.js extension host")

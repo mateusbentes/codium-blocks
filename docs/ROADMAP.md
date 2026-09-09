@@ -16,9 +16,9 @@ The `0.3.0` increment adds the `initialize`/`initialized` handshake, document op
 
 The `0.4.0` increment adds File, Language, and Extensions menus, keyboard shortcuts, a diagnostics panel, a hover/result panel, a native completion list, and language identification for common programming languages. LSP data is now visible in the native UI instead of only being written to the log.
 
-## Release 0.5 — declarative UI and project workspaces
+## Release 0.5 — project workspaces and command palette
 
-Implement `contributes.commands`, `menus`, `keybindings`, `configuration`, `languages`, `snippets`, and `themes` as first-class native models. Add project workspaces, a file tree, multiple documents, and a command palette. Validate the manifest in C++ before activation and map contributions to menus, settings, and the editor.
+The `0.5.0` increment adds native workspace folder opening, recursive file discovery with generated/dependency filtering, a file tree, multiple document tabs, independent buffers, workspace-relative paths, and a native command palette. The next increment will add project configuration, file watching, and richer declarative contributions.
 
 ## Release 0.6 — build and debugging
 

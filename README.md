@@ -10,7 +10,7 @@ Every push to `main` and every pull request is checked by GitHub Actions on all 
 
 ## Current status
 
-The current `0.4.0` increment provides:
+The current `0.5.0` increment provides:
 
 - a native C++/wxWidgets window;
 - no Electron dependency or linkage;
@@ -40,8 +40,13 @@ The current `0.4.0` increment provides:
 - a hover/language-server result panel;
 - a native completion-items list;
 - language identification for C/C++, Python, Rust, Go, Java, JavaScript, TypeScript, JSON, HTML, CSS, Markdown, YAML, and CMake.
+- native workspace folder opening;
+- recursive file tree with generated and dependency directories filtered;
+- multiple document tabs;
+- a native command palette;
+- workspace-relative paths and independent document buffers.
 
-This is not full VS Code compatibility. The implementation is deliberately layered and must still add clickable diagnostic locations, richer completion/hover interaction, project workspaces, Tree Views, tasks, terminal support, and DAP.
+This is not full VS Code compatibility. The implementation is deliberately layered and must still add clickable diagnostic locations, richer completion/hover interaction, project configuration, Tree Views, tasks, terminal support, and DAP.
 
 ## Architecture
 

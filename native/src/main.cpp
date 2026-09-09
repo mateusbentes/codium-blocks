@@ -1,23 +1,30 @@
 #include "codium/document.hpp"
 #include "codium/extension_host_client.hpp"
 #include "codium/vsix_manager.hpp"
+#include "codium/workspace.hpp"
 
 #include <wx/button.h>
+#include <wx/choicdlg.h>
 #include <wx/dir.h>
+#include <wx/dirdlg.h>
 #include <wx/filedlg.h>
 #include <wx/filename.h>
 #include <wx/frame.h>
 #include <wx/listbox.h>
 #include <wx/menu.h>
+#include <wx/notebook.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
 #include <wx/stdpaths.h>
 #include <wx/textctrl.h>
 #include <wx/timer.h>
+#include <wx/treectrl.h>
 #include <wx/wx.h>
 
 #include <algorithm>
+#include <map>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -32,6 +39,8 @@ enum : int {
     ID_RUN_DEMO,
     ID_INSTALL_VSIX,
     ID_LIST_EXTENSIONS,
+    ID_OPEN_WORKSPACE,
+    ID_COMMAND_PALETTE,
 };
 
 wxString ParentDirectory(wxString path)
@@ -107,6 +116,19 @@ wxString LanguageIdForPath(const wxString& path)
     return wxS("plaintext");
 }
 
+class FileTreeData final : public wxTreeItemData {
+public:
+    explicit FileTreeData(wxString path)
+        : path_(std::move(path))
+    {
+    }
+
+    const wxString& Path() const { return path_; }
+
+private:
+    wxString path_;
+};
+
 class MainFrame final : public wxFrame {
 public:
     MainFrame()
@@ -123,6 +145,15 @@ public:
             wxS("Native C++/wxWidgets IDE — optional Node.js Extension Host — no Electron"));
         title->SetFont(title->GetFont().Bold());
         root->Add(title, 0, wxALL | wxEXPAND, 10);
+
+        auto* workspaceControls = new wxBoxSizer(wxHORIZONTAL);
+        AddButton(workspaceControls, wxS("Open workspace"), [this](wxCommandEvent&) { OpenWorkspace(); });
+        root->Add(workspaceControls, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
+
+        fileTree_ = new wxTreeCtrl(this, wxID_ANY, wxDefaultPosition, wxSize(-1, 150),
+                                   wxTR_DEFAULT_STYLE | wxTR_SINGLE);
+        fileTree_->Bind(wxEVT_TREE_ITEM_ACTIVATED, [this](wxTreeEvent& event) { OpenTreeItem(event); });
+        root->Add(fileTree_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
 
         auto* fileControls = new wxBoxSizer(wxHORIZONTAL);
         AddButton(fileControls, wxS("Open file"), [this](wxCommandEvent&) { OpenFile(); });
@@ -143,18 +174,20 @@ public:
         AddButton(extensionControls, wxS("List extensions"), [this](wxCommandEvent&) { ListExtensions(); });
         root->Add(extensionControls, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
 
-        editor_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
+        notebook_ = new wxNotebook(this, wxID_ANY);
+        editor_ = new wxTextCtrl(notebook_, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
                                  wxTE_MULTILINE | wxTE_RICH2 | wxHSCROLL);
         editor_->SetFont(wxFont(11, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
-        editor_->Bind(wxEVT_TEXT, [this](wxCommandEvent&) {
-            if (!loadingDocument_) {
-                document_.SetText(editor_->GetValue());
-                ++documentVersion_;
-                NotifyLanguageDocumentChanged();
-                UpdateTitle();
-            }
+        editor_->Bind(wxEVT_TEXT, [this](wxCommandEvent& event) {
+            OnEditorChanged(static_cast<wxTextCtrl*>(event.GetEventObject()));
         });
-        root->Add(editor_, 1, wxLEFT | wxRIGHT | wxEXPAND, 10);
+        notebook_->AddPage(editor_, wxS("Untitled"), true);
+        tabPaths_.push_back(wxEmptyString);
+        notebook_->Bind(wxEVT_NOTEBOOK_PAGE_CHANGED, [this](wxBookCtrlEvent& event) {
+            SwitchToTab(static_cast<size_t>(event.GetSelection()));
+            event.Skip();
+        });
+        root->Add(notebook_, 1, wxLEFT | wxRIGHT | wxEXPAND, 10);
 
         auto* diagnosticsLabel = new wxStaticText(this, wxID_ANY, wxS("Diagnostics"));
         root->Add(diagnosticsLabel, 0, wxLEFT | wxRIGHT | wxTOP, 10);
@@ -189,6 +222,10 @@ private:
         auto* menuBar = new wxMenuBar();
 
         auto* fileMenu = new wxMenu();
+        fileMenu->Append(ID_COMMAND_PALETTE, wxS("Command Palette...\tCtrl+Shift+P"));
+        fileMenu->AppendSeparator();
+        fileMenu->Append(ID_OPEN_WORKSPACE, wxS("Open workspace..."));
+        fileMenu->AppendSeparator();
         fileMenu->Append(wxID_OPEN, wxS("Open file\tCtrl+O"));
         fileMenu->Append(wxID_SAVE, wxS("Save file\tCtrl+S"));
         fileMenu->AppendSeparator();
@@ -213,6 +250,8 @@ private:
 
         SetMenuBar(menuBar);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { OpenFile(); }, wxID_OPEN);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { ShowCommandPalette(); }, ID_COMMAND_PALETTE);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { OpenWorkspace(); }, ID_OPEN_WORKSPACE);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { SaveFile(); }, wxID_SAVE);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { Close(true); }, wxID_EXIT);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StartLanguageServer(); }, ID_START_CLANGD);
@@ -260,22 +299,161 @@ private:
             return;
         }
 
+        OpenDocumentPath(dialog.GetPath());
+    }
+
+    void OpenWorkspace()
+    {
+        wxDirDialog dialog(this, wxS("Choose a workspace directory"), wxEmptyString,
+                           wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
+        if (dialog.ShowModal() != wxID_OK) return;
+
+        wxString error;
+        if (!workspace_.Open(dialog.GetPath(), &error)) {
+            AppendLog(wxS("Error: ") + error);
+            return;
+        }
+        PopulateFileTree();
+        SetTitle(wxString::Format(wxS("%s — Codium::Blocks %s"), workspace_.RootPath(), CODIUM_BLOCKS_VERSION));
+        AppendLog(wxS("Workspace opened: ") + workspace_.RootPath());
+    }
+
+    void ShowCommandPalette()
+    {
+        const wxArrayString commands = {
+            wxS("Open workspace"), wxS("Open file"), wxS("Save file"),
+            wxS("Start clangd"), wxS("Initialize language server"),
+            wxS("Request hover"), wxS("Request completion"),
+            wxS("Start Extension Host"), wxS("Load demo extension"),
+            wxS("Run hello.codium"), wxS("Stop language server"),
+            wxS("Install VSIX"), wxS("List installed extensions")
+        };
+        wxSingleChoiceDialog dialog(this, wxS("Select a command"), wxS("Command Palette"), commands);
+        if (dialog.ShowModal() != wxID_OK) return;
+        switch (dialog.GetSelection()) {
+        case 0: OpenWorkspace(); break;
+        case 1: OpenFile(); break;
+        case 2: SaveFile(); break;
+        case 3: StartLanguageServer(); break;
+        case 4: InitializeLanguageServer(); break;
+        case 5: RequestHover(); break;
+        case 6: RequestCompletion(); break;
+        case 7: StartHost(); break;
+        case 8: LoadDemo(); break;
+        case 9: ExecuteDemo(); break;
+        case 10: StopLanguageServer(); break;
+        case 11: InstallVsix(); break;
+        case 12: ListExtensions(); break;
+        default: break;
+        }
+    }
+
+    void PopulateFileTree()
+    {
+        fileTree_->DeleteAllItems();
+        if (!workspace_.IsOpen()) return;
+        const wxTreeItemId root = fileTree_->AddRoot(wxFileName(workspace_.RootPath()).GetFullName());
+        for (const auto& absolute : workspace_.Files()) {
+            wxTreeItemId parent = root;
+            wxString relative = workspace_.RelativePath(absolute);
+            relative.Replace(wxS("\\"), wxS("/"));
+            wxArrayString parts = wxSplit(relative, wxChar('/'));
+            wxString accumulated;
+            for (size_t i = 0; i < parts.GetCount(); ++i) {
+                if (!accumulated.empty()) accumulated += wxFILE_SEP_PATH;
+                accumulated += parts[i];
+                wxTreeItemId child;
+                wxTreeItemIdValue cookie;
+                bool found = false;
+                if (fileTree_->ItemHasChildren(parent)) {
+                    child = fileTree_->GetFirstChild(parent, cookie);
+                    while (child.IsOk()) {
+                        if (fileTree_->GetItemText(child) == parts[i]) { found = true; break; }
+                        child = fileTree_->GetNextChild(parent, cookie);
+                    }
+                }
+                if (!found) child = fileTree_->AppendItem(parent, parts[i]);
+                parent = child;
+            }
+            fileTree_->SetItemData(parent, new FileTreeData(absolute));
+        }
+        fileTree_->Expand(root);
+    }
+
+    void OpenTreeItem(wxTreeEvent& event)
+    {
+        auto* data = dynamic_cast<FileTreeData*>(fileTree_->GetItemData(event.GetItem()));
+        if (data) OpenDocumentPath(data->Path());
+    }
+
+    void OpenDocumentPath(const wxString& path)
+    {
+        for (size_t i = 0; i < tabPaths_.size(); ++i) {
+            if (tabPaths_[i] == path && !path.empty()) {
+                notebook_->SetSelection(static_cast<int>(i));
+                SwitchToTab(i);
+                return;
+            }
+        }
+
         codium::Document loaded;
         wxString error;
-        if (!loaded.Load(dialog.GetPath(), &error)) {
+        if (!loaded.Load(path, &error)) {
             AppendLog(wxS("Error: ") + error);
             return;
         }
 
-        loadingDocument_ = true;
-        document_ = std::move(loaded);
-        languageId_ = LanguageIdForPath(document_.Path());
-        editor_->SetValue(document_.Text());
-        documentVersion_ = 1;
-        loadingDocument_ = false;
-        UpdateTitle();
-        AppendLog(wxS("Opened: ") + document_.Path());
+        auto* page = new wxTextCtrl(notebook_, wxID_ANY, loaded.Text(), wxDefaultPosition, wxDefaultSize,
+                                    wxTE_MULTILINE | wxTE_RICH2 | wxHSCROLL);
+        page->SetFont(wxFont(11, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+        page->Bind(wxEVT_TEXT, [this](wxCommandEvent& event) {
+            OnEditorChanged(static_cast<wxTextCtrl*>(event.GetEventObject()));
+        });
+        documents_[path] = loaded;
+        tabPaths_.push_back(path);
+        notebook_->AddPage(page, wxFileName(path).GetFullName(), true);
+        SwitchToTab(tabPaths_.size() - 1);
+        AppendLog(wxS("Opened: ") + path);
         NotifyLanguageDocumentOpened();
+    }
+
+    void OnEditorChanged(wxTextCtrl* source)
+    {
+        if (loadingDocument_ || !source) return;
+        const int pageIndex = notebook_->FindPage(source);
+        if (pageIndex == wxNOT_FOUND || pageIndex >= static_cast<int>(tabPaths_.size())) return;
+        const wxString path = tabPaths_[pageIndex];
+        if (path.empty()) {
+            document_.SetText(source->GetValue());
+        } else {
+            documents_[path].SetText(source->GetValue());
+            if (source == editor_) document_ = documents_[path];
+        }
+        if (source == editor_) {
+            ++documentVersion_;
+            NotifyLanguageDocumentChanged();
+            UpdateTitle();
+        }
+    }
+
+    void SwitchToTab(size_t index)
+    {
+        if (index >= tabPaths_.size()) return;
+        if (editor_) {
+            const int previous = notebook_->FindPage(editor_);
+            if (previous != wxNOT_FOUND && previous < static_cast<int>(tabPaths_.size()) && !tabPaths_[previous].empty()) {
+                documents_[tabPaths_[previous]].SetText(editor_->GetValue());
+            }
+        }
+        editor_ = dynamic_cast<wxTextCtrl*>(notebook_->GetPage(static_cast<int>(index)));
+        if (!tabPaths_[index].empty()) {
+            document_ = documents_[tabPaths_[index]];
+        } else {
+            document_ = codium::Document();
+            documentVersion_ = 1;
+        }
+        languageId_ = document_.IsUntitled() ? wxS("plaintext") : LanguageIdForPath(document_.Path());
+        UpdateTitle();
     }
 
     void SaveFile()
@@ -288,6 +466,12 @@ private:
             }
             document_ = codium::Document(dialog.GetPath());
             languageId_ = LanguageIdForPath(document_.Path());
+            const int pageIndex = notebook_->GetSelection();
+            if (pageIndex != wxNOT_FOUND && pageIndex < static_cast<int>(tabPaths_.size())) {
+                tabPaths_[pageIndex] = document_.Path();
+                documents_[document_.Path()] = document_;
+                notebook_->SetPageText(pageIndex, wxFileName(document_.Path()).GetFullName());
+            }
         }
 
         document_.SetText(editor_->GetValue());
@@ -555,9 +739,14 @@ private:
     }
 
     wxString projectRoot_;
+    codium::Workspace workspace_;
     codium::ExtensionHostClient host_;
     codium::VsixManager extensions_;
     codium::Document document_;
+    std::map<wxString, codium::Document> documents_;
+    std::vector<wxString> tabPaths_;
+    wxTreeCtrl* fileTree_ = nullptr;
+    wxNotebook* notebook_ = nullptr;
     wxBoxSizer* extensionControls_ = nullptr;
     wxTextCtrl* editor_ = nullptr;
     wxListBox* diagnostics_ = nullptr;
