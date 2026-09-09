@@ -6,6 +6,9 @@
 #include "codium/terminal_screen.hpp"
 #include "codium/terminal_profile.hpp"
 #include "codium/dap_client.hpp"
+#include "codium/debug_model.hpp"
+#include "codium/native_contributions.hpp"
+#include "codium/extension_registry.hpp"
 #include "codium/vsix_manager.hpp"
 #include "codium/workspace.hpp"
 
@@ -141,6 +144,42 @@ int JsonIntField(const wxString& line, const wxString& field, int fallback = 0)
     return found ? sign * value : fallback;
 }
 
+std::vector<int> JsonIntFields(const wxString& line, const wxString& field)
+{
+    std::vector<int> values;
+    const wxString marker = wxString::Format(wxS("\"%s\":"), field);
+    int searchFrom = 0;
+    while (searchFrom < static_cast<int>(line.length())) {
+        const int relativeStart = line.Mid(searchFrom).Find(marker);
+        if (relativeStart == wxNOT_FOUND) break;
+        int index = searchFrom + relativeStart + static_cast<int>(marker.length());
+        while (index < static_cast<int>(line.length()) && (line[index] == wxChar(' ') || line[index] == wxChar('\t'))) ++index;
+        int value = 0;
+        bool found = false;
+        while (index < static_cast<int>(line.length()) && line[index] >= wxChar('0') && line[index] <= wxChar('9')) {
+            value = value * 10 + static_cast<int>(line[index] - wxChar('0'));
+            found = true;
+            ++index;
+        }
+        if (found) values.push_back(value);
+        searchFrom = index + 1;
+    }
+    return values;
+}
+
+wxString JsonEscape(const wxString& value)
+{
+    wxString result;
+    for (const auto character : value) {
+        if (character == wxChar('\\')) result += wxS("\\\\");
+        else if (character == wxChar('"')) result += wxS("\\\"");
+        else if (character == wxChar('\n')) result += wxS("\\n");
+        else if (character == wxChar('\r')) result += wxS("\\r");
+        else result += character;
+    }
+    return result;
+}
+
 wxArrayString JsonStringFields(const wxString& line, const wxString& field)
 {
     wxArrayString values;
@@ -207,6 +246,13 @@ private:
     wxString path_;
 };
 
+struct DebugFrameLocation final {
+    int id = 0;
+    int line = 0;
+    int character = 0;
+    wxString path;
+};
+
 class MainFrame final : public wxFrame {
 public:
     MainFrame()
@@ -223,6 +269,9 @@ public:
           timer_(this)
     {
         BuildMenuBar();
+        treeRegistry_.Register(wxS("workspace"), wxS("Workspace"));
+        customEditors_.Register(wxS("json"), wxS("JSON text editor"));
+        customEditors_.Register(wxS("md"), wxS("Markdown text editor"));
         terminalProfile_ = codium::TerminalProfileStore::Load();
         if (!terminalProfile_.shell.empty()) terminalShell_ = terminalProfile_.shell;
         terminalColumns_ = std::max(20, terminalProfile_.columns);
@@ -240,12 +289,24 @@ public:
         AddButton(workspaceControls, wxS("Build project"), [this](wxCommandEvent&) { BuildProject(); });
         AddButton(workspaceControls, wxS("Run task"), [this](wxCommandEvent&) { RunSelectedTask(); });
         AddButton(workspaceControls, wxS("Stop task"), [this](wxCommandEvent&) { StopTask(); });
+        AddButton(workspaceControls, wxS("Refresh SCM"), [this](wxCommandEvent&) { RefreshScm(); });
         root->Add(workspaceControls, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
 
         fileTree_ = new wxTreeCtrl(this, wxID_ANY, wxDefaultPosition, wxSize(-1, 150),
                                    wxTR_DEFAULT_STYLE | wxTR_SINGLE);
         fileTree_->Bind(wxEVT_TREE_ITEM_ACTIVATED, [this](wxTreeEvent& event) { OpenTreeItem(event); });
         root->Add(fileTree_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
+
+        root->Add(new wxStaticText(this, wxID_ANY, wxS("Tree Views")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
+        treeViewsList_ = new wxListBox(this, wxID_ANY);
+        root->Add(treeViewsList_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
+        root->Add(new wxStaticText(this, wxID_ANY, wxS("Source Control")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
+        scm_ = new wxListBox(this, wxID_ANY);
+        root->Add(scm_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
+        root->Add(new wxStaticText(this, wxID_ANY, wxS("Custom editors")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
+        customEditorsView_ = new wxListBox(this, wxID_ANY);
+        for (const auto& entry : customEditors_.Entries()) customEditorsView_->Append(entry);
+        root->Add(customEditorsView_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
 
         taskList_ = new wxListBox(this, wxID_ANY, wxDefaultPosition, wxSize(-1, 60));
         root->Add(taskList_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
@@ -314,6 +375,8 @@ public:
         AddButton(debugControls, wxS("Threads"), [this](wxCommandEvent&) { RequestDebugThreads(); });
         AddButton(debugControls, wxS("Stack trace"), [this](wxCommandEvent&) { RequestStackTrace(); });
         AddButton(debugControls, wxS("Evaluate"), [this](wxCommandEvent&) { EvaluateDebugExpression(); });
+        AddButton(debugControls, wxS("Add watch"), [this](wxCommandEvent&) { AddWatch(); });
+        AddButton(debugControls, wxS("Source map"), [this](wxCommandEvent&) { ConfigureSourceMap(); });
         AddButton(debugControls, wxS("Continue"), [this](wxCommandEvent&) { ContinueDebug(); });
         AddButton(debugControls, wxS("Pause"), [this](wxCommandEvent&) { PauseDebug(); });
         AddButton(debugControls, wxS("Stop debug"), [this](wxCommandEvent&) { StopDebug(); });
@@ -327,10 +390,17 @@ public:
         root->Add(debugThreads_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
         root->Add(new wxStaticText(this, wxID_ANY, wxS("Call stack")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
         callStack_ = new wxListBox(this, wxID_ANY);
+        callStack_->Bind(wxEVT_LISTBOX, [this](wxCommandEvent& event) { GoToStackFrame(event.GetSelection()); });
         root->Add(callStack_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
         root->Add(new wxStaticText(this, wxID_ANY, wxS("Variables / evaluate")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
         variables_ = new wxListBox(this, wxID_ANY);
         root->Add(variables_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
+        root->Add(new wxStaticText(this, wxID_ANY, wxS("Watches")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
+        watches_ = new wxListBox(this, wxID_ANY);
+        root->Add(watches_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
+        root->Add(new wxStaticText(this, wxID_ANY, wxS("Adapter capabilities")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
+        debugCapabilities_ = new wxListBox(this, wxID_ANY);
+        root->Add(debugCapabilities_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
         debugConsole_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(-1, 70),
                                        wxTE_MULTILINE | wxTE_READONLY | wxHSCROLL);
         root->Add(debugConsole_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
@@ -352,6 +422,7 @@ public:
         AddButton(extensionControls, wxS("Run hello.codium"), [this](wxCommandEvent&) { ExecuteDemo(); });
         AddButton(extensionControls, wxS("Install VSIX"), [this](wxCommandEvent&) { InstallVsix(); });
         AddButton(extensionControls, wxS("List extensions"), [this](wxCommandEvent&) { ListExtensions(); });
+        AddButton(extensionControls, wxS("Search Open VSX"), [this](wxCommandEvent&) { SearchOpenVsx(); });
         root->Add(extensionControls, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
 
         notebook_ = new wxNotebook(this, wxID_ANY);
@@ -652,10 +723,43 @@ private:
             if (answer == wxYES && workspace_.SetTrusted(true, &error)) AppendLog(wxS("Workspace trusted."));
             else AppendLog(wxS("Workspace is untrusted; execution features remain restricted."));
         }
+        watchExpressions_ = codium::WatchStore::Load(workspace_.RootPath());
+        RefreshWatchView();
         PopulateFileTree();
+        RefreshNativeContributions();
         LoadProjectConfig();
         SetTitle(wxString::Format(wxS("%s — Codium::Blocks %s"), workspace_.RootPath(), CODIUM_BLOCKS_VERSION));
         AppendLog(wxS("Workspace opened: ") + workspace_.RootPath());
+    }
+
+    void RefreshNativeContributions()
+    {
+        if (treeViewsList_) {
+            treeViewsList_->Clear();
+            for (const auto& title : treeRegistry_.ViewTitles()) treeViewsList_->Append(title);
+        }
+        if (workspace_.IsOpen()) {
+            wxArrayString labels;
+            for (const auto& path : workspace_.Files()) labels.Add(workspace_.RelativePath(path));
+            treeRegistry_.SetItems(wxS("workspace"), labels);
+        }
+        RefreshScm();
+    }
+
+    void RefreshScm()
+    {
+        if (!scm_) return;
+        scm_->Clear();
+        if (!workspace_.IsOpen()) {
+            scm_->Append(wxS("Open a workspace to inspect source control."));
+            return;
+        }
+        wxString error;
+        if (!scmModel_.Refresh(workspace_.RootPath(), &error)) {
+            scm_->Append(error);
+            return;
+        }
+        for (const auto& resource : scmModel_.Resources()) scm_->Append(resource);
     }
 
     void LoadProjectConfig()
@@ -1115,12 +1219,17 @@ private:
         wxFileDialog dialog(this, wxS("Choose a program to debug"), wxEmptyString, wxEmptyString,
                             wxS("Executable files (*.*)|*.*"), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
         if (dialog.ShowModal() != wxID_OK) return;
-        wxString program = dialog.GetPath();
-        program.Replace(wxS("\\"), wxS("/"));
-        program.Replace(wxS("\""), wxS("\\\""));
-        if (dap_.SendRequest(wxS("launch"), wxString::Format(wxS("{\"program\":\"%s\",\"cwd\":\"%s\"}"),
-                                                               program, WorkspaceDirectory()))) {
+        const wxString program = dialog.GetPath();
+        wxString launchArguments = wxString::Format(wxS("{\"program\":\"%s\",\"cwd\":\"%s\",\"sourceFileMap\":%s}"),
+                                                    JsonEscape(program), JsonEscape(WorkspaceDirectory()), SourceMapArguments());
+        if (dap_.SendRequest(wxS("launch"), launchArguments)) {
             AppendLog(wxS("DAP launch request sent."));
+            if (!document_.IsUntitled()) {
+                const auto found = breakpointLines_.find(document_.Path());
+                wxArrayInt lines;
+                if (found != breakpointLines_.end()) for (const int line : found->second) lines.Add(line);
+                dap_.SetBreakpoints(document_.Path(), lines);
+            }
         }
     }
 
@@ -1180,6 +1289,41 @@ private:
         wxTextEntryDialog dialog(this, wxS("Expression to evaluate"), wxS("Debug evaluate"), wxEmptyString);
         if (dialog.ShowModal() != wxID_OK || dialog.GetValue().empty()) return;
         if (dap_.Evaluate(dialog.GetValue(), debugFrameId_)) AppendLog(wxS("DAP evaluate request sent."));
+    }
+
+    void RefreshWatchView()
+    {
+        if (!watches_) return;
+        watches_->Clear();
+        for (const auto& expression : watchExpressions_) watches_->Append(expression);
+    }
+
+    void AddWatch()
+    {
+        wxTextEntryDialog dialog(this, wxS("Expression to watch"), wxS("Add watch"), wxEmptyString);
+        if (dialog.ShowModal() != wxID_OK || dialog.GetValue().empty()) return;
+        if (watchExpressions_.Index(dialog.GetValue()) == wxNOT_FOUND) watchExpressions_.Add(dialog.GetValue());
+        RefreshWatchView();
+        wxString error;
+        if (workspace_.IsOpen() && !codium::WatchStore::Save(workspace_.RootPath(), watchExpressions_, &error)) AppendLog(error);
+        if (dap_.IsRunning()) {
+            if (dap_.Evaluate(dialog.GetValue(), debugFrameId_)) AppendLog(wxS("DAP watch evaluate request sent."));
+        }
+    }
+
+    void ConfigureSourceMap()
+    {
+        wxTextEntryDialog remote(this, wxS("Remote source root"), wxS("Source mapping"), wxEmptyString);
+        if (remote.ShowModal() != wxID_OK || remote.GetValue().empty()) return;
+        wxTextEntryDialog local(this, wxS("Local source root"), wxS("Source mapping"), WorkspaceDirectory());
+        if (local.ShowModal() != wxID_OK || local.GetValue().empty()) return;
+        sourceMapper_.Add(remote.GetValue(), local.GetValue());
+        AppendLog(wxS("Source mapping added: ") + remote.GetValue() + wxS(" -> ") + local.GetValue());
+    }
+
+    wxString SourceMapArguments() const
+    {
+        return sourceMapper_.ToJson();
     }
 
     void ContinueDebug()
@@ -1318,6 +1462,8 @@ private:
         tabPaths_.push_back(path);
         notebook_->AddPage(page, wxFileName(path).GetFullName(), true);
         SwitchToTab(tabPaths_.size() - 1);
+        const wxString customEditor = customEditors_.Resolve(path);
+        if (!customEditor.empty()) AppendLog(wxS("Custom editor selected: ") + customEditor);
         AppendLog(wxS("Opened: ") + path);
         NotifyLanguageDocumentOpened();
     }
@@ -1562,6 +1708,21 @@ private:
         }
     }
 
+    void SearchOpenVsx()
+    {
+        if (!EnsureWorkspaceTrusted()) return;
+        wxTextEntryDialog dialog(this, wxS("Search Open VSX"), wxS("Extension registry"), wxEmptyString);
+        if (dialog.ShowModal() != wxID_OK || dialog.GetValue().empty()) return;
+        wxString catalog;
+        wxString error;
+        if (extensionRegistry_.SearchOpenVsx(wxS("https://open-vsx.org"), dialog.GetValue(), &catalog, &error)) {
+            AppendLog(wxString::Format(wxS("Open VSX catalog received (%lu bytes); cache updated."),
+                                       static_cast<unsigned long>(catalog.length())));
+        } else {
+            AppendLog(wxS("Open VSX error: ") + error);
+        }
+    }
+
     void RegisterContributedCommand(const wxString& line)
     {
         const wxString command = JsonStringField(line, wxS("command"));
@@ -1617,7 +1778,20 @@ private:
             RequestDebugThreads();
             return;
         }
-        if (command == wxS("threads")) {
+        if (command == wxS("initialize")) {
+            if (debugCapabilities_) {
+                debugCapabilities_->Clear();
+                const wxArrayString capabilities = {
+                    wxS("supportsConfigurationDoneRequest"), wxS("supportsTerminateRequest"),
+                    wxS("supportsSetVariable"), wxS("supportsEvaluateForHovers"),
+                    wxS("supportsRestartRequest"), wxS("supportsStepBack")};
+                for (const auto& capability : capabilities) {
+                    const wxString marker = wxString::Format(wxS("\"%s\":true"), capability);
+                    debugCapabilities_->Append(capability + (line.Find(marker) != wxNOT_FOUND ? wxS(": yes") : wxS(": no/unknown")));
+                }
+            }
+            dap_.ConfigurationDone();
+        } else if (command == wxS("threads")) {
             if (debugThreads_) {
                 debugThreads_->Clear();
                 const wxArrayString names = JsonStringFields(line, wxS("name"));
@@ -1627,9 +1801,22 @@ private:
             debugThreadId_ = JsonIntField(line, wxS("id"), debugThreadId_);
             RequestStackTrace();
         } else if (command == wxS("stackTrace")) {
+            debugFrameLocations_.clear();
+            const wxArrayString names = JsonStringFields(line, wxS("name"));
+            const std::vector<int> ids = JsonIntFields(line, wxS("id"));
+            const std::vector<int> lines = JsonIntFields(line, wxS("line"));
+            const std::vector<int> columns = JsonIntFields(line, wxS("column"));
+            const wxArrayString paths = JsonStringFields(line, wxS("path"));
+            for (size_t index = 0; index < names.size(); ++index) {
+                DebugFrameLocation frame;
+                frame.id = index < ids.size() ? ids[index] : debugFrameId_;
+                frame.line = index < lines.size() ? lines[index] : 1;
+                frame.character = index < columns.size() ? columns[index] : 1;
+                frame.path = index < paths.size() ? paths[index] : wxString(wxEmptyString);
+                debugFrameLocations_.push_back(frame);
+            }
             if (callStack_) {
                 callStack_->Clear();
-                const wxArrayString names = JsonStringFields(line, wxS("name"));
                 for (const auto& name : names) callStack_->Append(name);
                 if (names.IsEmpty()) callStack_->Append(line);
             }
@@ -1647,6 +1834,24 @@ private:
         } else if (command == wxS("setBreakpoints")) {
             AppendLog(wxS("DAP breakpoints response received."));
         }
+    }
+
+    void GoToStackFrame(int index)
+    {
+        if (index < 0 || index >= static_cast<int>(debugFrameLocations_.size())) return;
+        const DebugFrameLocation& frame = debugFrameLocations_[static_cast<size_t>(index)];
+        debugFrameId_ = frame.id;
+        const wxString mappedPath = sourceMapper_.Map(frame.path);
+        if (!mappedPath.empty() && wxFileExists(mappedPath)) OpenDocumentPath(mappedPath);
+        if (editor_) {
+            const long position = editor_->XYToPosition(std::max(0, frame.character), std::max(0, frame.line - 1));
+            if (position != -1) {
+                editor_->SetInsertionPoint(position);
+                editor_->ShowPosition(position);
+                editor_->SetFocus();
+            }
+        }
+        RequestDebugScopes();
     }
 
     void ShowLanguageResult(const wxString& line)
@@ -1729,16 +1934,25 @@ private:
     int terminalColumns_ = 120;
     int terminalRows_ = 32;
     codium::VsixManager extensions_;
+    codium::ExtensionRegistry extensionRegistry_;
+    codium::TreeViewRegistry treeRegistry_;
+    codium::ScmModel scmModel_;
+    codium::CustomEditorRegistry customEditors_;
     codium::Document document_;
     std::map<wxString, codium::Document> documents_;
     std::vector<wxString> tabPaths_;
     wxTreeCtrl* fileTree_ = nullptr;
+    wxListBox* treeViewsList_ = nullptr;
+    wxListBox* scm_ = nullptr;
+    wxListBox* customEditorsView_ = nullptr;
     wxNotebook* notebook_ = nullptr;
     wxListBox* taskList_ = nullptr;
     wxListBox* breakpoints_ = nullptr;
     wxListBox* debugThreads_ = nullptr;
     wxListBox* callStack_ = nullptr;
     wxListBox* variables_ = nullptr;
+    wxListBox* watches_ = nullptr;
+    wxListBox* debugCapabilities_ = nullptr;
     wxTextCtrl* terminalInput_ = nullptr;
     wxRichTextCtrl* terminalOutput_ = nullptr;
     wxBoxSizer* extensionControls_ = nullptr;
@@ -1764,6 +1978,9 @@ private:
     int debugThreadId_ = 1;
     int debugFrameId_ = 1;
     int debugVariablesReference_ = 1;
+    codium::SourceMapper sourceMapper_;
+    wxArrayString watchExpressions_;
+    std::vector<DebugFrameLocation> debugFrameLocations_;
 
     wxDECLARE_EVENT_TABLE();
 };

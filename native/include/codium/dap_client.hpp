@@ -16,6 +16,7 @@ public:
                const wxString& workingDirectory, wxString* error = nullptr);
     bool SendRequest(const wxString& command, const wxString& argumentsJson = wxS("{}"));
     bool SetBreakpoints(const wxString& sourcePath, const wxArrayInt& lines);
+    bool ConfigurationDone();
     bool RequestThreads();
     bool RequestStackTrace(int threadId = 1);
     bool RequestScopes(int frameId);

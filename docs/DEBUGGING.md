@@ -4,10 +4,12 @@ Codium::Blocks 0.9.0 communicates with a Debug Adapter Protocol implementation t
 
 The native UI can start an adapter, initialize it, launch a program, continue, pause, and disconnect. A source file's current editor line can be toggled as a breakpoint. The client sends a DAP `setBreakpoints` request with the source path and the complete line list for that file. Breakpoints are displayed in a native list and are kept as session state until the application exits.
 
-The 0.9.0 client exposes requests for `threads`, `stackTrace`, `scopes`, `variables`, and `evaluate`. Responses are displayed in native Threads, Call stack, Variables/evaluate, and Debug console panels. When a stopped event supplies a thread identifier, Codium::Blocks automatically requests the thread list and stack trace. The implementation intentionally keeps the transport and basic presentation independent of any adapter-specific source mapping.
+The 0.9.0 client exposes requests for `threads`, `stackTrace`, `scopes`, `variables`, `evaluate`, and `configurationDone`. The initialize response is inspected for common adapter capabilities and shown in the Adapter capabilities panel. Responses are displayed in native Threads, Call stack, Variables/evaluate, and Debug console panels. When a stopped event supplies a thread identifier, Codium::Blocks automatically requests the thread list and stack trace.
 
-Language-server diagnostics are displayed as problems with line and character coordinates. Selecting a problem moves the editor caret to the reported location. A future increment will add richer diagnostic ranges, source mapping, clickable stack frames, watches, and adapter capability discovery.
+Source mappings can be registered from a remote source root to a local source root. The mapping is sent as DAP `sourceFileMap` during launch and is applied when a stack frame path is opened. Selecting a call-stack frame moves the editor to its reported file, line, and column. Watches are stored outside the source tree using the platform data directory and are evaluated through DAP when a debug frame is available.
 
-The deterministic fake DAP process and transport test cover initialization, launch, threads, breakpoints, stack trace, scopes, variables, evaluate, continue, and clean shutdown. This validates the protocol layer without requiring a debugger installation.
+Language-server diagnostics are displayed as problems with line and character coordinates. Selecting a problem moves the editor caret to the reported location. A future increment will add richer diagnostic ranges, adapter-specific source mapping, watches with change notifications, and more complete stack-frame metadata.
+
+The deterministic fake DAP process and transport test cover initialization, configuration, launch, threads, breakpoints, stack trace, scopes, variables, evaluate, continue, and clean shutdown. This validates the protocol layer without requiring a debugger installation.
 
 A DAP adapter is an executable process and inherits the user's permissions. Workspace trust gates starting the adapter from a trusted workspace. The project does not claim that this process boundary is a security sandbox.

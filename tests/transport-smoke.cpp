@@ -76,6 +76,7 @@ int main(int argc, char** argv)
     if (!dap.Start(wxS("node"), dapArguments, root, &error) ||
         !dap.SendRequest(wxS("initialize"), wxS("{\"clientID\":\"codium-blocks\"}")) ||
         !WaitForDap(dap, wxS("\"event\":\"initialized\"")) ||
+        !dap.ConfigurationDone() || !WaitForDap(dap, wxS("\"command\":\"configurationDone\"")) ||
         !dap.SendRequest(wxS("launch"), wxS("{\"program\":\"demo\"}")) ||
         !WaitForDap(dap, wxS("\"command\":\"launch\"")) ||
         !dap.SendRequest(wxS("threads")) ||

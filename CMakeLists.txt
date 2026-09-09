@@ -5,8 +5,13 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(wxWidgets REQUIRED COMPONENTS core base richtext)
+find_package(wxWidgets REQUIRED COMPONENTS core base richtext net)
 include(${wxWidgets_USE_FILE})
+find_package(OpenSSL QUIET)
+if(OpenSSL_FOUND)
+    add_compile_definitions(CODIUM_BLOCKS_HAVE_OPENSSL=1)
+    set(CODIUM_BLOCKS_CRYPTO_LIB OpenSSL::Crypto)
+endif()
 
 add_executable(codium-blocks
     native/src/document.cpp
@@ -22,6 +27,10 @@ add_executable(codium-blocks
     native/src/dap_client.cpp
     native/src/extension_security.cpp
     native/src/extension_registry.cpp
+    native/src/debug_model.cpp
+    native/src/signature_verifier.cpp
+    native/src/native_contributions.cpp
+    native/src/compatibility_report.cpp
 )
 
 target_include_directories(codium-blocks PRIVATE native/include)
@@ -30,7 +39,7 @@ target_compile_definitions(codium-blocks PRIVATE
     CODIUM_BLOCKS_VERSION="${PROJECT_VERSION}"
 )
 target_compile_options(codium-blocks PRIVATE -Wall -Wextra -Wpedantic)
-target_link_libraries(codium-blocks PRIVATE ${wxWidgets_LIBRARIES})
+target_link_libraries(codium-blocks PRIVATE ${wxWidgets_LIBRARIES} ${CODIUM_BLOCKS_CRYPTO_LIB})
 
 add_executable(codium-blocks-document-smoke
     native/src/document.cpp
@@ -43,20 +52,22 @@ target_link_libraries(codium-blocks-document-smoke PRIVATE ${wxWidgets_LIBRARIES
 add_executable(codium-blocks-vsix-smoke
     native/src/vsix_manager.cpp
     native/src/extension_security.cpp
+    native/src/signature_verifier.cpp
     tests/vsix-smoke.cpp
 )
 target_include_directories(codium-blocks-vsix-smoke PRIVATE native/include)
 target_compile_options(codium-blocks-vsix-smoke PRIVATE -Wall -Wextra -Wpedantic)
-target_link_libraries(codium-blocks-vsix-smoke PRIVATE ${wxWidgets_LIBRARIES})
+target_link_libraries(codium-blocks-vsix-smoke PRIVATE ${wxWidgets_LIBRARIES} ${CODIUM_BLOCKS_CRYPTO_LIB})
 
 add_executable(codium-blocks-security-smoke
     native/src/extension_security.cpp
     native/src/extension_registry.cpp
+    native/src/signature_verifier.cpp
     tests/security-smoke.cpp
 )
 target_include_directories(codium-blocks-security-smoke PRIVATE native/include)
 target_compile_options(codium-blocks-security-smoke PRIVATE -Wall -Wextra -Wpedantic)
-target_link_libraries(codium-blocks-security-smoke PRIVATE ${wxWidgets_LIBRARIES})
+target_link_libraries(codium-blocks-security-smoke PRIVATE ${wxWidgets_LIBRARIES} ${CODIUM_BLOCKS_CRYPTO_LIB})
 
 add_executable(codium-blocks-workspace-smoke
     native/src/workspace.cpp
@@ -101,6 +112,31 @@ target_include_directories(codium-blocks-terminal-profile-smoke PRIVATE native/i
 target_compile_options(codium-blocks-terminal-profile-smoke PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(codium-blocks-terminal-profile-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
+add_executable(codium-blocks-debug-model-smoke
+    native/src/debug_model.cpp
+    tests/debug-model-smoke.cpp
+)
+target_include_directories(codium-blocks-debug-model-smoke PRIVATE native/include)
+target_compile_options(codium-blocks-debug-model-smoke PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(codium-blocks-debug-model-smoke PRIVATE ${wxWidgets_LIBRARIES})
+
+add_executable(codium-blocks-native-contributions-smoke
+    native/src/native_contributions.cpp
+    tests/native-contributions-smoke.cpp
+)
+target_include_directories(codium-blocks-native-contributions-smoke PRIVATE native/include)
+target_compile_options(codium-blocks-native-contributions-smoke PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(codium-blocks-native-contributions-smoke PRIVATE ${wxWidgets_LIBRARIES})
+
+add_executable(codium-blocks-compatibility-smoke
+    native/src/extension_security.cpp
+    native/src/compatibility_report.cpp
+    tests/compatibility-smoke.cpp
+)
+target_include_directories(codium-blocks-compatibility-smoke PRIVATE native/include)
+target_compile_options(codium-blocks-compatibility-smoke PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(codium-blocks-compatibility-smoke PRIVATE ${wxWidgets_LIBRARIES})
+
 install(TARGETS codium-blocks RUNTIME DESTINATION bin)
 install(DIRECTORY extension-host DESTINATION share/codium-blocks)
 install(DIRECTORY extensions DESTINATION share/codium-blocks)
@@ -123,6 +159,9 @@ if(BUILD_TESTING)
     add_test(NAME transport-smoke COMMAND codium-blocks-transport-smoke ${CMAKE_SOURCE_DIR})
     add_test(NAME terminal-screen-smoke COMMAND codium-blocks-terminal-screen-smoke)
     add_test(NAME terminal-profile-smoke COMMAND codium-blocks-terminal-profile-smoke)
+    add_test(NAME debug-model-smoke COMMAND codium-blocks-debug-model-smoke)
+    add_test(NAME native-contributions-smoke COMMAND codium-blocks-native-contributions-smoke)
+    add_test(NAME compatibility-smoke COMMAND codium-blocks-compatibility-smoke)
 endif()
 
 message(STATUS "Codium::Blocks ${PROJECT_VERSION}: native wxWidgets core + optional Node.js extension host")

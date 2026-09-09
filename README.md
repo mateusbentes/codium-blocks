@@ -83,8 +83,15 @@ The current `0.9.0` increment provides:
 - transactional VSIX installation with staging and rollback of the previous version;
 - HTTPS-only extension registry configuration without embedded credentials;
 - workspace trust persisted outside the source tree and execution gates for tasks, terminals, adapters, hosts, and VSIX installation.
+- persistent watches and DAP source-file mapping;
+- adapter capability discovery and automatic `configurationDone`;
+- clickable call-stack locations with source mapping;
+- an Open VSX search client with HTTPS validation and offline catalog cache;
+- optional Ed25519 artifact verification through OpenSSL;
+- per-extension compatibility reports;
+- native Tree View, Git SCM, and custom-editor registries with UI surfaces.
 
-This is not full VS Code compatibility. The implementation is deliberately layered and must still add richer completion/hover interaction, explicit user task configuration, source mapping, advanced Tree Views, and a complete extension registry client. The remaining terminal goals — complete Unicode grapheme segmentation and width handling, plus optional Sixel/Kitty image rendering — are explicitly scheduled for the 1.0 release. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), [`docs/DEBUGGING.md`](docs/DEBUGGING.md), and [`docs/EXTENSIONS_SECURITY.md`](docs/EXTENSIONS_SECURITY.md) for the current models.
+This is not full VS Code compatibility. The implementation is deliberately layered and must still add richer completion/hover interaction, explicit user task configuration, a complete extension registry download/install workflow, and deeper Tree View/SCM contribution APIs. The remaining terminal goals — complete Unicode grapheme segmentation and width handling, plus optional Sixel/Kitty image rendering — are explicitly scheduled for the 1.0 release. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), [`docs/DEBUGGING.md`](docs/DEBUGGING.md), [`docs/EXTENSIONS_SECURITY.md`](docs/EXTENSIONS_SECURITY.md), and [`docs/CONTRIBUTIONS.md`](docs/CONTRIBUTIONS.md) for the current models.
 
 ## Architecture
 
@@ -112,6 +119,8 @@ Ubuntu/Debian dependencies:
 ```bash
 sudo apt-get install build-essential cmake pkg-config libwxgtk3.2-dev nodejs
 ```
+
+Install `libssl-dev` as well to enable optional Ed25519 signature verification for signed extension artifacts.
 
 Configure, build, and test:
 

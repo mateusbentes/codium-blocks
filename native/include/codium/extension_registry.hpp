@@ -13,6 +13,10 @@ public:
     bool RemoveRegistry(const wxString& url);
     const wxArrayString& Registries() const { return registries_; }
     bool VerifyArtifact(const wxString& path, const wxString& expectedSha256, wxString* error = nullptr) const;
+    wxString OpenVsxSearchUrl(const wxString& registry, const wxString& query) const;
+    bool SearchOpenVsx(const wxString& registry, const wxString& query, wxString* json, wxString* error = nullptr) const;
+    bool CacheCatalog(const wxString& registry, const wxString& query, const wxString& json, wxString* error = nullptr) const;
+    bool LoadCachedCatalog(const wxString& registry, const wxString& query, wxString* json) const;
 
 private:
     wxArrayString registries_;

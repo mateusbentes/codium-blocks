@@ -12,6 +12,9 @@ public:
     bool Install(const wxString& vsixPath, wxString* message = nullptr);
     bool InstallVerified(const wxString& vsixPath, const wxString& expectedSha256,
                          wxString* message = nullptr);
+    bool InstallSigned(const wxString& vsixPath, const wxString& expectedSha256,
+                       const wxString& publicKeyHex, const wxString& signatureHex,
+                       wxString* message = nullptr);
     wxArrayString ListInstalled() const;
     const wxString& ExtensionRoot() const { return extensionRoot_; }
 

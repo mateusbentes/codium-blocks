@@ -103,6 +103,11 @@ bool DapClient::SetBreakpoints(const wxString& sourcePath, const wxArrayInt& lin
     return SendRequest(wxS("setBreakpoints"), json);
 }
 
+bool DapClient::ConfigurationDone()
+{
+    return SendRequest(wxS("configurationDone"));
+}
+
 bool DapClient::RequestThreads()
 {
     return SendRequest(wxS("threads"));

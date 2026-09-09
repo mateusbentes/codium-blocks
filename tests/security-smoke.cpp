@@ -1,5 +1,6 @@
 #include "codium/extension_security.hpp"
 #include "codium/extension_registry.hpp"
+#include "codium/signature_verifier.hpp"
 
 #include <wx/filename.h>
 #include <wx/file.h>
@@ -8,6 +9,10 @@
 
 #include <filesystem>
 #include <iostream>
+
+#if defined(CODIUM_BLOCKS_HAVE_OPENSSL)
+#define CODIUM_BLOCKS_SIGNATURE_TEST_ENABLED 1
+#endif
 
 int main()
 {
@@ -22,6 +27,8 @@ int main()
         const wxString content = wxS("abc");
         file.Write(content.utf8_str().data(), content.utf8_str().length());
     }
+    const wxString empty = root + wxFILE_SEP_PATH + wxS("empty.bin");
+    { wxFile file(empty, wxFile::write); }
 
     wxString digest;
     wxString error;
@@ -57,6 +64,37 @@ int main()
         std::cerr << "security-smoke: registry or artifact verification failed: " << error.ToStdString() << "\n";
         return 6;
     }
+    if (registry.OpenVsxSearchUrl(wxS("https://open-vsx.org"), wxS("C++ tools")) !=
+            wxS("https://open-vsx.org/api/-/search?query=C%2B%2B+tools") ||
+        !registry.CacheCatalog(wxS("https://open-vsx.org"), wxS("C++ tools"), wxS("{\"extensions\":[]}"), &error)) {
+        std::cerr << "security-smoke: Open VSX URL/cache write failed: " << error.ToStdString() << "\n";
+        return 7;
+    }
+    wxString cached;
+    if (!registry.LoadCachedCatalog(wxS("https://open-vsx.org"), wxS("C++ tools"), &cached) ||
+        cached != wxS("{\"extensions\":[]}")) {
+        std::cerr << "security-smoke: Open VSX cache read failed\n";
+        return 8;
+    }
+    if (codium::SignatureVerifier::VerifyEd25519File(
+            sample,
+            wxS("0000000000000000000000000000000000000000000000000000000000000000"),
+            wxS("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+            &error)) {
+        std::cerr << "security-smoke: invalid Ed25519 signature was accepted\n";
+        return 9;
+    }
+#if defined(CODIUM_BLOCKS_SIGNATURE_TEST_ENABLED)
+    if (!codium::SignatureVerifier::VerifyEd25519File(
+            empty,
+            wxS("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"),
+            wxS("e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e06522490155"
+                "5fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b"),
+            &error)) {
+        std::cerr << "security-smoke: RFC 8032 Ed25519 vector failed: " << error.ToStdString() << "\n";
+        return 10;
+    }
+#endif
 
     std::filesystem::remove_all(root.ToStdString());
     std::cout << "security-smoke: ok — SHA-256, manifest validation, and registry allowlist\n";

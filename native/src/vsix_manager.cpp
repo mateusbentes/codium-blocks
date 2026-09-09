@@ -1,5 +1,6 @@
 #include "codium/vsix_manager.hpp"
 #include "codium/extension_security.hpp"
+#include "codium/signature_verifier.hpp"
 
 #include <wx/dir.h>
 #include <wx/file.h>
@@ -65,6 +66,18 @@ VsixManager::VsixManager(wxString extensionRoot)
 bool VsixManager::Install(const wxString& vsixPath, wxString* message)
 {
     return InstallVerified(vsixPath, wxEmptyString, message);
+}
+
+bool VsixManager::InstallSigned(const wxString& vsixPath, const wxString& expectedSha256,
+                                const wxString& publicKeyHex, const wxString& signatureHex,
+                                wxString* message)
+{
+    wxString signatureError;
+    if (!SignatureVerifier::VerifyEd25519File(vsixPath, publicKeyHex, signatureHex, &signatureError)) {
+        if (message) *message = signatureError;
+        return false;
+    }
+    return InstallVerified(vsixPath, expectedSha256, message);
 }
 
 bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expectedSha256, wxString* message)
