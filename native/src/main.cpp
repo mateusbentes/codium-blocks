@@ -3,6 +3,7 @@
 #include "codium/project_config.hpp"
 #include "codium/task_runner.hpp"
 #include "codium/terminal_session.hpp"
+#include "codium/terminal_screen.hpp"
 #include "codium/dap_client.hpp"
 #include "codium/vsix_manager.hpp"
 #include "codium/workspace.hpp"
@@ -173,6 +174,7 @@ public:
           host_(this),
           taskRunner_(this, ID_TASK_PROCESS),
           terminal_(this, ID_TERMINAL_PROCESS),
+          terminalScreen_(120, 32),
           dap_(this, ID_DAP_PROCESS),
           terminalShell_(DefaultShell()),
           extensions_(projectRoot_ + wxFILE_SEP_PATH + wxS("extensions-installed")),
@@ -235,10 +237,15 @@ public:
         terminalOutput_->Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
             if (terminal_.IsRunning()) {
                 const wxSize size = terminalOutput_->GetClientSize();
-                terminal_.Resize(std::max(20, size.GetWidth() / 8), std::max(4, size.GetHeight() / 16));
+                const int columns = std::max(20, size.GetWidth() / 8);
+                const int rows = std::max(4, size.GetHeight() / 16);
+                terminal_.Resize(columns, rows);
+                terminalScreen_.Resize(columns, rows);
+                RenderTerminalScreen();
             }
             event.Skip();
         });
+        terminalOutput_->Bind(wxEVT_KEY_DOWN, [this](wxKeyEvent& event) { HandleTerminalKey(event); });
         root->Add(terminalOutput_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
 
         auto* debugControls = new wxBoxSizer(wxHORIZONTAL);
@@ -459,6 +466,47 @@ private:
         terminalOutput_->ShowPosition(terminalOutput_->GetLastPosition());
     }
 
+    void RenderTerminalScreen()
+    {
+        if (!terminalOutput_) return;
+        terminalOutput_->Freeze();
+        terminalOutput_->Clear();
+        for (int row = 0; row < terminalScreen_.Rows(); ++row) {
+            int column = 0;
+            while (column < terminalScreen_.Columns()) {
+                const codium::TerminalCell& first = terminalScreen_.CellAt(column, row);
+                const bool firstCursor = terminalScreen_.CursorVisible() &&
+                    terminalScreen_.CursorColumn() == column && terminalScreen_.CursorRow() == row;
+                int foreground = first.foreground;
+                int background = first.background;
+                if (first.inverse) std::swap(foreground, background);
+                if (firstCursor) foreground = 15;
+                wxString run;
+                run += first.character;
+                ++column;
+                while (column < terminalScreen_.Columns()) {
+                    const codium::TerminalCell& cell = terminalScreen_.CellAt(column, row);
+                    const bool cursor = terminalScreen_.CursorVisible() &&
+                        terminalScreen_.CursorColumn() == column && terminalScreen_.CursorRow() == row;
+                    int cellForeground = cell.foreground;
+                    int cellBackground = cell.background;
+                    if (cell.inverse) std::swap(cellForeground, cellBackground);
+                    if (cursor) cellForeground = 15;
+                    if (cellForeground != foreground || cellBackground != background ||
+                        cell.bold != first.bold || cell.underline != first.underline || cursor != firstCursor) break;
+                    run += cell.character;
+                    ++column;
+                }
+                terminalOutput_->BeginTextColour(codium::TerminalScreen::PaletteColor(foreground, first.bold));
+                terminalOutput_->WriteText(run);
+                terminalOutput_->EndTextColour();
+            }
+            if (row + 1 < terminalScreen_.Rows()) terminalOutput_->WriteText(wxS("\n"));
+        }
+        terminalOutput_->Thaw();
+        terminalOutput_->ShowPosition(terminalOutput_->GetLastPosition());
+    }
+
     void AppendLog(const wxString& line)
     {
         if (log_) {
@@ -588,9 +636,15 @@ private:
         wxString error;
         if (terminal_.Start(terminalShell_, arguments, WorkspaceDirectory(), &error)) {
             AppendLog(wxS("Native terminal started with backend: ") + terminal_.BackendName());
+            terminalScreen_.Reset();
             if (terminalOutput_) {
                 const wxSize size = terminalOutput_->GetClientSize();
-                terminal_.Resize(std::max(20, size.GetWidth() / 8), std::max(4, size.GetHeight() / 16));
+                const int columns = std::max(20, size.GetWidth() / 8);
+                const int rows = std::max(4, size.GetHeight() / 16);
+                terminal_.Resize(columns, rows);
+                terminalScreen_.Resize(columns, rows);
+                RenderTerminalScreen();
+                terminalOutput_->SetFocus();
             }
         } else {
             AppendLog(wxS("Terminal error: ") + error);
@@ -640,6 +694,50 @@ private:
         } else {
             AppendLog(wxS("Could not write to terminal."));
         }
+    }
+
+    void HandleTerminalKey(wxKeyEvent& event)
+    {
+        if (!terminal_.IsRunning()) {
+            event.Skip();
+            return;
+        }
+
+        wxString bytes;
+        const int key = event.GetKeyCode();
+        switch (key) {
+        case WXK_RETURN: case WXK_NUMPAD_ENTER: bytes = wxS("\r"); break;
+        case WXK_BACK: bytes = wxString::FromUTF8("\x7f"); break;
+        case WXK_TAB: bytes = wxS("\t"); break;
+        case WXK_ESCAPE: bytes = wxString::FromUTF8("\x1b"); break;
+        case WXK_UP: bytes = wxString::FromUTF8("\x1b[A"); break;
+        case WXK_DOWN: bytes = wxString::FromUTF8("\x1b[B"); break;
+        case WXK_RIGHT: bytes = wxString::FromUTF8("\x1b[C"); break;
+        case WXK_LEFT: bytes = wxString::FromUTF8("\x1b[D"); break;
+        case WXK_HOME: bytes = wxString::FromUTF8("\x1b[H"); break;
+        case WXK_END: bytes = wxString::FromUTF8("\x1b[F"); break;
+        case WXK_DELETE: bytes = wxString::FromUTF8("\x1b[3~"); break;
+        case WXK_INSERT: bytes = wxString::FromUTF8("\x1b[2~"); break;
+        case WXK_PAGEUP: bytes = wxString::FromUTF8("\x1b[5~"); break;
+        case WXK_PAGEDOWN: bytes = wxString::FromUTF8("\x1b[6~"); break;
+        default: {
+            const wxChar unicode = static_cast<wxChar>(event.GetUnicodeKey());
+            if (unicode == wxChar(WXK_NONE) || unicode == wxChar(0)) {
+                event.Skip();
+                return;
+            }
+            if (event.ControlDown() && unicode >= wxChar('a') && unicode <= wxChar('z')) {
+                bytes += static_cast<wxChar>(unicode - wxChar('a') + 1);
+            } else if (event.ControlDown() && unicode >= wxChar('A') && unicode <= wxChar('Z')) {
+                bytes += static_cast<wxChar>(unicode - wxChar('A') + 1);
+            } else {
+                if (event.AltDown()) bytes += wxString::FromUTF8("\x1b");
+                bytes += unicode;
+            }
+            break;
+        }
+        }
+        if (!bytes.empty()) terminal_.Write(bytes);
     }
 
     void StopTerminal()
@@ -1136,7 +1234,8 @@ private:
         for (const auto& line : taskRunner_.Poll()) {
             AppendLog(wxS("task> ") + line);
         }
-        AppendTerminalOutput(terminal_.PollRaw());
+        terminalScreen_.Feed(terminal_.PollRaw());
+        RenderTerminalScreen();
         for (const auto& message : dap_.Poll()) {
             AppendLog(wxS("dap> ") + message);
         }
@@ -1181,6 +1280,7 @@ private:
     codium::ProjectConfig projectConfig_;
     codium::TaskRunner taskRunner_;
     codium::TerminalSession terminal_;
+    codium::TerminalScreen terminalScreen_;
     codium::DapClient dap_;
     wxString terminalShell_;
     codium::VsixManager extensions_;

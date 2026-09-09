@@ -34,6 +34,10 @@ The `0.8.0` increment upgrades the pipe-based terminal foundation to a real inte
 
 The transport test covers shell startup, interactive echo, resize requests, ANSI sequence preservation, and clean shutdown without requiring a graphical terminal emulator. Full terminal emulation, cursor movement, mouse reporting, and richer shell configuration remain future work.
 
+## Release 0.8.1 — native VT screen and interactive keyboard
+
+The `0.8.1` increment adds a native VT screen model with cells, cursor movement, SGR attributes, erase and scroll operations, alternate-screen support, cursor visibility, wrap mode, direct keyboard forwarding, and a deterministic screen test. This is the layer required for Vim, Neovim, GDB's TUI, SSH, `top`, `htop`, and curses applications to interact with the IDE surface rather than only emitting log text. Future terminal work includes mouse reporting, scrollback, selection, bracketed paste, hyperlinks, synchronized updates, and complete wide-character support.
+
 ## Release 0.9 — debugging views and registry security
 
 Add source breakpoints, stack frames, variables, watches, problem navigation, Open VSX, private registries, caching, checksums, rollback, workspace trust, permissions, and per-extension compatibility reports.

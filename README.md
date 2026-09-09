@@ -10,7 +10,7 @@ Every push to `main` and every pull request is checked by GitHub Actions on all 
 
 ## Current status
 
-The current `0.8.0` increment provides:
+The current `0.8.1` increment provides:
 
 - a native C++/wxWidgets window;
 - no Electron dependency or linkage;
@@ -60,8 +60,12 @@ The current `0.8.0` increment provides:
 - raw UTF-8 and ANSI sequence preservation with common color rendering;
 - command history and Up/Down keyboard navigation;
 - native shell selection through the terminal session API.
+- a native VT screen model with cursor, cell attributes, erase, scrolling, and alternate screen;
+- CSI cursor movement, SGR colors, save/restore cursor, cursor visibility, and wrap mode;
+- direct keyboard forwarding for UTF-8 text, arrows, Enter, Escape, Tab, Ctrl, Alt, and editing keys;
+- a deterministic terminal-screen test for Vim/curses-oriented behavior.
 
-This is not full VS Code compatibility. The implementation is deliberately layered and must still add clickable diagnostic locations, richer completion/hover interaction, explicit user task configuration, debugger source/stack/variable views, full terminal emulation, and advanced Tree Views. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), and [`docs/DEBUGGING.md`](docs/DEBUGGING.md) for the current models.
+This is not full VS Code compatibility. The implementation is deliberately layered and must still add clickable diagnostic locations, richer completion/hover interaction, explicit user task configuration, richer terminal emulation (mouse, scrollback, selection, and wide Unicode cells), debugger source/stack/variable views, and advanced Tree Views. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), and [`docs/DEBUGGING.md`](docs/DEBUGGING.md) for the current models.
 
 ## Architecture
 
