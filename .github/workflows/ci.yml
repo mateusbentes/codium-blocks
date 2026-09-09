@@ -30,7 +30,15 @@ jobs:
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
+          # The runner image may contain a rotating Chrome repository. It is
+          # unrelated to this project and can make apt fail with a transient
+          # Hash Sum mismatch while its Packages index is being published.
+          for source in /etc/apt/sources.list.d/*google* /etc/apt/sources.list.d/*chrome*; do
+            if [ -f "$source" ]; then
+              sudo mv "$source" "$source.disabled"
+            fi
+          done
+          sudo apt-get update -o Acquire::Retries=3
           sudo apt-get install -y build-essential cmake pkg-config libwxgtk3.2-dev libssl-dev
 
       - name: Install macOS dependencies
