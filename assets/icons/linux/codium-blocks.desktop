@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Codium::Blocks
+Comment=Lightweight native C/C++ and multi-language IDE
+Exec=codium-blocks %F
+Icon=codium-blocks
+Terminal=false
+Categories=Development;IDE;
+StartupNotify=true

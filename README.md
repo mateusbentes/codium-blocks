@@ -107,8 +107,11 @@ The current `1.0.1` development increment builds on the completed `0.9.0` baseli
 - scheme-aware CMake Build/Configure arguments and Build-panel focus;
 - conservative multiline Rust diagnostics in addition to GCC/Clang, MSVC, and ANSI formats;
 - a deterministic problem-model parser test covering compiler, Rust, Windows-path, and ANSI diagnostics.
+- an original blue modular-block icon family for Windows, macOS, and Linux under [`assets/icons/`](assets/icons/), with transparent, metadata-free platform assets.
 
 This is not full VS Code or Code::Blocks compatibility yet. The implementation is deliberately layered and must still add richer completion/hover interaction, explicit user task configuration, a complete extension registry download/install workflow, deeper Tree View/SCM contribution APIs, and a real Code::Blocks host adapter. The remaining 1.0 interface work includes richer source annotations, keyboard navigation, themes, and cross-platform visual verification. The remaining terminal goals — complete Unicode grapheme segmentation and width handling, plus optional Sixel/Kitty image rendering — remain separately scheduled. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/CODEBLOCKS_INTEGRATION.md`](docs/CODEBLOCKS_INTEGRATION.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), [`docs/DEBUGGING.md`](docs/DEBUGGING.md), [`docs/EXTENSIONS_SECURITY.md`](docs/EXTENSIONS_SECURITY.md), [`docs/CONTRIBUTIONS.md`](docs/CONTRIBUTIONS.md), [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md), and [`docs/PROBLEMS.md`](docs/PROBLEMS.md) for the current models.
+
+The icon family and platform placement are documented in [`docs/ICONS.md`](docs/ICONS.md).
 
 ## Architecture
 

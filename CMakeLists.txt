@@ -204,6 +204,7 @@ target_link_libraries(codium-blocks-codeblocks-adapter-smoke PRIVATE ${wxWidgets
 install(TARGETS codium-blocks RUNTIME DESTINATION bin)
 install(DIRECTORY extension-host DESTINATION share/codium-blocks)
 install(DIRECTORY extensions DESTINATION share/codium-blocks)
+install(DIRECTORY assets/icons DESTINATION share/codium-blocks)
 install(FILES README.md LICENSE COPYING DESTINATION share/doc/codium-blocks)
 install(DIRECTORY docs protocol DESTINATION share/doc/codium-blocks)
 
