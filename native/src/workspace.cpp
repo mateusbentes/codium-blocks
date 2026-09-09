@@ -148,7 +148,9 @@ void Workspace::Refresh()
     wxString name;
     bool keepGoing = directory.GetFirst(&name, wxEmptyString, wxDIR_FILES | wxDIR_DIRS);
     while (keepGoing) {
-        const wxString absolute = rootPath_ + wxFILE_SEP_PATH + name;
+        wxFileName child(rootPath_, name);
+        child.Normalize(wxPATH_NORM_DOTS | wxPATH_NORM_ABSOLUTE);
+        const wxString absolute = child.GetFullPath();
         if (ShouldSkip(absolute)) {
             keepGoing = directory.GetNext(&name);
             continue;

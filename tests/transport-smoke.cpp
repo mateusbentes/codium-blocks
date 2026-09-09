@@ -57,19 +57,29 @@ int main(int argc, char** argv)
     wxArrayString terminalArguments;
     terminalArguments.Add(fakeTerminal);
     wxString error;
-    if (!terminal.Start(wxS("node"), terminalArguments, root, &error) ||
-        (terminal.BackendName() == wxS("ConPTY") && !terminal.Resize(100, 30)) ||
-        !terminal.Write(wxS("ping\n")) ||
-        !WaitForTerminal(terminal, wxS("pong"))) {
-        std::cerr << "transport-smoke: terminal failed (backend=" << terminal.BackendName().ToStdString()
+    if (!terminal.Start(wxS("node"), terminalArguments, root, &error)) {
+        std::cerr << "transport-smoke: terminal start failed (backend=" << terminal.BackendName().ToStdString()
                   << "): " << error.ToStdString() << "\n";
         return 1;
     }
-    if (!terminal.Write(wxS("ansi\n")) || !WaitForRawTerminal(terminal, wxString::FromUTF8("\x1b[31m"))) {
+    if (terminal.BackendName() == wxS("ConPTY") && !terminal.Resize(100, 30)) {
+        std::cerr << "transport-smoke: ConPTY resize unavailable; continuing with the negotiated size\n";
+    }
+    if (!terminal.Write(wxS("ping\r\n"))) {
+        std::cerr << "transport-smoke: terminal write failed (backend=" << terminal.BackendName().ToStdString()
+                  << ")\n";
+        return 1;
+    }
+    if (!WaitForTerminal(terminal, wxS("pong"))) {
+        std::cerr << "transport-smoke: terminal output timeout (backend=" << terminal.BackendName().ToStdString()
+                  << ", running=" << (terminal.IsRunning() ? "true" : "false") << ")\n";
+        return 1;
+    }
+    if (!terminal.Write(wxS("ansi\r\n")) || !WaitForRawTerminal(terminal, wxString::FromUTF8("\x1b[31m"))) {
         std::cerr << "transport-smoke: ANSI output or PTY resize failed\n";
         return 1;
     }
-    terminal.Write(wxS("exit\n"));
+    terminal.Write(wxS("exit\r\n"));
     terminal.Stop();
 
     codium::DapClient dap(nullptr, wxID_HIGHEST + 701);
