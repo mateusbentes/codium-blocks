@@ -45,6 +45,6 @@ This option currently adds `${root}/include` and `${root}/src/include` to the na
 
 ## Next integration stage
 
-The first host-adapter contract is now versioned as **1.0** in `codium/codeblocks_host.hpp`. It defines normalized events for project lifecycle, builds, compiler diagnostics, debug sessions, and plugin commands, together with a small event bus and SDK/contract version tuple. The current implementation is a contract and test seam, not a running Code::Blocks host.
+The host-adapter contract is now versioned as **1.0** in `codium/codeblocks_host.hpp`. `CodeBlocksAdapterClient` launches an optional external adapter with a native argument vector, performs a JSON Lines handshake, validates the contract version, records capabilities, opens the imported project, and can route target builds through the adapter. Structured compiler diagnostics are translated into the native Problems model; the native UI falls back to the imported `codeblocks --build` task when no compatible adapter is running. See [`CODEBLOCKS_ADAPTER_PROTOCOL.md`](CODEBLOCKS_ADAPTER_PROTOCOL.md).
 
 The next stage is a **real host adapter boundary**, not blind plugin loading. It must define which Code::Blocks managers are owned by Codium::Blocks, how `CodeBlocksEvent` messages are translated into the native problem/build/debug models, how plugin lifetime is isolated, and how SDK version compatibility is checked. Only after that adapter has a tested ABI contract should selected GPL-compatible plugins be loaded in-process or in a dedicated Code::Blocks compatibility process.

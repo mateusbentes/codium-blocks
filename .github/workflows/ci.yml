@@ -1,0 +1,91 @@
+name: Codium::Blocks CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config libwxgtk3.2-dev libssl-dev
+
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install cmake wxwidgets
+          echo "$(brew --prefix wxwidgets)/bin" >> "$GITHUB_PATH"
+          echo "PKG_CONFIG_PATH=$(brew --prefix wxwidgets)/lib/pkgconfig" >> "$GITHUB_ENV"
+
+      - name: Install Windows dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          vcpkg install wxwidgets:x64-windows
+
+      - name: Configure Linux or macOS
+        if: runner.os != 'Windows'
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Configure Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: >-
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_TARGET_TRIPLET=x64-windows
+
+      - name: Build Linux or macOS
+        if: runner.os != 'Windows'
+        run: cmake --build build --parallel
+
+      - name: Build Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cmake --build build --config Release --parallel
+
+      - name: Run JavaScript syntax checks
+        run: |
+          node --check extension-host/src/host.mjs
+          node --check extensions/hello-codium/extension.cjs
+          node --check tests/fake-lsp.mjs
+          node --check tests/fake-terminal.mjs
+          node --check tests/fake-dap.mjs
+          node --check tests/fake-codeblocks-adapter.mjs
+          node --check tests/host-smoke.mjs
+
+      - name: Run CTest Linux or macOS
+        if: runner.os != 'Windows'
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Run CTest Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Run Extension Host smoke test
+        run: node tests/host-smoke.mjs

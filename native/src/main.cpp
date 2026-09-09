@@ -10,6 +10,7 @@
 #include "codium/native_contributions.hpp"
 #include "codium/extension_registry.hpp"
 #include "codium/codeblocks_bridge.hpp"
+#include "codium/codeblocks_adapter_client.hpp"
 #include "codium/problem_model.hpp"
 #include "codium/vsix_manager.hpp"
 #include "codium/workspace.hpp"
@@ -61,6 +62,8 @@ enum : int {
     ID_INSTALL_VSIX,
     ID_LIST_EXTENSIONS,
     ID_DISCOVER_CODEBLOCKS,
+    ID_START_CODEBLOCKS_ADAPTER,
+    ID_STOP_CODEBLOCKS_ADAPTER,
     ID_OPEN_WORKSPACE,
     ID_COMMAND_PALETTE,
     ID_BUILD_PROJECT,
@@ -338,6 +341,7 @@ public:
           dap_(this, ID_DAP_PROCESS),
           terminalShell_(DefaultShell()),
           extensions_(projectRoot_ + wxFILE_SEP_PATH + wxS("extensions-installed")),
+          codeBlocksAdapter_(this),
           timer_(this)
     {
         BuildMenuBar();
@@ -569,6 +573,8 @@ public:
         AddButton(extensionControls, wxS("Install VSIX"), [this](wxCommandEvent&) { InstallVsix(); }, outputPage);
         AddButton(extensionControls, wxS("Search Open VSX"), [this](wxCommandEvent&) { SearchOpenVsx(); }, outputPage);
         AddButton(extensionControls, wxS("Discover Code::Blocks"), [this](wxCommandEvent&) { DiscoverCodeBlocks(); }, outputPage);
+        AddButton(extensionControls, wxS("Start CB adapter"), [this](wxCommandEvent&) { StartCodeBlocksAdapter(); }, outputPage);
+        AddButton(extensionControls, wxS("Stop CB adapter"), [this](wxCommandEvent&) { StopCodeBlocksAdapter(); }, outputPage);
         outputRoot->Add(extensionControls, 0, wxBOTTOM | wxEXPAND, 4);
         hover_ = new wxTextCtrl(outputPage, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(-1, 60),
                                 wxTE_MULTILINE | wxTE_READONLY | wxHSCROLL);
@@ -660,6 +666,8 @@ private:
         extensionMenu->Append(ID_INSTALL_VSIX, wxS("Install VSIX"));
         extensionMenu->Append(ID_LIST_EXTENSIONS, wxS("List installed extensions"));
         extensionMenu->Append(ID_DISCOVER_CODEBLOCKS, wxS("Discover Code::Blocks SDK"));
+        extensionMenu->Append(ID_START_CODEBLOCKS_ADAPTER, wxS("Start Code::Blocks adapter"));
+        extensionMenu->Append(ID_STOP_CODEBLOCKS_ADAPTER, wxS("Stop Code::Blocks adapter"));
         menuBar->Append(extensionMenu, wxS("E&xtensions"));
 
         SetMenuBar(menuBar);
@@ -692,6 +700,8 @@ private:
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { InstallVsix(); }, ID_INSTALL_VSIX);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { ListExtensions(); }, ID_LIST_EXTENSIONS);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { DiscoverCodeBlocks(); }, ID_DISCOVER_CODEBLOCKS);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { StartCodeBlocksAdapter(); }, ID_START_CODEBLOCKS_ADAPTER);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { StopCodeBlocksAdapter(); }, ID_STOP_CODEBLOCKS_ADAPTER);
     }
 
     template <typename Handler>
@@ -1133,6 +1143,18 @@ private:
             ? toolchainChoice_->GetStringSelection() : selected ? selected->toolchain : wxString(wxEmptyString);
         const wxString selectedTarget = targetChoice_ && targetChoice_->GetSelection() != wxNOT_FOUND
             ? targetChoice_->GetStringSelection() : selected ? selected->target : wxString(wxEmptyString);
+        if (selected && !selected->projectFile.empty() && codeBlocksAdapter_.IsReady()) {
+            if (codeBlocksAdapter_.BuildTarget(selected->projectFile, selectedTarget, selected->configuration)) {
+                problemStore_.Clear(wxS("Code::Blocks adapter"));
+                if (bottomWorkbench_) bottomWorkbench_->SetSelection(1);
+                if (buildOutput_) buildOutput_->AppendText(wxString::Format(
+                    wxS("\n=== Code::Blocks adapter: %s [%s] ===\n"), selectedTarget, selected->configuration));
+                AppendLog(wxString::Format(wxS("Started Code::Blocks adapter build: %s"), selectedTarget));
+                SetStatusText(wxS("Code::Blocks building"), 1);
+                return;
+            }
+            AppendLog(wxS("Code::Blocks adapter rejected the build request; falling back to the imported task."));
+        }
         if (selected && selectedToolchain == wxS("CMake")) {
             if (effectiveTask.name.Contains(wxS("Configure"))) {
                 effectiveTask.arguments.Add(wxString::Format(wxS("-DCMAKE_BUILD_TYPE=%s"), selected->configuration));
@@ -1754,7 +1776,8 @@ private:
             wxS("Launch debug program"), wxS("Pause debug"), wxS("Stop debug"),
             wxS("Start Extension Host"), wxS("Load demo extension"),
             wxS("Run hello.codium"), wxS("Stop language server"),
-            wxS("Install VSIX"), wxS("List installed extensions"), wxS("Discover Code::Blocks SDK")
+            wxS("Install VSIX"), wxS("List installed extensions"), wxS("Discover Code::Blocks SDK"),
+            wxS("Start Code::Blocks adapter"), wxS("Stop Code::Blocks adapter")
         };
         wxSingleChoiceDialog dialog(this, wxS("Select a command"), wxS("Command Palette"), commands);
         if (dialog.ShowModal() != wxID_OK) return;
@@ -1786,6 +1809,8 @@ private:
         case 24: InstallVsix(); break;
         case 25: ListExtensions(); break;
         case 26: DiscoverCodeBlocks(); break;
+        case 27: StartCodeBlocksAdapter(); break;
+        case 28: StopCodeBlocksAdapter(); break;
         default: break;
         }
     }
@@ -2145,6 +2170,102 @@ private:
         AppendLog(codeBlocksBridge_.LoadPolicy());
     }
 
+    wxString CodeBlocksProjectFile() const
+    {
+        if (selectedSchemeIndex_ >= 0 &&
+            selectedSchemeIndex_ < static_cast<int>(projectConfig_.Schemes().size())) {
+            const wxString& projectFile = projectConfig_.Schemes()[static_cast<size_t>(selectedSchemeIndex_)].projectFile;
+            if (!projectFile.empty()) return projectFile;
+        }
+        for (const auto& task : projectConfig_.Tasks()) {
+            if (!task.projectFile.empty()) return task.projectFile;
+        }
+        return wxEmptyString;
+    }
+
+    void StartCodeBlocksAdapter()
+    {
+        if (!EnsureWorkspaceTrusted()) return;
+        if (!workspace_.IsOpen()) {
+            AppendLog(wxS("Open a workspace before starting the Code::Blocks adapter."));
+            return;
+        }
+        wxString executable;
+        wxGetEnv(wxS("CODIUM_BLOCKS_CODEBLOCKS_ADAPTER"), &executable);
+        if (executable.empty()) {
+            wxFileDialog dialog(this, wxS("Choose the Code::Blocks adapter executable"), wxEmptyString, wxEmptyString,
+                                wxS("Executables (*.*)|*.*"), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+            if (dialog.ShowModal() != wxID_OK) return;
+            executable = dialog.GetPath();
+        }
+        codium::CodeBlocksHostConfiguration configuration;
+        configuration.sdkRoot = codeBlocksBridge_.Root();
+        configuration.projectFile = CodeBlocksProjectFile();
+        wxString error;
+        wxArrayString arguments;
+        if (!codeBlocksAdapter_.Start(executable, arguments, workspace_.RootPath(), configuration, &error)) {
+            AppendLog(wxS("Code::Blocks adapter error: ") + error);
+            return;
+        }
+        adapterProjectOpened_ = false;
+        bottomWorkbench_->SetSelection(4);
+        AppendLog(wxS("Code::Blocks adapter started; waiting for contract handshake."));
+    }
+
+    void StopCodeBlocksAdapter()
+    {
+        if (codeBlocksAdapter_.IsRunning()) {
+            codeBlocksAdapter_.Stop();
+            AppendLog(wxS("Code::Blocks adapter stopped."));
+        }
+    }
+
+    void HandleCodeBlocksEvent(const codium::CodeBlocksHostEvent& event)
+    {
+        const wxString source = wxS("Code::Blocks adapter");
+        switch (event.kind) {
+        case codium::CodeBlocksEventKind::CompilerDiagnostic: {
+            codium::Problem problem;
+            problem.source = source;
+            problem.message = event.message;
+            problem.path = event.filePath;
+            if (!problem.path.empty() && !wxFileName(problem.path).IsAbsolute()) {
+                problem.path = wxFileName(WorkspaceDirectory(), problem.path).GetFullPath();
+            }
+            problem.line = std::max(0, event.line - 1);
+            problem.column = std::max(0, event.column - 1);
+            problem.endLine = problem.line;
+            problem.endColumn = problem.column + 1;
+            problem.severity = event.isError ? codium::ProblemSeverity::Error : codium::ProblemSeverity::Warning;
+            problem.raw = event.payload;
+            problemStore_.Add(problem);
+            if (buildOutput_) buildOutput_->AppendText(wxString::Format(wxS("%s:%d:%d: %s\n"),
+                                                                          event.filePath, event.line, event.column, event.message));
+            break;
+        }
+        case codium::CodeBlocksEventKind::BuildStarted:
+            problemStore_.Clear(source);
+            if (buildOutput_) buildOutput_->AppendText(wxString::Format(wxS("\n=== Code::Blocks: %s ===\n"), event.target));
+            SetStatusText(wxS("Code::Blocks building"), 1);
+            break;
+        case codium::CodeBlocksEventKind::BuildFinished:
+            if (buildOutput_) buildOutput_->AppendText(event.message + wxS("\n"));
+            SetStatusText(event.exitCode == 0 ? wxS("Code::Blocks build succeeded") : wxS("Code::Blocks build failed"), 1);
+            break;
+        case codium::CodeBlocksEventKind::ProjectOpened:
+        case codium::CodeBlocksEventKind::ProjectClosed:
+        case codium::CodeBlocksEventKind::DebugSessionStarted:
+        case codium::CodeBlocksEventKind::DebugSessionStopped:
+        case codium::CodeBlocksEventKind::PluginCommand:
+            if (debugConsole_ && (event.kind == codium::CodeBlocksEventKind::DebugSessionStarted ||
+                                  event.kind == codium::CodeBlocksEventKind::DebugSessionStopped)) {
+                debugConsole_->AppendText(event.message + wxS("\n"));
+            }
+            break;
+        }
+        AppendLog(wxString::Format(wxS("adapter> %s: %s"), codium::CodeBlocksEventKindName(event.kind), event.message));
+    }
+
     void SearchOpenVsx()
     {
         if (!EnsureWorkspaceTrusted()) return;
@@ -2357,6 +2478,36 @@ private:
                 RegisterContributedCommand(line);
             }
         }
+        if (codeBlocksAdapter_.IsRunning()) {
+            for (const auto& event : codeBlocksAdapter_.PollEvents()) {
+                if (!codeBlocksAdapter_.IsReady()) {
+                    AppendLog(wxS("Code::Blocks adapter rejected the host contract."));
+                    codeBlocksAdapter_.Stop();
+                    break;
+                }
+                HandleCodeBlocksEvent(event);
+                problemsChanged = problemsChanged || event.kind == codium::CodeBlocksEventKind::CompilerDiagnostic ||
+                                  event.kind == codium::CodeBlocksEventKind::BuildStarted;
+            }
+            if (codeBlocksAdapter_.HandshakeReceived() && !codeBlocksAdapter_.IsReady()) {
+                AppendLog(wxS("Code::Blocks adapter rejected the host contract."));
+                codeBlocksAdapter_.Stop();
+                adapterProjectOpened_ = false;
+            }
+            if (codeBlocksAdapter_.IsReady()) {
+                if (!adapterProjectOpened_) {
+                    const wxString projectFile = CodeBlocksProjectFile();
+                    if (!projectFile.empty() && codeBlocksAdapter_.OpenProject(projectFile)) {
+                        adapterProjectOpened_ = true;
+                        AppendLog(wxS("Code::Blocks adapter opened ") + projectFile);
+                    }
+                }
+                SetStatusText(wxString::Format(wxS("Code::Blocks adapter %d.%d · SDK %d.%d.%d"),
+                                               codeBlocksAdapter_.ContractMajor(), codeBlocksAdapter_.ContractMinor(),
+                                               codeBlocksAdapter_.SdkMajor(), codeBlocksAdapter_.SdkMinor(),
+                                               codeBlocksAdapter_.SdkRelease()), 2);
+            }
+        }
         if (problemsChanged) RefreshProblems();
     }
 
@@ -2366,6 +2517,8 @@ private:
         taskRunner_.Stop();
         terminal_.Stop();
         dap_.Stop();
+        codeBlocksAdapter_.Stop();
+        adapterProjectOpened_ = false;
         host_.Stop();
         event.Skip();
     }
@@ -2385,6 +2538,8 @@ private:
     codium::VsixManager extensions_;
     codium::ExtensionRegistry extensionRegistry_;
     codium::CodeBlocksBridge codeBlocksBridge_;
+    codium::CodeBlocksAdapterClient codeBlocksAdapter_;
+    bool adapterProjectOpened_ = false;
     codium::TreeViewRegistry treeRegistry_;
     codium::ScmModel scmModel_;
     codium::CustomEditorRegistry customEditors_;

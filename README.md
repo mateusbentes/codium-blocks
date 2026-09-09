@@ -98,6 +98,7 @@ The current `1.0.0` development increment builds on the completed `0.9.0` baseli
 - a native Code::Blocks SDK bridge that discovers headers, plugin directories, native libraries, and XML manifests without blindly loading foreign plugin code;
 - a native `.cbp` importer that exposes Code::Blocks build targets in the scheme bar and task list;
 - a versioned Code::Blocks host-adapter contract with normalized project, build, diagnostic, debug, and plugin-command events;
+- an optional external Code::Blocks adapter client with JSON Lines handshake, capability discovery, structured build events, and Problems integration;
 - an Extensions command and command-palette action for Code::Blocks SDK discovery;
 - a native editor gutter with line numbers and severity markers for active problems;
 - a scheme bar for Debug/Release configuration, target, and detected toolchain selection;
