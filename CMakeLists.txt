@@ -8,6 +8,14 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+function(codium_blocks_enable_warnings target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4)
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+endfunction()
+
 find_package(wxWidgets REQUIRED COMPONENTS core base richtext net xml)
 include(${wxWidgets_USE_FILE})
 find_package(OpenSSL QUIET)
@@ -45,7 +53,7 @@ target_compile_definitions(codium-blocks PRIVATE
     CODIUM_BLOCKS_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     CODIUM_BLOCKS_VERSION="${PROJECT_VERSION}"
 )
-target_compile_options(codium-blocks PRIVATE -Wall -Wextra -Wpedantic)
+codium_blocks_enable_warnings(codium-blocks)
 target_link_libraries(codium-blocks PRIVATE ${wxWidgets_LIBRARIES} ${CODIUM_BLOCKS_CRYPTO_LIB})
 if(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_SDK AND CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT)
     target_include_directories(codium-blocks PRIVATE
@@ -63,7 +71,7 @@ add_executable(codium-blocks-document-smoke
     tests/document-smoke.cpp
 )
 target_include_directories(codium-blocks-document-smoke PRIVATE native/include)
-target_compile_options(codium-blocks-document-smoke PRIVATE -Wall -Wextra -Wpedantic)
+codium_blocks_enable_warnings(codium-blocks-document-smoke)
 target_link_libraries(codium-blocks-document-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
 add_executable(codium-blocks-vsix-smoke
@@ -73,7 +81,7 @@ add_executable(codium-blocks-vsix-smoke
     tests/vsix-smoke.cpp
 )
 target_include_directories(codium-blocks-vsix-smoke PRIVATE native/include)
-target_compile_options(codium-blocks-vsix-smoke PRIVATE -Wall -Wextra -Wpedantic)
+codium_blocks_enable_warnings(codium-blocks-vsix-smoke)
 target_link_libraries(codium-blocks-vsix-smoke PRIVATE ${wxWidgets_LIBRARIES} ${CODIUM_BLOCKS_CRYPTO_LIB})
 
 add_executable(codium-blocks-security-smoke
@@ -83,7 +91,7 @@ add_executable(codium-blocks-security-smoke
     tests/security-smoke.cpp
 )
 target_include_directories(codium-blocks-security-smoke PRIVATE native/include)
-target_compile_options(codium-blocks-security-smoke PRIVATE -Wall -Wextra -Wpedantic)
+codium_blocks_enable_warnings(codium-blocks-security-smoke)
 target_link_libraries(codium-blocks-security-smoke PRIVATE ${wxWidgets_LIBRARIES} ${CODIUM_BLOCKS_CRYPTO_LIB})
 
 add_executable(codium-blocks-workspace-smoke
@@ -91,7 +99,7 @@ add_executable(codium-blocks-workspace-smoke
     tests/workspace-smoke.cpp
 )
 target_include_directories(codium-blocks-workspace-smoke PRIVATE native/include)
-target_compile_options(codium-blocks-workspace-smoke PRIVATE -Wall -Wextra -Wpedantic)
+codium_blocks_enable_warnings(codium-blocks-workspace-smoke)
 target_link_libraries(codium-blocks-workspace-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
 add_executable(codium-blocks-task-smoke
@@ -100,7 +108,7 @@ add_executable(codium-blocks-task-smoke
     tests/task-smoke.cpp
 )
 target_include_directories(codium-blocks-task-smoke PRIVATE native/include)
-target_compile_options(codium-blocks-task-smoke PRIVATE -Wall -Wextra -Wpedantic)
+codium_blocks_enable_warnings(codium-blocks-task-smoke)
 target_link_libraries(codium-blocks-task-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
 add_executable(codium-blocks-transport-smoke
@@ -110,7 +118,7 @@ add_executable(codium-blocks-transport-smoke
     tests/transport-smoke.cpp
 )
 target_include_directories(codium-blocks-transport-smoke PRIVATE native/include)
-target_compile_options(codium-blocks-transport-smoke PRIVATE -Wall -Wextra -Wpedantic)
+codium_blocks_enable_warnings(codium-blocks-transport-smoke)
 target_link_libraries(codium-blocks-transport-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
 add_executable(codium-blocks-terminal-screen-smoke
@@ -118,7 +126,7 @@ add_executable(codium-blocks-terminal-screen-smoke
     tests/terminal-screen-smoke.cpp
 )
 target_include_directories(codium-blocks-terminal-screen-smoke PRIVATE native/include)
-target_compile_options(codium-blocks-terminal-screen-smoke PRIVATE -Wall -Wextra -Wpedantic)
+codium_blocks_enable_warnings(codium-blocks-terminal-screen-smoke)
 target_link_libraries(codium-blocks-terminal-screen-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
 add_executable(codium-blocks-terminal-profile-smoke
@@ -126,7 +134,7 @@ add_executable(codium-blocks-terminal-profile-smoke
     tests/terminal-profile-smoke.cpp
 )
 target_include_directories(codium-blocks-terminal-profile-smoke PRIVATE native/include)
-target_compile_options(codium-blocks-terminal-profile-smoke PRIVATE -Wall -Wextra -Wpedantic)
+codium_blocks_enable_warnings(codium-blocks-terminal-profile-smoke)
 target_link_libraries(codium-blocks-terminal-profile-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
 add_executable(codium-blocks-debug-model-smoke
@@ -134,7 +142,7 @@ add_executable(codium-blocks-debug-model-smoke
     tests/debug-model-smoke.cpp
 )
 target_include_directories(codium-blocks-debug-model-smoke PRIVATE native/include)
-target_compile_options(codium-blocks-debug-model-smoke PRIVATE -Wall -Wextra -Wpedantic)
+codium_blocks_enable_warnings(codium-blocks-debug-model-smoke)
 target_link_libraries(codium-blocks-debug-model-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
 add_executable(codium-blocks-native-contributions-smoke
@@ -142,7 +150,7 @@ add_executable(codium-blocks-native-contributions-smoke
     tests/native-contributions-smoke.cpp
 )
 target_include_directories(codium-blocks-native-contributions-smoke PRIVATE native/include)
-target_compile_options(codium-blocks-native-contributions-smoke PRIVATE -Wall -Wextra -Wpedantic)
+codium_blocks_enable_warnings(codium-blocks-native-contributions-smoke)
 target_link_libraries(codium-blocks-native-contributions-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
 add_executable(codium-blocks-compatibility-smoke
@@ -151,7 +159,7 @@ add_executable(codium-blocks-compatibility-smoke
     tests/compatibility-smoke.cpp
 )
 target_include_directories(codium-blocks-compatibility-smoke PRIVATE native/include)
-target_compile_options(codium-blocks-compatibility-smoke PRIVATE -Wall -Wextra -Wpedantic)
+codium_blocks_enable_warnings(codium-blocks-compatibility-smoke)
 target_link_libraries(codium-blocks-compatibility-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
 add_executable(codium-blocks-problem-model-smoke
@@ -159,7 +167,7 @@ add_executable(codium-blocks-problem-model-smoke
     tests/problem-model-smoke.cpp
 )
 target_include_directories(codium-blocks-problem-model-smoke PRIVATE native/include)
-target_compile_options(codium-blocks-problem-model-smoke PRIVATE -Wall -Wextra -Wpedantic)
+codium_blocks_enable_warnings(codium-blocks-problem-model-smoke)
 target_link_libraries(codium-blocks-problem-model-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
 add_executable(codium-blocks-codeblocks-bridge-smoke
@@ -167,7 +175,7 @@ add_executable(codium-blocks-codeblocks-bridge-smoke
     tests/codeblocks-bridge-smoke.cpp
 )
 target_include_directories(codium-blocks-codeblocks-bridge-smoke PRIVATE native/include)
-target_compile_options(codium-blocks-codeblocks-bridge-smoke PRIVATE -Wall -Wextra -Wpedantic)
+codium_blocks_enable_warnings(codium-blocks-codeblocks-bridge-smoke)
 target_link_libraries(codium-blocks-codeblocks-bridge-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
 add_executable(codium-blocks-codeblocks-host-smoke
@@ -175,7 +183,7 @@ add_executable(codium-blocks-codeblocks-host-smoke
     tests/codeblocks-host-smoke.cpp
 )
 target_include_directories(codium-blocks-codeblocks-host-smoke PRIVATE native/include)
-target_compile_options(codium-blocks-codeblocks-host-smoke PRIVATE -Wall -Wextra -Wpedantic)
+codium_blocks_enable_warnings(codium-blocks-codeblocks-host-smoke)
 target_link_libraries(codium-blocks-codeblocks-host-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
 add_executable(codium-blocks-codeblocks-adapter-smoke
@@ -184,7 +192,7 @@ add_executable(codium-blocks-codeblocks-adapter-smoke
     tests/codeblocks-adapter-smoke.cpp
 )
 target_include_directories(codium-blocks-codeblocks-adapter-smoke PRIVATE native/include)
-target_compile_options(codium-blocks-codeblocks-adapter-smoke PRIVATE -Wall -Wextra -Wpedantic)
+codium_blocks_enable_warnings(codium-blocks-codeblocks-adapter-smoke)
 target_link_libraries(codium-blocks-codeblocks-adapter-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
 install(TARGETS codium-blocks RUNTIME DESTINATION bin)
