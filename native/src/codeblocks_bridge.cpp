@@ -109,7 +109,11 @@ wxArrayString CodeBlocksBridge::DefaultRoots()
     add(wxS("/opt"));
     add(wxS("~/.local"));
 #endif
-    add(wxStandardPaths::Get().GetInstallPrefix());
+    // GetInstallPrefix was removed from wxWidgets 3.3. The platform-specific
+    // roots above cover packaged installations; also inspect the executable's
+    // directory without relying on a version-specific wx API.
+    const wxString executableDirectory = wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath();
+    add(executableDirectory);
     return roots;
 }
 
