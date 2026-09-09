@@ -36,6 +36,7 @@ add_executable(codium-blocks
     native/src/compatibility_report.cpp
     native/src/problem_model.cpp
     native/src/codeblocks_bridge.cpp
+    native/src/codeblocks_host.cpp
 )
 
 target_include_directories(codium-blocks PRIVATE native/include)
@@ -168,6 +169,14 @@ target_include_directories(codium-blocks-codeblocks-bridge-smoke PRIVATE native/
 target_compile_options(codium-blocks-codeblocks-bridge-smoke PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(codium-blocks-codeblocks-bridge-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
+add_executable(codium-blocks-codeblocks-host-smoke
+    native/src/codeblocks_host.cpp
+    tests/codeblocks-host-smoke.cpp
+)
+target_include_directories(codium-blocks-codeblocks-host-smoke PRIVATE native/include)
+target_compile_options(codium-blocks-codeblocks-host-smoke PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(codium-blocks-codeblocks-host-smoke PRIVATE ${wxWidgets_LIBRARIES})
+
 install(TARGETS codium-blocks RUNTIME DESTINATION bin)
 install(DIRECTORY extension-host DESTINATION share/codium-blocks)
 install(DIRECTORY extensions DESTINATION share/codium-blocks)
@@ -195,6 +204,7 @@ if(BUILD_TESTING)
     add_test(NAME compatibility-smoke COMMAND codium-blocks-compatibility-smoke)
     add_test(NAME problem-model-smoke COMMAND codium-blocks-problem-model-smoke)
     add_test(NAME codeblocks-bridge-smoke COMMAND codium-blocks-codeblocks-bridge-smoke)
+    add_test(NAME codeblocks-host-smoke COMMAND codium-blocks-codeblocks-host-smoke)
 endif()
 
 message(STATUS "Codium::Blocks ${PROJECT_VERSION}: native wxWidgets core + optional Node.js extension host")

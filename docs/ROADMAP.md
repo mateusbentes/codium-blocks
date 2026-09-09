@@ -54,7 +54,7 @@ The completed `0.9.0` increment adds native breakpoint toggling and DAP `setBrea
 
 The 1.0 goal is a **classic, compact, and polished native IDE**. The visual direction keeps the direct project-tree, editor, build, debug, and terminal workflow that makes Code::Blocks practical, while adding modern navigation and feedback patterns inspired by Xcode. The result must remain recognizably Codium::Blocks: native C++/wxWidgets, keyboard-first, fast to start, and free from Electron in the core process.
 
-The first 1.0 implementation increment now provides a native project navigator, a central tabbed editor with a real line-number gutter, a dockable bottom workbench, Problems/Build/Terminal/Debug/Output pages, a status bar, a normalized compiler/LSP/terminal problem model, clickable problem navigation, severity markers and inline underlines for active diagnostics, a Debug/Release scheme bar with target/toolchain selection, conservative GCC/Clang, MSVC, Rust, and ANSI Build parsing, and a safe Code::Blocks SDK bridge for header, plugin-directory, native-library, and manifest discovery. The remaining 1.0 work is to deepen source annotations, keyboard navigation, themes, filtering, rerun actions, cross-platform visual verification, and the tested Code::Blocks host adapter boundary.
+The first 1.0 implementation increment now provides a native project navigator, a central tabbed editor with a real line-number gutter, a dockable bottom workbench, Problems/Build/Terminal/Debug/Output pages, a status bar, a normalized compiler/LSP/terminal problem model, clickable problem navigation, severity markers and inline underlines for active diagnostics, a Debug/Release scheme bar with target/toolchain selection, conservative GCC/Clang, MSVC, Rust, and ANSI Build parsing, a safe Code::Blocks SDK bridge for header, plugin-directory, native-library, and manifest discovery, a `.cbp` target importer, and a versioned host-adapter event contract. The remaining 1.0 work is to deepen source annotations, keyboard navigation, themes, filtering, rerun actions, cross-platform visual verification, and the running Code::Blocks host adapter boundary.
 
 ### 1.0 interface
 
@@ -92,7 +92,7 @@ The complete interface specification is maintained in [`docs/UI_DESIGN.md`](UI_D
 
 ### Code::Blocks host boundary
 
-The current bridge is intentionally preflight-only. Code::Blocks plugins depend on `Manager`, `PluginManager`, `cbPlugin`, event infrastructure, and a matching SDK ABI; they must not be loaded as arbitrary shared libraries. The next integration task is to define and test a host adapter that owns those services or runs a dedicated compatibility process, translates Code::Blocks events into Codium::Blocks models, validates SDK versions, and isolates plugin lifetime. See [`docs/CODEBLOCKS_INTEGRATION.md`](CODEBLOCKS_INTEGRATION.md).
+The current bridge is intentionally preflight-only. Code::Blocks plugins depend on `Manager`, `PluginManager`, `cbPlugin`, event infrastructure, and a matching SDK ABI; they must not be loaded as arbitrary shared libraries. Codium::Blocks now imports `.cbp` targets and defines the versioned 1.0 event contract needed by a future adapter. The next integration task is to implement a host adapter that owns those services or runs a dedicated compatibility process, translates Code::Blocks events into Codium::Blocks models, validates SDK versions, and isolates plugin lifetime. See [`docs/CODEBLOCKS_INTEGRATION.md`](CODEBLOCKS_INTEGRATION.md).
 
 ## Compatibility criteria
 

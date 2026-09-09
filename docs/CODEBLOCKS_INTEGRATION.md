@@ -22,6 +22,8 @@ The bridge understands the manifest shape used by the Code::Blocks source tree:
 
 The native UI exposes **Extensions → Discover Code::Blocks SDK**, the command palette action **Discover Code::Blocks SDK**, and an Output-panel button. Discovery uses `CODEBLOCKS_ROOT` or `CODEBLOCKS_HOME` when configured and otherwise checks common platform installation roots. If automatic discovery fails, the command opens a directory chooser.
 
+Codium::Blocks also imports a `.cbp` file located in the opened workspace. The importer reads the Code::Blocks `Project/Build/Target` structure, exposes each target in the scheme bar, creates a corresponding **Code::Blocks: Build target** task, preserves the project path and target name, and records the target compiler. The task invokes the documented Code::Blocks command-line shape `codeblocks --build --target="Target" project.cbp`, with the project filename in the final argument position. It does not assume that the executable is installed, so an unavailable command is reported by the normal task output and Problems pipeline.
+
 ## Why loading is not enabled yet
 
 Code::Blocks plugins are not standalone C++ modules with a stable, host-independent ABI. A plugin registers through `PluginRegistrant<T>`, creates `cbPlugin` objects, and expects the Code::Blocks `Manager`, `PluginManager`, event system, log manager, editor manager, debugger manager, and SDK-specific global infrastructure to exist. The PluginManager also validates the embedded resource manifest and SDK version before loading a library.
@@ -43,4 +45,6 @@ This option currently adds `${root}/include` and `${root}/src/include` to the na
 
 ## Next integration stage
 
-The next stage is a **host adapter boundary**, not blind plugin loading. It must define which Code::Blocks managers are owned by Codium::Blocks, how `CodeBlocksEvent` messages are translated into the native problem/build/debug models, how plugin lifetime is isolated, and how SDK version compatibility is checked. Only after that adapter has a tested ABI contract should selected GPL-compatible plugins be loaded in-process or in a dedicated Code::Blocks compatibility process.
+The first host-adapter contract is now versioned as **1.0** in `codium/codeblocks_host.hpp`. It defines normalized events for project lifecycle, builds, compiler diagnostics, debug sessions, and plugin commands, together with a small event bus and SDK/contract version tuple. The current implementation is a contract and test seam, not a running Code::Blocks host.
+
+The next stage is a **real host adapter boundary**, not blind plugin loading. It must define which Code::Blocks managers are owned by Codium::Blocks, how `CodeBlocksEvent` messages are translated into the native problem/build/debug models, how plugin lifetime is isolated, and how SDK version compatibility is checked. Only after that adapter has a tested ABI contract should selected GPL-compatible plugins be loaded in-process or in a dedicated Code::Blocks compatibility process.

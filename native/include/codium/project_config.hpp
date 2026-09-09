@@ -12,6 +12,8 @@ struct ProjectTask final {
     wxString program;
     wxArrayString arguments;
     wxString workingDirectory;
+    wxString projectFile;
+    wxString targetName;
 };
 
 struct ProjectScheme final {
@@ -19,6 +21,7 @@ struct ProjectScheme final {
     wxString configuration;
     wxString target;
     wxString toolchain;
+    wxString projectFile;
 };
 
 class ProjectConfig final {
@@ -33,6 +36,8 @@ private:
     void AddBuiltInTasks(const wxString& workspaceRoot);
     void AddBuiltInSchemes();
     void LoadCustomTasks(const wxString& workspaceRoot);
+    void LoadCodeBlocksProjects(const wxString& workspaceRoot);
+    bool LoadCodeBlocksProject(const wxString& projectPath, wxString* error);
 
     wxArrayString toolchains_;
     std::vector<ProjectTask> tasks_;

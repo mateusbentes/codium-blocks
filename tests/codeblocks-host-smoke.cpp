@@ -1,0 +1,41 @@
+#include "codium/codeblocks_host.hpp"
+
+#include <iostream>
+
+int main()
+{
+    if (codium::CodeBlocksHostContract::Version() != wxS("1.0") ||
+        !codium::CodeBlocksHostContract::Supports(1, 0) ||
+        codium::CodeBlocksHostContract::Supports(1, 1) ||
+        codium::CodeBlocksHostContract::Supports(2, 0) ||
+        codium::CodeBlocksHostContract::Supports(1, -1)) {
+        std::cerr << "codeblocks-host-smoke: contract compatibility failed\n";
+        return 1;
+    }
+
+    codium::CodeBlocksEventBus bus;
+    bus.Publish(codium::CodeBlocksHostEvent{
+        codium::CodeBlocksEventKind::ProjectOpened,
+        wxS("/workspace/demo.cbp"), wxS("app"), wxEmptyString, wxEmptyString,
+        wxS("Project opened"), wxEmptyString, 0, 0, 0, false, wxEmptyString});
+    bus.Publish(codium::CodeBlocksHostEvent{
+        codium::CodeBlocksEventKind::CompilerDiagnostic,
+        wxS("/workspace/demo.cbp"), wxS("app"), wxS("Compiler"), wxEmptyString,
+        wxS("missing header"), wxS("src/main.cpp"), 11, 4, 1, true, wxEmptyString});
+    if (bus.Empty()) {
+        std::cerr << "codeblocks-host-smoke: event bus unexpectedly empty\n";
+        return 2;
+    }
+
+    const auto events = bus.Drain();
+    if (events.size() != 2 || !bus.Empty() ||
+        CodeBlocksEventKindName(events[0].kind) != wxS("projectOpened") ||
+        CodeBlocksEventKindName(events[1].kind) != wxS("compilerDiagnostic") ||
+        events[1].line != 11 || events[1].column != 4 || !events[1].isError) {
+        std::cerr << "codeblocks-host-smoke: event normalization failed\n";
+        return 3;
+    }
+
+    std::cout << "codeblocks-host-smoke: ok — versioned contract and normalized event bus\n";
+    return 0;
+}
