@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <cstdint>
 
 namespace codium {
 
@@ -79,6 +80,11 @@ void TerminalScreen::Reset()
     bold_ = false;
     underline_ = false;
     inverse_ = false;
+    mouseReporting_ = false;
+    sgrMouse_ = false;
+    bracketedPaste_ = false;
+    scrollOffset_ = 0;
+    scrollback_.clear();
     ClearGrid(primaryGrid_);
     ClearGrid(alternateGrid_);
 }
@@ -98,6 +104,29 @@ const TerminalCell& TerminalScreen::CellAt(int column, int row) const
     static const TerminalCell blank;
     if (column < 0 || row < 0 || column >= columns_ || row >= rows_) return blank;
     return Grid()[static_cast<size_t>(row * columns_ + column)];
+}
+
+const TerminalCell& TerminalScreen::VisibleCellAt(int column, int row) const
+{
+    static const TerminalCell blank;
+    if (column < 0 || row < 0 || column >= columns_ || row >= rows_) return blank;
+    if (scrollOffset_ == 0) return CellAt(column, row);
+    const int historyRows = static_cast<int>(scrollback_.size());
+    const int sourceRow = historyRows - scrollOffset_ + row;
+    if (sourceRow < 0) return blank;
+    if (sourceRow < historyRows) return scrollback_[static_cast<size_t>(sourceRow)][static_cast<size_t>(column)];
+    return CellAt(column, sourceRow - historyRows);
+}
+
+void TerminalScreen::ScrollBack(int lines)
+{
+    scrollOffset_ = std::min(static_cast<int>(scrollback_.size()),
+                              std::max(0, scrollOffset_ + std::max(1, lines)));
+}
+
+void TerminalScreen::ScrollForward(int lines)
+{
+    scrollOffset_ = std::max(0, scrollOffset_ - std::max(1, lines));
 }
 
 wxColour TerminalScreen::PaletteColor(int index, bool bold)
@@ -128,11 +157,38 @@ void TerminalScreen::MoveCursor(int column, int row)
     cursorRow_ = std::max(0, std::min(rows_ - 1, row));
 }
 
+bool TerminalScreen::IsCombining(wxChar character)
+{
+    const uint32_t code = static_cast<uint32_t>(character);
+    return (code >= 0x0300 && code <= 0x036f) || (code >= 0x1ab0 && code <= 0x1aff) ||
+           (code >= 0x1dc0 && code <= 0x1dff) || (code >= 0x20d0 && code <= 0x20ff) ||
+           (code >= 0xfe20 && code <= 0xfe2f);
+}
+
+bool TerminalScreen::IsWide(wxChar character)
+{
+    const uint32_t code = static_cast<uint32_t>(character);
+    return (code >= 0x1100 && code <= 0x115f) || (code >= 0x2329 && code <= 0x232a) ||
+           (code >= 0x2e80 && code <= 0xa4cf) || (code >= 0xac00 && code <= 0xd7a3) ||
+           (code >= 0xf900 && code <= 0xfaff) || (code >= 0xfe10 && code <= 0xfe19) ||
+           (code >= 0xfe30 && code <= 0xfe6f) || (code >= 0xff00 && code <= 0xff60) ||
+           (code >= 0xffe0 && code <= 0xffe6) || (code >= 0x1f300 && code <= 0x1faff);
+}
+
+void TerminalScreen::PushScrollbackRow()
+{
+    if (alternateScreen_) return;
+    scrollOffset_ = 0;
+    if (scrollback_.size() >= maxScrollback_) scrollback_.pop_front();
+    scrollback_.push_back(std::vector<TerminalCell>(Grid().begin(), Grid().begin() + columns_));
+}
+
 void TerminalScreen::ScrollUp(int count)
 {
     count = std::max(1, count);
     count = std::min(count, rows_);
     auto& grid = Grid();
+    for (int index = 0; index < count; ++index) PushScrollbackRow();
     grid.erase(grid.begin(), grid.begin() + static_cast<ptrdiff_t>(count * columns_));
     grid.insert(grid.end(), static_cast<size_t>(count * columns_), TerminalCell{});
 }
@@ -156,6 +212,17 @@ void TerminalScreen::Backspace()
 void TerminalScreen::PutCharacter(wxChar character)
 {
     if (character < 0x20) return;
+    if (IsCombining(character) && cursorColumn_ > 0) {
+        TerminalCell& previous = Grid()[static_cast<size_t>(cursorRow_ * columns_ + cursorColumn_ - 1)];
+        if (previous.text.empty()) previous.text += previous.character;
+        previous.text += character;
+        return;
+    }
+    const int width = IsWide(character) ? 2 : 1;
+    if (width == 2 && cursorColumn_ == columns_ - 1 && wrapEnabled_) {
+        cursorColumn_ = 0;
+        LineFeed();
+    }
     if (cursorColumn_ >= columns_) {
         if (wrapEnabled_) {
             cursorColumn_ = 0;
@@ -166,11 +233,22 @@ void TerminalScreen::PutCharacter(wxChar character)
     }
     TerminalCell& cell = Grid()[static_cast<size_t>(cursorRow_ * columns_ + cursorColumn_)];
     cell.character = character;
+    cell.text.clear();
+    cell.text += character;
     cell.foreground = ClampIndex(foreground_);
     cell.background = ClampIndex(background_);
     cell.bold = bold_;
     cell.underline = underline_;
     cell.inverse = inverse_;
+    cell.width = width;
+    cell.continuation = false;
+    if (width == 2 && cursorColumn_ + 1 < columns_) {
+        TerminalCell& continuation = Grid()[static_cast<size_t>(cursorRow_ * columns_ + cursorColumn_ + 1)];
+        continuation = TerminalCell{};
+        continuation.continuation = true;
+        continuation.width = 0;
+        ++cursorColumn_;
+    }
     ++cursorColumn_;
 }
 
@@ -274,6 +352,9 @@ void TerminalScreen::HandleMode(bool set)
         if (value == 25) cursorVisible_ = set;
         else if (value == 7) wrapEnabled_ = set;
         else if (value == 47 || value == 1047 || value == 1049) SwitchAlternateScreen(set);
+        else if (value == 1000 || value == 1002 || value == 1003) mouseReporting_ = set;
+        else if (value == 1006) sgrMouse_ = set;
+        else if (value == 2004) bracketedPaste_ = set;
     }
 }
 

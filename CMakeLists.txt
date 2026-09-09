@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CodiumBlocks VERSION 0.8.1 LANGUAGES CXX)
+project(CodiumBlocks VERSION 0.8.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,6 +18,7 @@ add_executable(codium-blocks
     native/src/task_runner.cpp
     native/src/terminal_session.cpp
     native/src/terminal_screen.cpp
+    native/src/terminal_profile.cpp
     native/src/dap_client.cpp
 )
 
@@ -80,6 +81,14 @@ target_include_directories(codium-blocks-terminal-screen-smoke PRIVATE native/in
 target_compile_options(codium-blocks-terminal-screen-smoke PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(codium-blocks-terminal-screen-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
+add_executable(codium-blocks-terminal-profile-smoke
+    native/src/terminal_profile.cpp
+    tests/terminal-profile-smoke.cpp
+)
+target_include_directories(codium-blocks-terminal-profile-smoke PRIVATE native/include)
+target_compile_options(codium-blocks-terminal-profile-smoke PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(codium-blocks-terminal-profile-smoke PRIVATE ${wxWidgets_LIBRARIES})
+
 install(TARGETS codium-blocks RUNTIME DESTINATION bin)
 install(DIRECTORY extension-host DESTINATION share/codium-blocks)
 install(DIRECTORY extensions DESTINATION share/codium-blocks)
@@ -100,6 +109,7 @@ if(BUILD_TESTING)
     add_test(NAME task-smoke COMMAND codium-blocks-task-smoke)
     add_test(NAME transport-smoke COMMAND codium-blocks-transport-smoke ${CMAKE_SOURCE_DIR})
     add_test(NAME terminal-screen-smoke COMMAND codium-blocks-terminal-screen-smoke)
+    add_test(NAME terminal-profile-smoke COMMAND codium-blocks-terminal-profile-smoke)
 endif()
 
 message(STATUS "Codium::Blocks ${PROJECT_VERSION}: native wxWidgets core + optional Node.js extension host")

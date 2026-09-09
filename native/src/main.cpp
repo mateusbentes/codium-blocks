@@ -4,12 +4,16 @@
 #include "codium/task_runner.hpp"
 #include "codium/terminal_session.hpp"
 #include "codium/terminal_screen.hpp"
+#include "codium/terminal_profile.hpp"
 #include "codium/dap_client.hpp"
 #include "codium/vsix_manager.hpp"
 #include "codium/workspace.hpp"
 
 #include <wx/button.h>
 #include <wx/choicdlg.h>
+#include <wx/clipbrd.h>
+#include <wx/dataobj.h>
+#include <wx/dcclient.h>
 #include <wx/dir.h>
 #include <wx/dirdlg.h>
 #include <wx/filedlg.h>
@@ -181,6 +185,12 @@ public:
           timer_(this)
     {
         BuildMenuBar();
+        terminalProfile_ = codium::TerminalProfileStore::Load();
+        if (!terminalProfile_.shell.empty()) terminalShell_ = terminalProfile_.shell;
+        terminalColumns_ = std::max(20, terminalProfile_.columns);
+        terminalRows_ = std::max(4, terminalProfile_.rows);
+        for (const auto& command : terminalProfile_.history) terminalHistory_.push_back(command);
+        historyIndex_ = terminalHistory_.size();
         auto* root = new wxBoxSizer(wxVERTICAL);
         auto* title = new wxStaticText(this, wxID_ANY,
             wxS("Native C++/wxWidgets IDE — optional Node.js Extension Host — no Electron"));
@@ -239,6 +249,8 @@ public:
                 const wxSize size = terminalOutput_->GetClientSize();
                 const int columns = std::max(20, size.GetWidth() / 8);
                 const int rows = std::max(4, size.GetHeight() / 16);
+                terminalColumns_ = columns;
+                terminalRows_ = rows;
                 terminal_.Resize(columns, rows);
                 terminalScreen_.Resize(columns, rows);
                 RenderTerminalScreen();
@@ -246,6 +258,10 @@ public:
             event.Skip();
         });
         terminalOutput_->Bind(wxEVT_KEY_DOWN, [this](wxKeyEvent& event) { HandleTerminalKey(event); });
+        terminalOutput_->Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent& event) { BeginTerminalSelection(event); });
+        terminalOutput_->Bind(wxEVT_MOTION, [this](wxMouseEvent& event) { UpdateTerminalSelection(event); });
+        terminalOutput_->Bind(wxEVT_LEFT_UP, [this](wxMouseEvent& event) { EndTerminalSelection(event); });
+        terminalOutput_->Bind(wxEVT_MOUSEWHEEL, [this](wxMouseEvent& event) { HandleTerminalWheel(event); });
         root->Add(terminalOutput_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
 
         auto* debugControls = new wxBoxSizer(wxHORIZONTAL);
@@ -474,32 +490,50 @@ private:
         for (int row = 0; row < terminalScreen_.Rows(); ++row) {
             int column = 0;
             while (column < terminalScreen_.Columns()) {
-                const codium::TerminalCell& first = terminalScreen_.CellAt(column, row);
-                const bool firstCursor = terminalScreen_.CursorVisible() &&
+                const codium::TerminalCell& first = terminalScreen_.VisibleCellAt(column, row);
+                if (first.continuation) {
+                    ++column;
+                    continue;
+                }
+                const bool firstCursor = terminalScreen_.ScrollOffset() == 0 && terminalScreen_.CursorVisible() &&
                     terminalScreen_.CursorColumn() == column && terminalScreen_.CursorRow() == row;
+                const bool firstSelected = IsTerminalCellSelected(column, row);
                 int foreground = first.foreground;
                 int background = first.background;
                 if (first.inverse) std::swap(foreground, background);
-                if (firstCursor) foreground = 15;
+                if (firstCursor || firstSelected) foreground = 15;
                 wxString run;
-                run += first.character;
+                run = first.text;
+                if (run.empty()) run += first.character;
                 ++column;
                 while (column < terminalScreen_.Columns()) {
-                    const codium::TerminalCell& cell = terminalScreen_.CellAt(column, row);
-                    const bool cursor = terminalScreen_.CursorVisible() &&
+                    const codium::TerminalCell& cell = terminalScreen_.VisibleCellAt(column, row);
+                    if (cell.continuation) {
+                        ++column;
+                        continue;
+                    }
+                    const bool cursor = terminalScreen_.ScrollOffset() == 0 && terminalScreen_.CursorVisible() &&
                         terminalScreen_.CursorColumn() == column && terminalScreen_.CursorRow() == row;
+                    const bool selected = IsTerminalCellSelected(column, row);
                     int cellForeground = cell.foreground;
                     int cellBackground = cell.background;
                     if (cell.inverse) std::swap(cellForeground, cellBackground);
-                    if (cursor) cellForeground = 15;
+                    if (cursor || selected) cellForeground = 15;
                     if (cellForeground != foreground || cellBackground != background ||
-                        cell.bold != first.bold || cell.underline != first.underline || cursor != firstCursor) break;
-                    run += cell.character;
+                        cell.bold != first.bold || cell.underline != first.underline || cursor != firstCursor ||
+                        selected != firstSelected) break;
+                    if (cell.text.empty()) run += cell.character;
+                    else run += cell.text;
                     ++column;
                 }
-                terminalOutput_->BeginTextColour(codium::TerminalScreen::PaletteColor(foreground, first.bold));
+                wxRichTextAttr style;
+                style.SetTextColour(codium::TerminalScreen::PaletteColor(foreground, first.bold));
+                style.SetBackgroundColour(firstSelected ? wxColour(40, 90, 170) : wxColour(20, 20, 20));
+                style.SetFontWeight(first.bold ? wxFONTWEIGHT_BOLD : wxFONTWEIGHT_NORMAL);
+                style.SetFontUnderlined(first.underline);
+                terminalOutput_->BeginStyle(style);
                 terminalOutput_->WriteText(run);
-                terminalOutput_->EndTextColour();
+                terminalOutput_->EndStyle();
             }
             if (row + 1 < terminalScreen_.Rows()) terminalOutput_->WriteText(wxS("\n"));
         }
@@ -621,6 +655,18 @@ private:
         return workspace_.IsOpen() ? workspace_.RootPath() : projectRoot_;
     }
 
+    void SaveTerminalProfile()
+    {
+        terminalProfile_.shell = terminalShell_;
+        terminalProfile_.columns = terminalColumns_;
+        terminalProfile_.rows = terminalRows_;
+        terminalProfile_.history.Clear();
+        const size_t first = terminalHistory_.size() > 500 ? terminalHistory_.size() - 500 : 0;
+        for (size_t index = first; index < terminalHistory_.size(); ++index) terminalProfile_.history.Add(terminalHistory_[index]);
+        wxString error;
+        if (!codium::TerminalProfileStore::Save(terminalProfile_, wxS("default"), &error)) AppendLog(error);
+    }
+
     void StartTerminal()
     {
         if (terminal_.IsRunning()) {
@@ -641,6 +687,8 @@ private:
                 const wxSize size = terminalOutput_->GetClientSize();
                 const int columns = std::max(20, size.GetWidth() / 8);
                 const int rows = std::max(4, size.GetHeight() / 16);
+                terminalColumns_ = columns;
+                terminalRows_ = rows;
                 terminal_.Resize(columns, rows);
                 terminalScreen_.Resize(columns, rows);
                 RenderTerminalScreen();
@@ -672,6 +720,8 @@ private:
                                     wxS("Terminal shell"), choices);
         if (dialog.ShowModal() == wxID_OK) {
             terminalShell_ = choices[dialog.GetSelection()];
+            terminalProfile_.shell = terminalShell_;
+            SaveTerminalProfile();
             AppendLog(wxS("Selected shell: ") + terminalShell_);
         }
     }
@@ -691,8 +741,134 @@ private:
         }
         if (terminal_.Write(input)) {
             if (terminalInput_) terminalInput_->Clear();
+            SaveTerminalProfile();
         } else {
             AppendLog(wxS("Could not write to terminal."));
+        }
+    }
+
+    wxPoint TerminalCellFromPosition(const wxPoint& position) const
+    {
+        wxClientDC dc(terminalOutput_);
+        dc.SetFont(terminalOutput_->GetFont());
+        int width = 8;
+        int height = 16;
+        dc.GetTextExtent(wxS("W"), &width, &height);
+        return wxPoint(std::max(0, std::min(terminalScreen_.Columns() - 1, position.x / std::max(1, width))),
+                       std::max(0, std::min(terminalScreen_.Rows() - 1, position.y / std::max(1, height))));
+    }
+
+    bool IsTerminalCellSelected(int column, int row) const
+    {
+        const int first = terminalSelectionAnchor_.y * terminalScreen_.Columns() + terminalSelectionAnchor_.x;
+        const int last = terminalSelectionActive_.y * terminalScreen_.Columns() + terminalSelectionActive_.x;
+        const int current = row * terminalScreen_.Columns() + column;
+        return first != last && current >= std::min(first, last) && current <= std::max(first, last);
+    }
+
+    wxString SelectedTerminalText() const
+    {
+        if (!IsTerminalCellSelected(terminalSelectionAnchor_.x, terminalSelectionAnchor_.y)) return wxEmptyString;
+        const int first = terminalSelectionAnchor_.y * terminalScreen_.Columns() + terminalSelectionAnchor_.x;
+        const int last = terminalSelectionActive_.y * terminalScreen_.Columns() + terminalSelectionActive_.x;
+        const int low = std::min(first, last);
+        const int high = std::max(first, last);
+        wxString text;
+        int previousRow = -1;
+        for (int index = low; index <= high; ++index) {
+            const int row = index / terminalScreen_.Columns();
+            const int column = index % terminalScreen_.Columns();
+            const auto& cell = terminalScreen_.VisibleCellAt(column, row);
+            if (cell.continuation) continue;
+            if (previousRow >= 0 && row != previousRow) text += wxS("\n");
+            if (cell.text.empty()) text += cell.character;
+            else text += cell.text;
+            previousRow = row;
+        }
+        return text;
+    }
+
+    void CopyTerminalSelection()
+    {
+        const wxString text = SelectedTerminalText();
+        if (text.empty() || !wxTheClipboard || !wxTheClipboard->Open()) return;
+        wxTheClipboard->SetData(new wxTextDataObject(text));
+        wxTheClipboard->Close();
+    }
+
+    void SendTerminalMouse(int code, int column, int row, bool release)
+    {
+        if (!terminal_.IsRunning() || !terminalScreen_.MouseReporting()) return;
+        column = std::max(0, std::min(terminalScreen_.Columns() - 1, column)) + 1;
+        row = std::max(0, std::min(terminalScreen_.Rows() - 1, row)) + 1;
+        wxString sequence;
+        if (terminalScreen_.SgrMouse()) {
+            sequence = wxString::Format(wxS("\x1b[<%d;%d;%d%c"), code, column, row, release ? wxChar('m') : wxChar('M'));
+        } else {
+            sequence += wxChar(0x1b);
+            sequence += wxChar('[');
+            sequence += wxChar('M');
+            sequence += wxChar(32 + code);
+            sequence += wxChar(32 + column);
+            sequence += wxChar(32 + row);
+        }
+        terminal_.Write(sequence);
+    }
+
+    void BeginTerminalSelection(wxMouseEvent& event)
+    {
+        const wxPoint cell = TerminalCellFromPosition(event.GetPosition());
+        if (terminalScreen_.MouseReporting()) {
+            SendTerminalMouse(0, cell.x, cell.y, false);
+            return;
+        }
+        terminalSelectionAnchor_ = cell;
+        terminalSelectionActive_ = cell;
+        terminalSelecting_ = true;
+        terminalOutput_->SetFocus();
+        terminalOutput_->CaptureMouse();
+        RenderTerminalScreen();
+    }
+
+    void UpdateTerminalSelection(wxMouseEvent& event)
+    {
+        if (terminalScreen_.MouseReporting()) {
+            if (event.Moving() || event.Dragging()) {
+                const wxPoint cell = TerminalCellFromPosition(event.GetPosition());
+                SendTerminalMouse(32, cell.x, cell.y, false);
+            }
+            return;
+        }
+        if (!terminalSelecting_ || !event.Dragging()) return;
+        terminalSelectionActive_ = TerminalCellFromPosition(event.GetPosition());
+        RenderTerminalScreen();
+    }
+
+    void EndTerminalSelection(wxMouseEvent& event)
+    {
+        const wxPoint cell = TerminalCellFromPosition(event.GetPosition());
+        if (terminalScreen_.MouseReporting()) {
+            SendTerminalMouse(3, cell.x, cell.y, true);
+            return;
+        }
+        if (terminalSelecting_) terminalSelectionActive_ = cell;
+        terminalSelecting_ = false;
+        if (terminalOutput_->HasCapture()) terminalOutput_->ReleaseMouse();
+        RenderTerminalScreen();
+    }
+
+    void HandleTerminalWheel(wxMouseEvent& event)
+    {
+        const wxPoint cell = TerminalCellFromPosition(event.GetPosition());
+        const int clicks = std::max(1, std::abs(event.GetWheelRotation()) / std::max(1, event.GetWheelDelta()));
+        if (terminalScreen_.MouseReporting()) {
+            SendTerminalMouse(event.GetWheelRotation() > 0 ? 64 : 65, cell.x, cell.y, false);
+        } else if (event.GetWheelRotation() > 0) {
+            terminalScreen_.ScrollBack(clicks);
+            RenderTerminalScreen();
+        } else {
+            terminalScreen_.ScrollForward(clicks);
+            RenderTerminalScreen();
         }
     }
 
@@ -700,6 +876,23 @@ private:
     {
         if (!terminal_.IsRunning()) {
             event.Skip();
+            return;
+        }
+
+        if (event.ControlDown() && (event.GetUnicodeKey() == wxChar('c') || event.GetUnicodeKey() == wxChar('C')) &&
+            !SelectedTerminalText().empty()) {
+            CopyTerminalSelection();
+            return;
+        }
+        if (event.ControlDown() && (event.GetUnicodeKey() == wxChar('v') || event.GetUnicodeKey() == wxChar('V')) &&
+            wxTheClipboard && wxTheClipboard->Open()) {
+            wxTextDataObject data;
+            if (wxTheClipboard->IsSupported(wxDF_TEXT) && wxTheClipboard->GetData(data)) {
+                wxString paste = data.GetText();
+                if (terminalScreen_.BracketedPaste()) paste = wxString::FromUTF8("\x1b[200~") + paste + wxString::FromUTF8("\x1b[201~");
+                terminal_.Write(paste);
+            }
+            wxTheClipboard->Close();
             return;
         }
 
@@ -1267,6 +1460,7 @@ private:
 
     void OnClose(wxCloseEvent& event)
     {
+        SaveTerminalProfile();
         taskRunner_.Stop();
         terminal_.Stop();
         dap_.Stop();
@@ -1283,6 +1477,9 @@ private:
     codium::TerminalScreen terminalScreen_;
     codium::DapClient dap_;
     wxString terminalShell_;
+    codium::TerminalProfile terminalProfile_;
+    int terminalColumns_ = 120;
+    int terminalRows_ = 32;
     codium::VsixManager extensions_;
     codium::Document document_;
     std::map<wxString, codium::Document> documents_;
@@ -1306,6 +1503,9 @@ private:
     wxColour ansiColour_ = wxColour(230, 230, 230);
     std::vector<wxString> terminalHistory_;
     size_t historyIndex_ = 0;
+    wxPoint terminalSelectionAnchor_;
+    wxPoint terminalSelectionActive_;
+    bool terminalSelecting_ = false;
 
     wxDECLARE_EVENT_TABLE();
 };

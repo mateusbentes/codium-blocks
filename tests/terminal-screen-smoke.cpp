@@ -41,6 +41,22 @@ int main()
     screen.Feed(wxS("\x1b[?25h"));
     if (!screen.CursorVisible()) return 8;
 
-    std::cout << "terminal-screen-smoke: ok — VT cursor, colors, erase, scroll, and alternate screen\n";
+    screen.Feed(wxS("\x1b[?1000h\x1b[?1006h\x1b[?2004h"));
+    if (!screen.MouseReporting() || !screen.SgrMouse() || !screen.BracketedPaste()) return 9;
+
+    screen.Reset();
+    screen.Feed(wxString::FromUTF8("e\xCC\x81"));
+    if (screen.CellAt(0, 0).text.length() < 2) return 10;
+    screen.Reset();
+    screen.Feed(wxString::FromUTF8("\xE7\x95\x8C"));
+    if (screen.CellAt(0, 0).width != 2 || !screen.CellAt(1, 0).continuation) return 11;
+
+    screen.Reset();
+    screen.Feed(wxS("one\r\ntwo\r\nthree\r\nfour"));
+    if (screen.ScrollbackSize() == 0) return 12;
+    screen.ScrollBack(1);
+    if (screen.VisibleCellAt(0, 0).character != wxChar('o')) return 13;
+
+    std::cout << "terminal-screen-smoke: ok — VT cursor, colors, scrollback, mouse, paste, and Unicode\n";
     return 0;
 }

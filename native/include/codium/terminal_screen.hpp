@@ -4,16 +4,20 @@
 #include <wx/string.h>
 
 #include <vector>
+#include <deque>
 
 namespace codium {
 
 struct TerminalCell final {
     wxChar character = wxChar(' ');
+    wxString text;
     int foreground = 7;
     int background = 0;
     bool bold = false;
     bool underline = false;
     bool inverse = false;
+    int width = 1;
+    bool continuation = false;
 };
 
 class TerminalScreen final {
@@ -31,6 +35,14 @@ public:
     bool CursorVisible() const { return cursorVisible_; }
     bool AlternateScreen() const { return alternateScreen_; }
     const TerminalCell& CellAt(int column, int row) const;
+    const TerminalCell& VisibleCellAt(int column, int row) const;
+    void ScrollBack(int lines);
+    void ScrollForward(int lines);
+    int ScrollbackSize() const { return static_cast<int>(scrollback_.size()); }
+    int ScrollOffset() const { return scrollOffset_; }
+    bool MouseReporting() const { return mouseReporting_; }
+    bool SgrMouse() const { return sgrMouse_; }
+    bool BracketedPaste() const { return bracketedPaste_; }
 
     static wxColour PaletteColor(int index, bool bold = false);
 
@@ -52,6 +64,9 @@ private:
     void HandleSgr();
     void HandleMode(bool set);
     void SwitchAlternateScreen(bool enable);
+    void PushScrollbackRow();
+    static bool IsCombining(wxChar character);
+    static bool IsWide(wxChar character);
     int Parameter(size_t index, int fallback = 1) const;
 
     int columns_;
@@ -65,6 +80,9 @@ private:
     bool cursorVisible_ = true;
     bool wrapEnabled_ = true;
     bool alternateScreen_ = false;
+    bool mouseReporting_ = false;
+    bool sgrMouse_ = false;
+    bool bracketedPaste_ = false;
     ParserState parserState_ = ParserState::Ground;
     wxString csiParameters_;
     wxString oscBuffer_;
@@ -76,6 +94,9 @@ private:
     bool inverse_ = false;
     std::vector<TerminalCell> primaryGrid_;
     std::vector<TerminalCell> alternateGrid_;
+    std::deque<std::vector<TerminalCell>> scrollback_;
+    int scrollOffset_ = 0;
+    size_t maxScrollback_ = 2000;
 };
 
 } // namespace codium
