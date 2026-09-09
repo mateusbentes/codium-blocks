@@ -2,6 +2,8 @@
 #include "codium/extension_host_client.hpp"
 #include "codium/project_config.hpp"
 #include "codium/task_runner.hpp"
+#include "codium/terminal_session.hpp"
+#include "codium/dap_client.hpp"
 #include "codium/vsix_manager.hpp"
 #include "codium/workspace.hpp"
 
@@ -19,6 +21,7 @@
 #include <wx/stattext.h>
 #include <wx/stdpaths.h>
 #include <wx/textctrl.h>
+#include <wx/textdlg.h>
 #include <wx/timer.h>
 #include <wx/treectrl.h>
 #include <wx/wx.h>
@@ -47,6 +50,17 @@ enum : int {
     ID_RUN_TASK,
     ID_STOP_TASK,
     ID_TASK_PROCESS = wxID_HIGHEST + 500,
+    ID_START_TERMINAL,
+    ID_SEND_TERMINAL,
+    ID_STOP_TERMINAL,
+    ID_TERMINAL_PROCESS,
+    ID_START_DEBUG,
+    ID_DEBUG_INITIALIZE,
+    ID_DEBUG_LAUNCH,
+    ID_DEBUG_CONTINUE,
+    ID_DEBUG_PAUSE,
+    ID_STOP_DEBUG,
+    ID_DAP_PROCESS,
 };
 
 wxString ParentDirectory(wxString path)
@@ -143,6 +157,8 @@ public:
           projectRoot_(DetectProjectRoot()),
           host_(this),
           taskRunner_(this, ID_TASK_PROCESS),
+          terminal_(this, ID_TERMINAL_PROCESS),
+          dap_(this, ID_DAP_PROCESS),
           extensions_(projectRoot_ + wxFILE_SEP_PATH + wxS("extensions-installed")),
           timer_(this)
     {
@@ -167,6 +183,23 @@ public:
 
         taskList_ = new wxListBox(this, wxID_ANY, wxDefaultPosition, wxSize(-1, 60));
         root->Add(taskList_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
+
+        auto* terminalControls = new wxBoxSizer(wxHORIZONTAL);
+        AddButton(terminalControls, wxS("Start terminal"), [this](wxCommandEvent&) { StartTerminal(); });
+        AddButton(terminalControls, wxS("Send input"), [this](wxCommandEvent&) { SendTerminalInput(); });
+        AddButton(terminalControls, wxS("Stop terminal"), [this](wxCommandEvent&) { StopTerminal(); });
+        root->Add(terminalControls, 0, wxLEFT | wxRIGHT | wxTOP, 10);
+        terminalInput_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(-1, 28));
+        root->Add(terminalInput_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
+
+        auto* debugControls = new wxBoxSizer(wxHORIZONTAL);
+        AddButton(debugControls, wxS("Start debug adapter"), [this](wxCommandEvent&) { StartDebugAdapter(); });
+        AddButton(debugControls, wxS("Initialize debug"), [this](wxCommandEvent&) { InitializeDebug(); });
+        AddButton(debugControls, wxS("Launch"), [this](wxCommandEvent&) { LaunchDebug(); });
+        AddButton(debugControls, wxS("Continue"), [this](wxCommandEvent&) { ContinueDebug(); });
+        AddButton(debugControls, wxS("Pause"), [this](wxCommandEvent&) { PauseDebug(); });
+        AddButton(debugControls, wxS("Stop debug"), [this](wxCommandEvent&) { StopDebug(); });
+        root->Add(debugControls, 0, wxLEFT | wxRIGHT | wxTOP, 10);
 
         auto* fileControls = new wxBoxSizer(wxHORIZONTAL);
         AddButton(fileControls, wxS("Open file"), [this](wxCommandEvent&) { OpenFile(); });
@@ -226,6 +259,8 @@ public:
         Centre();
 
         Bind(wxEVT_END_PROCESS, [this](wxProcessEvent& event) { OnTaskFinished(event); }, ID_TASK_PROCESS);
+        Bind(wxEVT_END_PROCESS, [this](wxProcessEvent& event) { OnTerminalFinished(event); }, ID_TERMINAL_PROCESS);
+        Bind(wxEVT_END_PROCESS, [this](wxProcessEvent& event) { OnDebugFinished(event); }, ID_DAP_PROCESS);
 
         timer_.Start(50);
         AppendLog(wxS("Ready. The native core does not load Electron."));
@@ -262,6 +297,21 @@ private:
         buildMenu->Append(ID_STOP_TASK, wxS("Stop task"));
         menuBar->Append(buildMenu, wxS("&Build"));
 
+        auto* terminalMenu = new wxMenu();
+        terminalMenu->Append(ID_START_TERMINAL, wxS("Start terminal"));
+        terminalMenu->Append(ID_SEND_TERMINAL, wxS("Send input"));
+        terminalMenu->Append(ID_STOP_TERMINAL, wxS("Stop terminal"));
+        menuBar->Append(terminalMenu, wxS("&Terminal"));
+
+        auto* debugMenu = new wxMenu();
+        debugMenu->Append(ID_START_DEBUG, wxS("Start debug adapter"));
+        debugMenu->Append(ID_DEBUG_INITIALIZE, wxS("Initialize debug"));
+        debugMenu->Append(ID_DEBUG_LAUNCH, wxS("Launch program"));
+        debugMenu->Append(ID_DEBUG_CONTINUE, wxS("Continue"));
+        debugMenu->Append(ID_DEBUG_PAUSE, wxS("Pause"));
+        debugMenu->Append(ID_STOP_DEBUG, wxS("Stop debug"));
+        menuBar->Append(debugMenu, wxS("De&bug"));
+
         auto* extensionMenu = new wxMenu();
         extensionMenu->Append(ID_START_HOST, wxS("Start Extension Host"));
         extensionMenu->Append(ID_LOAD_DEMO, wxS("Load demo extension"));
@@ -284,6 +334,15 @@ private:
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { BuildProject(); }, ID_BUILD_PROJECT);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { RunSelectedTask(); }, ID_RUN_TASK);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StopTask(); }, ID_STOP_TASK);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { StartTerminal(); }, ID_START_TERMINAL);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { SendTerminalInput(); }, ID_SEND_TERMINAL);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { StopTerminal(); }, ID_STOP_TERMINAL);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { StartDebugAdapter(); }, ID_START_DEBUG);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { InitializeDebug(); }, ID_DEBUG_INITIALIZE);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { LaunchDebug(); }, ID_DEBUG_LAUNCH);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { ContinueDebug(); }, ID_DEBUG_CONTINUE);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { PauseDebug(); }, ID_DEBUG_PAUSE);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { StopDebug(); }, ID_STOP_DEBUG);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StartHost(); }, ID_START_HOST);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { LoadDemo(); }, ID_LOAD_DEMO);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { ExecuteDemo(); }, ID_RUN_DEMO);
@@ -408,6 +467,135 @@ private:
         AppendLog(wxString::Format(wxS("Task finished with exit code %d."), event.GetExitCode()));
     }
 
+    wxString WorkspaceDirectory() const
+    {
+        return workspace_.IsOpen() ? workspace_.RootPath() : projectRoot_;
+    }
+
+    void StartTerminal()
+    {
+        if (terminal_.IsRunning()) {
+            AppendLog(wxS("Terminal is already running."));
+            return;
+        }
+        wxArrayString arguments;
+        wxString program;
+#if defined(__WXMSW__)
+        program = wxS("cmd.exe");
+        arguments.Add(wxS("/Q"));
+#else
+        program = wxS("/bin/sh");
+        arguments.Add(wxS("-i"));
+#endif
+        wxString error;
+        if (terminal_.Start(program, arguments, WorkspaceDirectory(), &error)) {
+            AppendLog(wxS("Native terminal started."));
+        } else {
+            AppendLog(wxS("Terminal error: ") + error);
+        }
+    }
+
+    void SendTerminalInput()
+    {
+        if (!terminal_.IsRunning()) {
+            AppendLog(wxS("Start the terminal first."));
+            return;
+        }
+        wxString input = terminalInput_ ? terminalInput_->GetValue() : wxString(wxEmptyString);
+        if (!input.EndsWith(wxS("\n"))) input += wxS("\n");
+        if (terminal_.Write(input)) {
+            if (terminalInput_) terminalInput_->Clear();
+        } else {
+            AppendLog(wxS("Could not write to terminal."));
+        }
+    }
+
+    void StopTerminal()
+    {
+        if (terminal_.IsRunning()) {
+            terminal_.Stop();
+            AppendLog(wxS("Terminal stopped."));
+        }
+    }
+
+    void OnTerminalFinished(wxProcessEvent& event)
+    {
+        terminal_.HandleProcessExit(event.GetPid(), event.GetExitCode());
+        AppendLog(wxString::Format(wxS("Terminal finished with exit code %d."), event.GetExitCode()));
+    }
+
+    void StartDebugAdapter()
+    {
+        if (dap_.IsRunning()) {
+            AppendLog(wxS("Debug adapter is already running."));
+            return;
+        }
+        wxTextEntryDialog dialog(this, wxS("Debug adapter executable (for example codelldb or OpenDebugAD7)"),
+                                 wxS("Start debug adapter"), wxS("codelldb"));
+        if (dialog.ShowModal() != wxID_OK || dialog.GetValue().empty()) return;
+        wxArrayString arguments;
+        wxString error;
+        if (dap_.Start(dialog.GetValue(), arguments, WorkspaceDirectory(), &error)) {
+            AppendLog(wxS("Debug adapter started."));
+        } else {
+            AppendLog(wxS("Debug adapter error: ") + error);
+        }
+    }
+
+    void InitializeDebug()
+    {
+        if (!dap_.IsRunning()) {
+            AppendLog(wxS("Start a debug adapter first."));
+            return;
+        }
+        if (dap_.SendRequest(wxS("initialize"),
+                             wxS("{\"clientID\":\"codium-blocks\",\"adapterID\":\"codium-blocks\",\"linesStartAt1\":true,\"columnsStartAt1\":true}"))) {
+            AppendLog(wxS("DAP initialize request sent."));
+        }
+    }
+
+    void LaunchDebug()
+    {
+        if (!dap_.IsRunning()) {
+            AppendLog(wxS("Start a debug adapter first."));
+            return;
+        }
+        wxFileDialog dialog(this, wxS("Choose a program to debug"), wxEmptyString, wxEmptyString,
+                            wxS("Executable files (*.*)|*.*"), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+        if (dialog.ShowModal() != wxID_OK) return;
+        wxString program = dialog.GetPath();
+        program.Replace(wxS("\\"), wxS("/"));
+        program.Replace(wxS("\""), wxS("\\\""));
+        if (dap_.SendRequest(wxS("launch"), wxString::Format(wxS("{\"program\":\"%s\",\"cwd\":\"%s\"}"),
+                                                               program, WorkspaceDirectory()))) {
+            AppendLog(wxS("DAP launch request sent."));
+        }
+    }
+
+    void ContinueDebug()
+    {
+        if (dap_.SendRequest(wxS("continue"), wxS("{\"threadId\":1}"))) AppendLog(wxS("DAP continue request sent."));
+    }
+
+    void PauseDebug()
+    {
+        if (dap_.SendRequest(wxS("pause"), wxS("{\"threadId\":1}"))) AppendLog(wxS("DAP pause request sent."));
+    }
+
+    void StopDebug()
+    {
+        if (dap_.IsRunning()) {
+            dap_.Stop();
+            AppendLog(wxS("Debug adapter stopped."));
+        }
+    }
+
+    void OnDebugFinished(wxProcessEvent& event)
+    {
+        dap_.HandleProcessExit(event.GetPid(), event.GetExitCode());
+        AppendLog(wxString::Format(wxS("Debug adapter finished with exit code %d."), event.GetExitCode()));
+    }
+
     void ShowCommandPalette()
     {
         const wxArrayString commands = {
@@ -415,6 +603,9 @@ private:
             wxS("Start clangd"), wxS("Initialize language server"),
             wxS("Request hover"), wxS("Request completion"),
             wxS("Build project"), wxS("Run selected task"), wxS("Stop task"),
+            wxS("Start terminal"), wxS("Send terminal input"), wxS("Stop terminal"),
+            wxS("Start debug adapter"), wxS("Initialize debug"), wxS("Continue debug"),
+            wxS("Launch debug program"), wxS("Pause debug"), wxS("Stop debug"),
             wxS("Start Extension Host"), wxS("Load demo extension"),
             wxS("Run hello.codium"), wxS("Stop language server"),
             wxS("Install VSIX"), wxS("List installed extensions")
@@ -432,12 +623,21 @@ private:
         case 7: BuildProject(); break;
         case 8: RunSelectedTask(); break;
         case 9: StopTask(); break;
-        case 10: StartHost(); break;
-        case 11: LoadDemo(); break;
-        case 12: ExecuteDemo(); break;
-        case 13: StopLanguageServer(); break;
-        case 14: InstallVsix(); break;
-        case 15: ListExtensions(); break;
+        case 10: StartTerminal(); break;
+        case 11: SendTerminalInput(); break;
+        case 12: StopTerminal(); break;
+        case 13: StartDebugAdapter(); break;
+        case 14: InitializeDebug(); break;
+        case 15: LaunchDebug(); break;
+        case 16: ContinueDebug(); break;
+        case 17: PauseDebug(); break;
+        case 18: StopDebug(); break;
+        case 19: StartHost(); break;
+        case 20: LoadDemo(); break;
+        case 21: ExecuteDemo(); break;
+        case 22: StopLanguageServer(); break;
+        case 23: InstallVsix(); break;
+        case 24: ListExtensions(); break;
         default: break;
         }
     }
@@ -803,6 +1003,12 @@ private:
         for (const auto& line : taskRunner_.Poll()) {
             AppendLog(wxS("task> ") + line);
         }
+        for (const auto& line : terminal_.Poll()) {
+            AppendLog(wxS("terminal> ") + line);
+        }
+        for (const auto& message : dap_.Poll()) {
+            AppendLog(wxS("dap> ") + message);
+        }
         for (const auto& line : host_.Poll()) {
             AppendLog(wxS("host> ") + line);
             if (line.Find(wxS("\"event\":\"languageServerMessage\"")) != wxNOT_FOUND) {
@@ -832,6 +1038,8 @@ private:
     void OnClose(wxCloseEvent& event)
     {
         taskRunner_.Stop();
+        terminal_.Stop();
+        dap_.Stop();
         host_.Stop();
         event.Skip();
     }
@@ -841,6 +1049,8 @@ private:
     codium::ExtensionHostClient host_;
     codium::ProjectConfig projectConfig_;
     codium::TaskRunner taskRunner_;
+    codium::TerminalSession terminal_;
+    codium::DapClient dap_;
     codium::VsixManager extensions_;
     codium::Document document_;
     std::map<wxString, codium::Document> documents_;
@@ -848,6 +1058,7 @@ private:
     wxTreeCtrl* fileTree_ = nullptr;
     wxNotebook* notebook_ = nullptr;
     wxListBox* taskList_ = nullptr;
+    wxTextCtrl* terminalInput_ = nullptr;
     wxBoxSizer* extensionControls_ = nullptr;
     wxTextCtrl* editor_ = nullptr;
     wxListBox* diagnostics_ = nullptr;

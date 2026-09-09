@@ -10,7 +10,7 @@ Every push to `main` and every pull request is checked by GitHub Actions on all 
 
 ## Current status
 
-The current `0.6.0` increment provides:
+The current `0.7.0` increment provides:
 
 - a native C++/wxWidgets window;
 - no Electron dependency or linkage;
@@ -50,8 +50,12 @@ The current `0.6.0` increment provides:
 - an asynchronous native task runner using executable argument vectors;
 - a task list, Build menu, and task output panel;
 - task cancellation without requiring Electron or a POSIX shell.
+- an interactive native terminal with stdin, stdout, stderr, and workspace cwd;
+- a DAP client with standard `Content-Length` framing;
+- debug adapter controls for initialize, launch, continue, pause, and disconnect;
+- deterministic fake terminal and fake DAP transport tests.
 
-This is not full VS Code compatibility. The implementation is deliberately layered and must still add clickable diagnostic locations, richer completion/hover interaction, explicit user task configuration, Tree Views, terminal support, and DAP. See [`docs/TASKS.md`](docs/TASKS.md) for the current task model.
+This is not full VS Code compatibility. The implementation is deliberately layered and must still add clickable diagnostic locations, richer completion/hover interaction, explicit user task configuration, debugger source/stack/variable views, and advanced Tree Views. See [`docs/TASKS.md`](docs/TASKS.md) and [`docs/DEBUGGING.md`](docs/DEBUGGING.md) for the current models.
 
 ## Architecture
 
