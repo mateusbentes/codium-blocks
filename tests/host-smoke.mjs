@@ -4,8 +4,12 @@ import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 import { readFile, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = resolve(process.env.CODIUM_BLOCKS_ROOT ?? new URL('..', import.meta.url).pathname);
+const configuredRoot = process.env.CODIUM_BLOCKS_ROOT;
+const root = configuredRoot
+  ? resolve(configuredRoot)
+  : fileURLToPath(new URL('../', import.meta.url));
 const host = join(root, 'extension-host', 'src', 'host.mjs');
 const demo = join(root, 'extensions', 'hello-codium');
 const dataRoot = process.env.CODIUM_BLOCKS_DATA ?? join(root, 'build', 'test-data');
@@ -14,6 +18,9 @@ const child = spawn(process.execPath, [host], {
   cwd: root,
   env: { ...process.env, CODIUM_BLOCKS_DATA: dataRoot },
   stdio: ['pipe', 'pipe', 'pipe'],
+});
+child.on('error', (error) => {
+  process.stderr.write(`host-smoke: failed to spawn Extension Host: ${error.message}\n`);
 });
 const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
 const messages = [];
