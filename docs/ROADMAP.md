@@ -28,11 +28,17 @@ The `0.6.0` increment adds automatic CMake, Make, Cargo, and npm detection, buil
 
 The `0.7.0` increment adds an interactive native terminal, workspace-aware stdin/stdout/stderr, a DAP client with `Content-Length` framing, adapter controls for initialize/launch/continue/pause/disconnect, and deterministic fake terminal/DAP tests. The next increment will add source breakpoints, stack frames, variables, watches, and clickable debug locations.
 
-## Release 0.8 — debugging views and registry security
+## Release 0.8 — interactive PTY/ConPTY terminal
+
+The `0.8.0` increment upgrades the pipe-based terminal foundation to a real interactive terminal. Linux and macOS now use a pseudo-terminal (PTY), while Windows dynamically uses ConPTY when available and reports a pipe fallback otherwise. The terminal supports the native shell session API, resize propagation, ANSI color rendering, command history, keyboard shortcuts, UTF-8 input/output, and explicit backend capability reporting. The native terminal remains independent of Alacritty, Kitty, Konsole, Windows Terminal, and other external emulators.
+
+The transport test covers shell startup, interactive echo, resize requests, ANSI sequence preservation, and clean shutdown without requiring a graphical terminal emulator. Full terminal emulation, cursor movement, mouse reporting, and richer shell configuration remain future work.
+
+## Release 0.9 — debugging views and registry security
 
 Add source breakpoints, stack frames, variables, watches, problem navigation, Open VSX, private registries, caching, checksums, rollback, workspace trust, permissions, and per-extension compatibility reports.
 
-## Release 0.9 — optional advanced UI
+## Release 1.0 — optional advanced UI
 
 Add Tree Views, SCM, webviews, and custom editors. The web engine must remain optional and must not be loaded during IDE startup.
 

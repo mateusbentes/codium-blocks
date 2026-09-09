@@ -10,7 +10,7 @@ Every push to `main` and every pull request is checked by GitHub Actions on all 
 
 ## Current status
 
-The current `0.7.0` increment provides:
+The current `0.8.0` increment provides:
 
 - a native C++/wxWidgets window;
 - no Electron dependency or linkage;
@@ -54,8 +54,14 @@ The current `0.7.0` increment provides:
 - a DAP client with standard `Content-Length` framing;
 - debug adapter controls for initialize, launch, continue, pause, and disconnect;
 - deterministic fake terminal and fake DAP transport tests.
+- a PTY backend for Linux and macOS;
+- a dynamically detected ConPTY backend for Windows with pipe fallback;
+- terminal resize propagation;
+- raw UTF-8 and ANSI sequence preservation with common color rendering;
+- command history and Up/Down keyboard navigation;
+- native shell selection through the terminal session API.
 
-This is not full VS Code compatibility. The implementation is deliberately layered and must still add clickable diagnostic locations, richer completion/hover interaction, explicit user task configuration, debugger source/stack/variable views, and advanced Tree Views. See [`docs/TASKS.md`](docs/TASKS.md) and [`docs/DEBUGGING.md`](docs/DEBUGGING.md) for the current models.
+This is not full VS Code compatibility. The implementation is deliberately layered and must still add clickable diagnostic locations, richer completion/hover interaction, explicit user task configuration, debugger source/stack/variable views, full terminal emulation, and advanced Tree Views. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), and [`docs/DEBUGGING.md`](docs/DEBUGGING.md) for the current models.
 
 ## Architecture
 

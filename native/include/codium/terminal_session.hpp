@@ -1,5 +1,6 @@
 #pragma once
 
+#include <wx/arrstr.h>
 #include <wx/process.h>
 #include <wx/string.h>
 
@@ -16,22 +17,39 @@ public:
     bool Start(const wxString& program, const wxArrayString& arguments,
                const wxString& workingDirectory, wxString* error = nullptr);
     bool Write(const wxString& text);
+    bool Resize(int columns, int rows);
     void Stop();
     void HandleProcessExit(long pid, int exitCode);
-    bool IsRunning() const { return process_ != nullptr && pid_ != 0; }
+    bool IsRunning() const;
+    wxString BackendName() const;
 
+    // Returns raw UTF-8 terminal bytes, including ANSI escape sequences.
+    wxString PollRaw();
+    // Returns complete lines for non-visual consumers and tests.
     wxArrayString Poll();
 
 private:
-    void ReadStream(wxInputStream* stream, std::string& buffer, const wxString& prefix,
-                    wxArrayString& lines);
-
+#if defined(__WXMSW__)
+    friend bool StartConPty(TerminalSession*, const wxString&, const wxArrayString&,
+                            const wxString&, wxString*);
+#endif
     wxEvtHandler* owner_;
     int processId_;
     wxProcess* process_ = nullptr;
     long pid_ = 0;
-    std::string outputBuffer_;
-    std::string errorBuffer_;
+    std::string rawBuffer_;
+    std::string lineBuffer_;
+    bool usingPty_ = false;
+#if !defined(__WXMSW__)
+    int masterFd_ = -1;
+    int childPid_ = 0;
+#else
+    void* pseudoConsole_ = nullptr;
+    void* childProcess_ = nullptr;
+    void* inputWrite_ = nullptr;
+    void* outputRead_ = nullptr;
+    bool usingConPty_ = false;
+#endif
 };
 
 } // namespace codium

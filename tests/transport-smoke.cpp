@@ -19,6 +19,15 @@ bool WaitForTerminal(codium::TerminalSession& terminal, const wxString& expected
     return false;
 }
 
+bool WaitForRawTerminal(codium::TerminalSession& terminal, const wxString& expected)
+{
+    for (int i = 0; i < 150 && terminal.IsRunning(); ++i) {
+        wxMilliSleep(10);
+        if (terminal.PollRaw().Find(expected) != wxNOT_FOUND) return true;
+    }
+    return false;
+}
+
 bool WaitForDap(codium::DapClient& dap, const wxString& expected)
 {
     for (int i = 0; i < 150 && dap.IsRunning(); ++i) {
@@ -48,9 +57,14 @@ int main(int argc, char** argv)
     wxArrayString terminalArguments;
     terminalArguments.Add(fakeTerminal);
     wxString error;
-    if (!terminal.Start(wxS("node"), terminalArguments, root, &error) || !terminal.Write(wxS("ping\n")) ||
+    if (!terminal.Start(wxS("node"), terminalArguments, root, &error) || !terminal.Resize(100, 30) ||
+        !terminal.Write(wxS("ping\n")) ||
         !WaitForTerminal(terminal, wxS("pong"))) {
         std::cerr << "transport-smoke: terminal failed: " << error.ToStdString() << "\n";
+        return 1;
+    }
+    if (!terminal.Write(wxS("ansi\n")) || !WaitForRawTerminal(terminal, wxString::FromUTF8("\x1b[31m"))) {
+        std::cerr << "transport-smoke: ANSI output or PTY resize failed\n";
         return 1;
     }
     terminal.Write(wxS("exit\n"));

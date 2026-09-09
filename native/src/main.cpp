@@ -17,6 +17,7 @@
 #include <wx/listbox.h>
 #include <wx/menu.h>
 #include <wx/notebook.h>
+#include <wx/richtext/richtextctrl.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
 #include <wx/stdpaths.h>
@@ -53,6 +54,7 @@ enum : int {
     ID_START_TERMINAL,
     ID_SEND_TERMINAL,
     ID_STOP_TERMINAL,
+    ID_SELECT_SHELL,
     ID_TERMINAL_PROCESS,
     ID_START_DEBUG,
     ID_DEBUG_INITIALIZE,
@@ -136,6 +138,19 @@ wxString LanguageIdForPath(const wxString& path)
     return wxS("plaintext");
 }
 
+wxString DefaultShell()
+{
+#if defined(__WXMSW__)
+    wxString shell;
+    if (wxGetEnv(wxS("ComSpec"), &shell) && !shell.empty()) return shell;
+    return wxS("cmd.exe");
+#else
+    wxString shell;
+    if (wxGetEnv(wxS("SHELL"), &shell) && !shell.empty()) return shell;
+    return wxS("/bin/sh");
+#endif
+}
+
 class FileTreeData final : public wxTreeItemData {
 public:
     explicit FileTreeData(wxString path)
@@ -159,6 +174,7 @@ public:
           taskRunner_(this, ID_TASK_PROCESS),
           terminal_(this, ID_TERMINAL_PROCESS),
           dap_(this, ID_DAP_PROCESS),
+          terminalShell_(DefaultShell()),
           extensions_(projectRoot_ + wxFILE_SEP_PATH + wxS("extensions-installed")),
           timer_(this)
     {
@@ -188,9 +204,42 @@ public:
         AddButton(terminalControls, wxS("Start terminal"), [this](wxCommandEvent&) { StartTerminal(); });
         AddButton(terminalControls, wxS("Send input"), [this](wxCommandEvent&) { SendTerminalInput(); });
         AddButton(terminalControls, wxS("Stop terminal"), [this](wxCommandEvent&) { StopTerminal(); });
+        AddButton(terminalControls, wxS("Select shell"), [this](wxCommandEvent&) { SelectShell(); });
         root->Add(terminalControls, 0, wxLEFT | wxRIGHT | wxTOP, 10);
         terminalInput_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(-1, 28));
+        terminalInput_->Bind(wxEVT_KEY_DOWN, [this](wxKeyEvent& event) {
+            if (event.GetKeyCode() == WXK_UP && !terminalHistory_.empty()) {
+                if (historyIndex_ > 0) --historyIndex_;
+                terminalInput_->SetValue(terminalHistory_[historyIndex_]);
+                terminalInput_->SetInsertionPointEnd();
+            } else if (event.GetKeyCode() == WXK_DOWN && !terminalHistory_.empty()) {
+                if (historyIndex_ + 1 < terminalHistory_.size()) {
+                    ++historyIndex_;
+                    terminalInput_->SetValue(terminalHistory_[historyIndex_]);
+                } else {
+                    historyIndex_ = terminalHistory_.size();
+                    terminalInput_->Clear();
+                }
+                terminalInput_->SetInsertionPointEnd();
+            } else {
+                event.Skip();
+            }
+        });
         root->Add(terminalInput_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
+        root->Add(new wxStaticText(this, wxID_ANY, wxS("Terminal")), 0, wxLEFT | wxRIGHT | wxTOP, 10);
+        terminalOutput_ = new wxRichTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(-1, 120),
+                                             wxRE_MULTILINE | wxRE_READONLY | wxHSCROLL);
+        terminalOutput_->SetBackgroundColour(wxColour(20, 20, 20));
+        terminalOutput_->BeginTextColour(wxColour(230, 230, 230));
+        terminalOutput_->EndTextColour();
+        terminalOutput_->Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
+            if (terminal_.IsRunning()) {
+                const wxSize size = terminalOutput_->GetClientSize();
+                terminal_.Resize(std::max(20, size.GetWidth() / 8), std::max(4, size.GetHeight() / 16));
+            }
+            event.Skip();
+        });
+        root->Add(terminalOutput_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
 
         auto* debugControls = new wxBoxSizer(wxHORIZONTAL);
         AddButton(debugControls, wxS("Start debug adapter"), [this](wxCommandEvent&) { StartDebugAdapter(); });
@@ -301,6 +350,7 @@ private:
         terminalMenu->Append(ID_START_TERMINAL, wxS("Start terminal"));
         terminalMenu->Append(ID_SEND_TERMINAL, wxS("Send input"));
         terminalMenu->Append(ID_STOP_TERMINAL, wxS("Stop terminal"));
+        terminalMenu->Append(ID_SELECT_SHELL, wxS("Select shell..."));
         menuBar->Append(terminalMenu, wxS("&Terminal"));
 
         auto* debugMenu = new wxMenu();
@@ -337,6 +387,7 @@ private:
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StartTerminal(); }, ID_START_TERMINAL);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { SendTerminalInput(); }, ID_SEND_TERMINAL);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StopTerminal(); }, ID_STOP_TERMINAL);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { SelectShell(); }, ID_SELECT_SHELL);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StartDebugAdapter(); }, ID_START_DEBUG);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { InitializeDebug(); }, ID_DEBUG_INITIALIZE);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { LaunchDebug(); }, ID_DEBUG_LAUNCH);
@@ -356,6 +407,56 @@ private:
         auto* button = new wxButton(this, wxID_ANY, label);
         button->Bind(wxEVT_BUTTON, std::forward<Handler>(handler));
         sizer->Add(button, 0, wxRIGHT, 6);
+    }
+
+    void ApplyAnsiCode(const wxString& code)
+    {
+        const wxArrayString parameters = wxSplit(code.empty() ? wxString(wxS("0")) : code, wxChar(';'));
+        for (const auto& parameter : parameters) {
+            const int value = wxAtoi(parameter);
+            if (value == 0 || value == 39) ansiColour_ = wxColour(230, 230, 230);
+            else if (value == 30) ansiColour_ = wxColour(0, 0, 0);
+            else if (value == 31) ansiColour_ = wxColour(220, 70, 70);
+            else if (value == 32) ansiColour_ = wxColour(80, 210, 100);
+            else if (value == 33) ansiColour_ = wxColour(230, 210, 80);
+            else if (value == 34) ansiColour_ = wxColour(90, 150, 240);
+            else if (value == 35) ansiColour_ = wxColour(210, 100, 220);
+            else if (value == 36) ansiColour_ = wxColour(70, 210, 210);
+            else if (value == 37) ansiColour_ = wxColour(230, 230, 230);
+            else if (value == 90) ansiColour_ = wxColour(130, 130, 130);
+            else if (value == 91) ansiColour_ = wxColour(255, 100, 100);
+            else if (value == 92) ansiColour_ = wxColour(120, 255, 140);
+            else if (value == 93) ansiColour_ = wxColour(255, 240, 120);
+            else if (value == 94) ansiColour_ = wxColour(130, 190, 255);
+        }
+    }
+
+    void AppendTerminalOutput(const wxString& raw)
+    {
+        if (!terminalOutput_ || raw.empty()) return;
+        wxString plain;
+        const auto flush = [this, &plain]() {
+            if (plain.empty()) return;
+            terminalOutput_->BeginTextColour(ansiColour_);
+            terminalOutput_->WriteText(plain);
+            terminalOutput_->EndTextColour();
+            plain.clear();
+        };
+        for (size_t i = 0; i < raw.length(); ++i) {
+            if (raw[i] == wxChar(0x1b) && i + 1 < raw.length() && raw[i + 1] == wxChar('[')) {
+                flush();
+                size_t end = i + 2;
+                while (end < raw.length() && !(raw[end] >= wxChar('@') && raw[end] <= wxChar('~'))) ++end;
+                if (end < raw.length()) {
+                    if (raw[end] == wxChar('m')) ApplyAnsiCode(raw.Mid(i + 2, end - i - 2));
+                    i = end;
+                    continue;
+                }
+            }
+            if (raw[i] != wxChar('\r')) plain += raw[i];
+        }
+        flush();
+        terminalOutput_->ShowPosition(terminalOutput_->GetLastPosition());
     }
 
     void AppendLog(const wxString& line)
@@ -479,19 +580,45 @@ private:
             return;
         }
         wxArrayString arguments;
-        wxString program;
 #if defined(__WXMSW__)
-        program = wxS("cmd.exe");
         arguments.Add(wxS("/Q"));
 #else
-        program = wxS("/bin/sh");
         arguments.Add(wxS("-i"));
 #endif
         wxString error;
-        if (terminal_.Start(program, arguments, WorkspaceDirectory(), &error)) {
-            AppendLog(wxS("Native terminal started."));
+        if (terminal_.Start(terminalShell_, arguments, WorkspaceDirectory(), &error)) {
+            AppendLog(wxS("Native terminal started with backend: ") + terminal_.BackendName());
+            if (terminalOutput_) {
+                const wxSize size = terminalOutput_->GetClientSize();
+                terminal_.Resize(std::max(20, size.GetWidth() / 8), std::max(4, size.GetHeight() / 16));
+            }
         } else {
             AppendLog(wxS("Terminal error: ") + error);
+        }
+    }
+
+    void SelectShell()
+    {
+        if (terminal_.IsRunning()) {
+            AppendLog(wxS("Stop the terminal before changing its shell."));
+            return;
+        }
+        wxArrayString choices;
+#if defined(__WXMSW__)
+        choices.Add(wxS("cmd.exe"));
+        choices.Add(wxS("powershell.exe"));
+        choices.Add(wxS("pwsh.exe"));
+#else
+        choices.Add(wxS("/bin/sh"));
+        choices.Add(wxS("/bin/bash"));
+        choices.Add(wxS("/bin/zsh"));
+        choices.Add(wxS("/usr/bin/fish"));
+#endif
+        wxSingleChoiceDialog dialog(this, wxS("Select the shell for the next terminal session"),
+                                    wxS("Terminal shell"), choices);
+        if (dialog.ShowModal() == wxID_OK) {
+            terminalShell_ = choices[dialog.GetSelection()];
+            AppendLog(wxS("Selected shell: ") + terminalShell_);
         }
     }
 
@@ -503,6 +630,11 @@ private:
         }
         wxString input = terminalInput_ ? terminalInput_->GetValue() : wxString(wxEmptyString);
         if (!input.EndsWith(wxS("\n"))) input += wxS("\n");
+        const wxString historyEntry = input.BeforeLast(wxChar('\n'));
+        if (!historyEntry.empty()) {
+            terminalHistory_.push_back(historyEntry);
+            historyIndex_ = terminalHistory_.size();
+        }
         if (terminal_.Write(input)) {
             if (terminalInput_) terminalInput_->Clear();
         } else {
@@ -603,7 +735,7 @@ private:
             wxS("Start clangd"), wxS("Initialize language server"),
             wxS("Request hover"), wxS("Request completion"),
             wxS("Build project"), wxS("Run selected task"), wxS("Stop task"),
-            wxS("Start terminal"), wxS("Send terminal input"), wxS("Stop terminal"),
+            wxS("Start terminal"), wxS("Send terminal input"), wxS("Stop terminal"), wxS("Select shell"),
             wxS("Start debug adapter"), wxS("Initialize debug"), wxS("Continue debug"),
             wxS("Launch debug program"), wxS("Pause debug"), wxS("Stop debug"),
             wxS("Start Extension Host"), wxS("Load demo extension"),
@@ -626,18 +758,19 @@ private:
         case 10: StartTerminal(); break;
         case 11: SendTerminalInput(); break;
         case 12: StopTerminal(); break;
-        case 13: StartDebugAdapter(); break;
-        case 14: InitializeDebug(); break;
-        case 15: LaunchDebug(); break;
-        case 16: ContinueDebug(); break;
-        case 17: PauseDebug(); break;
-        case 18: StopDebug(); break;
-        case 19: StartHost(); break;
-        case 20: LoadDemo(); break;
-        case 21: ExecuteDemo(); break;
-        case 22: StopLanguageServer(); break;
-        case 23: InstallVsix(); break;
-        case 24: ListExtensions(); break;
+        case 13: SelectShell(); break;
+        case 14: StartDebugAdapter(); break;
+        case 15: InitializeDebug(); break;
+        case 16: LaunchDebug(); break;
+        case 17: ContinueDebug(); break;
+        case 18: PauseDebug(); break;
+        case 19: StopDebug(); break;
+        case 20: StartHost(); break;
+        case 21: LoadDemo(); break;
+        case 22: ExecuteDemo(); break;
+        case 23: StopLanguageServer(); break;
+        case 24: InstallVsix(); break;
+        case 25: ListExtensions(); break;
         default: break;
         }
     }
@@ -1003,9 +1136,7 @@ private:
         for (const auto& line : taskRunner_.Poll()) {
             AppendLog(wxS("task> ") + line);
         }
-        for (const auto& line : terminal_.Poll()) {
-            AppendLog(wxS("terminal> ") + line);
-        }
+        AppendTerminalOutput(terminal_.PollRaw());
         for (const auto& message : dap_.Poll()) {
             AppendLog(wxS("dap> ") + message);
         }
@@ -1051,6 +1182,7 @@ private:
     codium::TaskRunner taskRunner_;
     codium::TerminalSession terminal_;
     codium::DapClient dap_;
+    wxString terminalShell_;
     codium::VsixManager extensions_;
     codium::Document document_;
     std::map<wxString, codium::Document> documents_;
@@ -1059,6 +1191,7 @@ private:
     wxNotebook* notebook_ = nullptr;
     wxListBox* taskList_ = nullptr;
     wxTextCtrl* terminalInput_ = nullptr;
+    wxRichTextCtrl* terminalOutput_ = nullptr;
     wxBoxSizer* extensionControls_ = nullptr;
     wxTextCtrl* editor_ = nullptr;
     wxListBox* diagnostics_ = nullptr;
@@ -1070,6 +1203,9 @@ private:
     int documentVersion_ = 1;
     bool languageServerInitialized_ = false;
     wxString languageId_ = wxS("plaintext");
+    wxColour ansiColour_ = wxColour(230, 230, 230);
+    std::vector<wxString> terminalHistory_;
+    size_t historyIndex_ = 0;
 
     wxDECLARE_EVENT_TABLE();
 };
