@@ -261,6 +261,10 @@ public:
         terminalOutput_->Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent& event) { BeginTerminalSelection(event); });
         terminalOutput_->Bind(wxEVT_MOTION, [this](wxMouseEvent& event) { UpdateTerminalSelection(event); });
         terminalOutput_->Bind(wxEVT_LEFT_UP, [this](wxMouseEvent& event) { EndTerminalSelection(event); });
+        terminalOutput_->Bind(wxEVT_RIGHT_DOWN, [this](wxMouseEvent& event) { BeginTerminalSelection(event); });
+        terminalOutput_->Bind(wxEVT_RIGHT_UP, [this](wxMouseEvent& event) { EndTerminalSelection(event); });
+        terminalOutput_->Bind(wxEVT_MIDDLE_DOWN, [this](wxMouseEvent& event) { BeginTerminalSelection(event); });
+        terminalOutput_->Bind(wxEVT_MIDDLE_UP, [this](wxMouseEvent& event) { EndTerminalSelection(event); });
         terminalOutput_->Bind(wxEVT_MOUSEWHEEL, [this](wxMouseEvent& event) { HandleTerminalWheel(event); });
         root->Add(terminalOutput_, 0, wxLEFT | wxRIGHT | wxEXPAND, 10);
 
@@ -521,16 +525,18 @@ private:
                     if (cursor || selected) cellForeground = 15;
                     if (cellForeground != foreground || cellBackground != background ||
                         cell.bold != first.bold || cell.underline != first.underline || cursor != firstCursor ||
-                        selected != firstSelected) break;
+                        selected != firstSelected || cell.hyperlink != first.hyperlink) break;
                     if (cell.text.empty()) run += cell.character;
                     else run += cell.text;
                     ++column;
                 }
                 wxRichTextAttr style;
-                style.SetTextColour(codium::TerminalScreen::PaletteColor(foreground, first.bold));
+                style.SetTextColour(firstSelected ? wxColour(255, 255, 255) :
+                                    first.hyperlink.empty() ? codium::TerminalScreen::PaletteColor(foreground, first.bold)
+                                                             : wxColour(80, 170, 255));
                 style.SetBackgroundColour(firstSelected ? wxColour(40, 90, 170) : wxColour(20, 20, 20));
                 style.SetFontWeight(first.bold ? wxFONTWEIGHT_BOLD : wxFONTWEIGHT_NORMAL);
-                style.SetFontUnderlined(first.underline);
+                style.SetFontUnderlined(first.underline || !first.hyperlink.empty());
                 terminalOutput_->BeginStyle(style);
                 terminalOutput_->WriteText(run);
                 terminalOutput_->EndStyle();
@@ -815,11 +821,51 @@ private:
         terminal_.Write(sequence);
     }
 
+    void SelectTerminalWord(const wxPoint& cell)
+    {
+        const auto isWord = [](wxChar character) {
+            return (character >= wxChar('a') && character <= wxChar('z')) ||
+                   (character >= wxChar('A') && character <= wxChar('Z')) ||
+                   (character >= wxChar('0') && character <= wxChar('9')) || character == wxChar('_');
+        };
+        const auto& current = terminalScreen_.VisibleCellAt(cell.x, cell.y);
+        if (!isWord(current.character)) {
+            terminalSelectionAnchor_ = cell;
+            terminalSelectionActive_ = cell;
+            return;
+        }
+        int left = cell.x;
+        int right = cell.x;
+        while (left > 0 && isWord(terminalScreen_.VisibleCellAt(left - 1, cell.y).character)) --left;
+        while (right + 1 < terminalScreen_.Columns() && isWord(terminalScreen_.VisibleCellAt(right + 1, cell.y).character)) ++right;
+        terminalSelectionAnchor_ = wxPoint(left, cell.y);
+        terminalSelectionActive_ = wxPoint(right, cell.y);
+    }
+
+    void SelectTerminalLine(const wxPoint& cell)
+    {
+        terminalSelectionAnchor_ = wxPoint(0, cell.y);
+        terminalSelectionActive_ = wxPoint(terminalScreen_.Columns() - 1, cell.y);
+    }
+
     void BeginTerminalSelection(wxMouseEvent& event)
     {
         const wxPoint cell = TerminalCellFromPosition(event.GetPosition());
         if (terminalScreen_.MouseReporting()) {
-            SendTerminalMouse(0, cell.x, cell.y, false);
+            const int code = event.RightDown() ? 2 : event.MiddleDown() ? 1 : 0;
+            SendTerminalMouse(code, cell.x, cell.y, false);
+            return;
+        }
+        if (event.GetClickCount() >= 3) {
+            SelectTerminalLine(cell);
+            terminalSelecting_ = false;
+            RenderTerminalScreen();
+            return;
+        }
+        if (event.GetClickCount() == 2) {
+            SelectTerminalWord(cell);
+            terminalSelecting_ = false;
+            RenderTerminalScreen();
             return;
         }
         terminalSelectionAnchor_ = cell;
@@ -848,12 +894,18 @@ private:
     {
         const wxPoint cell = TerminalCellFromPosition(event.GetPosition());
         if (terminalScreen_.MouseReporting()) {
-            SendTerminalMouse(3, cell.x, cell.y, true);
+            const int code = event.RightUp() ? 2 : event.MiddleUp() ? 1 : 0;
+            SendTerminalMouse(code, cell.x, cell.y, true);
             return;
         }
+        const bool clickedSingleCell = terminalSelecting_ && terminalSelectionAnchor_ == cell;
         if (terminalSelecting_) terminalSelectionActive_ = cell;
         terminalSelecting_ = false;
         if (terminalOutput_->HasCapture()) terminalOutput_->ReleaseMouse();
+        if (clickedSingleCell) {
+            const wxString& link = terminalScreen_.VisibleCellAt(cell.x, cell.y).hyperlink;
+            if (!link.empty()) wxLaunchDefaultBrowser(link);
+        }
         RenderTerminalScreen();
     }
 
@@ -1427,8 +1479,7 @@ private:
         for (const auto& line : taskRunner_.Poll()) {
             AppendLog(wxS("task> ") + line);
         }
-        terminalScreen_.Feed(terminal_.PollRaw());
-        RenderTerminalScreen();
+        if (terminalScreen_.Feed(terminal_.PollRaw())) RenderTerminalScreen();
         for (const auto& message : dap_.Poll()) {
             AppendLog(wxS("dap> ") + message);
         }

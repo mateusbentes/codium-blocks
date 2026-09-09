@@ -16,6 +16,7 @@ struct TerminalCell final {
     bool bold = false;
     bool underline = false;
     bool inverse = false;
+    wxString hyperlink;
     int width = 1;
     bool continuation = false;
 };
@@ -26,7 +27,7 @@ public:
 
     void Resize(int columns, int rows);
     void Reset();
-    void Feed(const wxString& bytes);
+    bool Feed(const wxString& bytes);
 
     int Columns() const { return columns_; }
     int Rows() const { return rows_; }
@@ -43,11 +44,13 @@ public:
     bool MouseReporting() const { return mouseReporting_; }
     bool SgrMouse() const { return sgrMouse_; }
     bool BracketedPaste() const { return bracketedPaste_; }
+    bool SynchronizedUpdates() const { return synchronizedUpdates_; }
+    bool GraphicsDiscarded() const { return graphicsDiscarded_; }
 
     static wxColour PaletteColor(int index, bool bold = false);
 
 private:
-    enum class ParserState { Ground, Escape, Csi, Osc, OscEscape };
+    enum class ParserState { Ground, Escape, Csi, Osc, OscEscape, Dcs, DcsEscape, Apc, ApcEscape };
 
     std::vector<TerminalCell>& Grid();
     const std::vector<TerminalCell>& Grid() const;
@@ -64,9 +67,11 @@ private:
     void HandleSgr();
     void HandleMode(bool set);
     void SwitchAlternateScreen(bool enable);
+    void HandleOsc();
     void PushScrollbackRow();
     static bool IsCombining(wxChar character);
     static bool IsWide(wxChar character);
+    static bool IsRegionalIndicator(wxChar character);
     int Parameter(size_t index, int fallback = 1) const;
 
     int columns_;
@@ -83,6 +88,8 @@ private:
     bool mouseReporting_ = false;
     bool sgrMouse_ = false;
     bool bracketedPaste_ = false;
+    bool synchronizedUpdates_ = false;
+    bool graphicsDiscarded_ = false;
     ParserState parserState_ = ParserState::Ground;
     wxString csiParameters_;
     wxString oscBuffer_;
@@ -92,6 +99,9 @@ private:
     bool bold_ = false;
     bool underline_ = false;
     bool inverse_ = false;
+    wxString hyperlink_;
+    bool graphemeJoinPending_ = false;
+    bool regionalIndicatorPending_ = false;
     std::vector<TerminalCell> primaryGrid_;
     std::vector<TerminalCell> alternateGrid_;
     std::deque<std::vector<TerminalCell>> scrollback_;

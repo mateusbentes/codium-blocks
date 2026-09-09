@@ -80,9 +80,14 @@ void TerminalScreen::Reset()
     bold_ = false;
     underline_ = false;
     inverse_ = false;
+    hyperlink_.clear();
+    graphemeJoinPending_ = false;
+    regionalIndicatorPending_ = false;
     mouseReporting_ = false;
     sgrMouse_ = false;
     bracketedPaste_ = false;
+    synchronizedUpdates_ = false;
+    graphicsDiscarded_ = false;
     scrollOffset_ = 0;
     scrollback_.clear();
     ClearGrid(primaryGrid_);
@@ -162,7 +167,8 @@ bool TerminalScreen::IsCombining(wxChar character)
     const uint32_t code = static_cast<uint32_t>(character);
     return (code >= 0x0300 && code <= 0x036f) || (code >= 0x1ab0 && code <= 0x1aff) ||
            (code >= 0x1dc0 && code <= 0x1dff) || (code >= 0x20d0 && code <= 0x20ff) ||
-           (code >= 0xfe20 && code <= 0xfe2f);
+           (code >= 0xfe00 && code <= 0xfe0f) || (code >= 0xfe20 && code <= 0xfe2f) ||
+           code == 0x200c || code == 0x200d || (code >= 0xe0100 && code <= 0xe01ef);
 }
 
 bool TerminalScreen::IsWide(wxChar character)
@@ -173,6 +179,12 @@ bool TerminalScreen::IsWide(wxChar character)
            (code >= 0xf900 && code <= 0xfaff) || (code >= 0xfe10 && code <= 0xfe19) ||
            (code >= 0xfe30 && code <= 0xfe6f) || (code >= 0xff00 && code <= 0xff60) ||
            (code >= 0xffe0 && code <= 0xffe6) || (code >= 0x1f300 && code <= 0x1faff);
+}
+
+bool TerminalScreen::IsRegionalIndicator(wxChar character)
+{
+    const uint32_t code = static_cast<uint32_t>(character);
+    return code >= 0x1f1e6 && code <= 0x1f1ff;
 }
 
 void TerminalScreen::PushScrollbackRow()
@@ -212,13 +224,21 @@ void TerminalScreen::Backspace()
 void TerminalScreen::PutCharacter(wxChar character)
 {
     if (character < 0x20) return;
-    if (IsCombining(character) && cursorColumn_ > 0) {
-        TerminalCell& previous = Grid()[static_cast<size_t>(cursorRow_ * columns_ + cursorColumn_ - 1)];
+    const bool joinsPrevious = IsCombining(character) || graphemeJoinPending_ ||
+        (IsRegionalIndicator(character) && regionalIndicatorPending_);
+    if (joinsPrevious && cursorColumn_ > 0) {
+        int baseColumn = cursorColumn_ - 1;
+        if (Grid()[static_cast<size_t>(cursorRow_ * columns_ + baseColumn)].continuation) --baseColumn;
+        TerminalCell& previous = Grid()[static_cast<size_t>(cursorRow_ * columns_ + baseColumn)];
         if (previous.text.empty()) previous.text += previous.character;
         previous.text += character;
+        graphemeJoinPending_ = character == wxChar(0x200d);
+        regionalIndicatorPending_ = false;
         return;
     }
-    const int width = IsWide(character) ? 2 : 1;
+    const int width = IsWide(character) || IsRegionalIndicator(character) ? 2 : 1;
+    graphemeJoinPending_ = false;
+    regionalIndicatorPending_ = IsRegionalIndicator(character);
     if (width == 2 && cursorColumn_ == columns_ - 1 && wrapEnabled_) {
         cursorColumn_ = 0;
         LineFeed();
@@ -240,6 +260,7 @@ void TerminalScreen::PutCharacter(wxChar character)
     cell.bold = bold_;
     cell.underline = underline_;
     cell.inverse = inverse_;
+    cell.hyperlink = hyperlink_;
     cell.width = width;
     cell.continuation = false;
     if (width == 2 && cursorColumn_ + 1 < columns_) {
@@ -344,6 +365,37 @@ void TerminalScreen::SwitchAlternateScreen(bool enable)
     }
 }
 
+void TerminalScreen::HandleOsc()
+{
+    const int firstSeparator = oscBuffer_.Find(wxChar(';'));
+    if (firstSeparator == wxNOT_FOUND) {
+        oscBuffer_.clear();
+        return;
+    }
+    const wxString command = oscBuffer_.Left(firstSeparator);
+    if (command != wxS("8")) {
+        oscBuffer_.clear();
+        return;
+    }
+    const int relativeSecondSeparator = oscBuffer_.Mid(firstSeparator + 1).Find(wxChar(';'));
+    const int secondSeparator = relativeSecondSeparator == wxNOT_FOUND
+        ? wxNOT_FOUND : firstSeparator + 1 + relativeSecondSeparator;
+    if (secondSeparator == wxNOT_FOUND) {
+        oscBuffer_.clear();
+        return;
+    }
+    const wxString url = oscBuffer_.Mid(secondSeparator + 1);
+    if (url.empty()) {
+        hyperlink_.clear();
+    } else if (url.StartsWith(wxS("https://")) || url.StartsWith(wxS("http://")) ||
+               url.StartsWith(wxS("mailto:")) || url.StartsWith(wxS("file://"))) {
+        hyperlink_ = url;
+    } else {
+        hyperlink_.clear();
+    }
+    oscBuffer_.clear();
+}
+
 void TerminalScreen::HandleMode(bool set)
 {
     const wxString parameters = csiParameters_.StartsWith(wxS("?")) ? csiParameters_.Mid(1) : csiParameters_;
@@ -355,6 +407,7 @@ void TerminalScreen::HandleMode(bool set)
         else if (value == 1000 || value == 1002 || value == 1003) mouseReporting_ = set;
         else if (value == 1006) sgrMouse_ = set;
         else if (value == 2004) bracketedPaste_ = set;
+        else if (value == 2026) synchronizedUpdates_ = set;
     }
 }
 
@@ -394,7 +447,7 @@ void TerminalScreen::HandleCsi(wxChar finalCharacter)
     }
 }
 
-void TerminalScreen::Feed(const wxString& bytes)
+bool TerminalScreen::Feed(const wxString& bytes)
 {
     for (size_t index = 0; index < bytes.length(); ++index) {
         const wxChar character = bytes[index];
@@ -411,6 +464,8 @@ void TerminalScreen::Feed(const wxString& bytes)
         case ParserState::Escape:
             if (character == wxChar('[')) { csiParameters_.clear(); parserState_ = ParserState::Csi; }
             else if (character == wxChar(']')) { oscBuffer_.clear(); parserState_ = ParserState::Osc; }
+            else if (character == wxChar('P')) { oscBuffer_.clear(); parserState_ = ParserState::Dcs; graphicsDiscarded_ = true; }
+            else if (character == wxChar('_')) { oscBuffer_.clear(); parserState_ = ParserState::Apc; graphicsDiscarded_ = true; }
             else if (character == wxChar('7')) { savedColumn_ = cursorColumn_; savedRow_ = cursorRow_; parserState_ = ParserState::Ground; }
             else if (character == wxChar('8')) { MoveCursor(savedColumn_, savedRow_); parserState_ = ParserState::Ground; }
             else if (character == wxChar('D')) { LineFeed(); parserState_ = ParserState::Ground; }
@@ -423,15 +478,29 @@ void TerminalScreen::Feed(const wxString& bytes)
             else csiParameters_ += character;
             break;
         case ParserState::Osc:
-            if (character == wxChar('\a')) { oscBuffer_.clear(); parserState_ = ParserState::Ground; }
+            if (character == wxChar('\a')) { HandleOsc(); parserState_ = ParserState::Ground; }
             else if (character == wxChar(0x1b)) parserState_ = ParserState::OscEscape;
             else oscBuffer_ += character;
             break;
         case ParserState::OscEscape:
-            parserState_ = character == wxChar('\\') ? ParserState::Ground : ParserState::Osc;
+            if (character == wxChar('\\')) { HandleOsc(); parserState_ = ParserState::Ground; }
+            else { oscBuffer_ += wxChar(0x1b); oscBuffer_ += character; parserState_ = ParserState::Osc; }
+            break;
+        case ParserState::Dcs:
+            if (character == wxChar(0x1b)) parserState_ = ParserState::DcsEscape;
+            break;
+        case ParserState::DcsEscape:
+            parserState_ = character == wxChar('\\') ? ParserState::Ground : ParserState::Dcs;
+            break;
+        case ParserState::Apc:
+            if (character == wxChar(0x1b)) parserState_ = ParserState::ApcEscape;
+            break;
+        case ParserState::ApcEscape:
+            parserState_ = character == wxChar('\\') ? ParserState::Ground : ParserState::Apc;
             break;
         }
     }
+    return !synchronizedUpdates_;
 }
 
 } // namespace codium

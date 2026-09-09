@@ -57,6 +57,26 @@ int main()
     screen.ScrollBack(1);
     if (screen.VisibleCellAt(0, 0).character != wxChar('o')) return 13;
 
-    std::cout << "terminal-screen-smoke: ok — VT cursor, colors, scrollback, mouse, paste, and Unicode\n";
+    screen.Reset();
+    screen.Feed(wxString::FromUTF8("\x1b]8;;https://example.com\x1b\\link\x1b]8;;\x1b\\"));
+    if (screen.CellAt(0, 0).hyperlink != wxS("https://example.com")) return 14;
+    screen.Reset();
+    screen.Feed(wxString::FromUTF8("\x1b]8;;javascript:alert(1)\x1b\\unsafe\x1b]8;;\x1b\\"));
+    if (!screen.CellAt(0, 0).hyperlink.empty()) return 15;
+
+    screen.Reset();
+    if (screen.Feed(wxString::FromUTF8("\x1b[?2026hbatched"))) return 16;
+    if (!screen.SynchronizedUpdates()) return 17;
+    if (!screen.Feed(wxString::FromUTF8("\x1b[?2026l")) || screen.SynchronizedUpdates()) return 18;
+
+    screen.Reset();
+    screen.Feed(wxString::FromUTF8("\x1bPq1;2;3;4;5\x1b\\"));
+    if (!screen.GraphicsDiscarded() || !Cell(screen, 0, 0, ' ')) return 19;
+
+    screen.Reset();
+    screen.Feed(wxString::FromUTF8("\xF0\x9F\x87\xA7\xF0\x9F\x87\xB7"));
+    if (screen.CellAt(0, 0).text.length() < 2 || screen.CursorColumn() != 2) return 20;
+
+    std::cout << "terminal-screen-smoke: ok — VT, scrollback, mouse, paste, Unicode, links, sync, and graphics policy\n";
     return 0;
 }

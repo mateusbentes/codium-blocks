@@ -42,6 +42,10 @@ The `0.8.1` increment adds a native VT screen model with cells, cursor movement,
 
 The `0.8.2` increment adds bounded scrollback with viewport navigation, drag selection and clipboard copy, legacy and SGR mouse reporting, bracketed paste, initial wide-Unicode and combining-character cells, and persistent terminal profiles for shell, dimensions, and command history. The terminal remains independent of external emulators. Future work is limited to richer xterm compatibility such as hyperlinks, synchronized updates, complete grapheme clustering, and advanced mouse/selection behavior.
 
+## Release 0.8.3 — advanced xterm compatibility
+
+The `0.8.3` increment adds safe OSC 8 hyperlinks, DEC synchronized updates, broader grapheme joining for combining marks, variation selectors, ZWJ sequences, and regional-indicator pairs, word/line selection gestures, and a graphics policy that consumes Sixel/Kitty DCS/APC payloads without corrupting the terminal screen. Links are opened only for an explicit safe-scheme allowlist. Image rendering remains intentionally optional until a native rendering policy and resource limits are defined.
+
 ## Release 0.9 — debugging views and registry security
 
 Add source breakpoints, stack frames, variables, watches, problem navigation, Open VSX, private registries, caching, checksums, rollback, workspace trust, permissions, and per-extension compatibility reports.
