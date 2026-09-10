@@ -143,6 +143,24 @@ sudo apt-get install build-essential cmake pkg-config libwxgtk3.2-dev nodejs
 
 Install `libssl-dev` as well to enable optional Ed25519 signature verification for signed extension artifacts.
 
+The portable Codium::Blocks build does **not** require Code::Blocks or its SDK. The optional `codeblocks-dev` package is needed only when building and testing the separate real Code::Blocks host adapter. On Ubuntu/Debian, install the complete optional integration environment with:
+
+```bash
+sudo apt-get install codeblocks codeblocks-dev libtinyxml-dev xvfb
+```
+
+These packages have distinct roles: `codeblocks-dev` provides the SDK headers, shared library, and `pkg-config` metadata; `codeblocks` provides the official runtime resources and plugins; `libtinyxml-dev` provides the `tinyxml.h` header required by the SDK headers; and `xvfb` provides a virtual X display for the headless integration smoke test. They are not required by the main native executable, and they are not required on systems that only need the portable build.
+
+To force the portable path even when the SDK is installed, disable the optional adapter explicitly:
+
+```bash
+cmake -S . -B build \
+  -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF \
+  -DCMAKE_BUILD_TYPE=Debug
+```
+
+When the SDK is installed, the default CMake configuration can discover it through `pkg-config` and build `codium-blocks-codeblocks-adapter` separately. The regular `codium-blocks` process remains independent of `libcodeblocks` in both configurations.
+
 Configure, build, and test:
 
 ```bash
