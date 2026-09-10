@@ -28,6 +28,21 @@ function send(child, message) {
   child.stdin.write(`Content-Length: ${Buffer.byteLength(body, 'utf8')}\r\n\r\n${body}`);
 }
 
+async function waitForClose(child, timeoutMs = 3000) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  await Promise.race([
+    new Promise((resolve) => child.once('close', resolve)),
+    new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+  ]);
+  if (child.exitCode === null && child.signalCode === null) {
+    try { child.kill(); } catch {}
+    await Promise.race([
+      new Promise((resolve) => child.once('close', resolve)),
+      new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
+  }
+}
+
 function waitForMessage(child, state, predicate, timeoutMs, phase) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -150,7 +165,8 @@ async function smokeServer(server, root) {
     };
   } finally {
     try { send(child, { jsonrpc: '2.0', id: 999, method: 'shutdown', params: null }); } catch {}
-    child.kill();
+    try { child.stdin.end(); } catch {}
+    await waitForClose(child);
   }
 }
 
@@ -184,5 +200,5 @@ try {
   }
   if (executed === 0) console.log('real-lsp-smoke: no real language servers completed; optional matrix skipped');
 } finally {
-  await rm(root, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
 }

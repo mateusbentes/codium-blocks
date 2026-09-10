@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 
 const matrix = JSON.parse(await readFile(new URL('./real-dap-matrix.json', import.meta.url), 'utf8'));
 const adapters = matrix.adapters.filter((adapter) => adapter.platforms.includes(process.platform));
+const WINDOWS_DLL_NOT_FOUND = 0xC0000135;
 
 function send(child, message) {
   const body = JSON.stringify(message);
@@ -36,7 +37,12 @@ function probe(adapter) {
       else finish(reject, error);
     });
     child.on('exit', (code, signal) => {
-      if (!settled) finish(reject, new Error(`${adapter.id}: exited before initialize (code=${code}, signal=${signal ?? ''}, stderr=${stderr.trim()})`));
+      if (settled) return;
+      if (process.platform === 'win32' && code === WINDOWS_DLL_NOT_FOUND) {
+        finish(resolve, { skipped: true, reason: 'executable could not load a required Windows DLL' });
+        return;
+      }
+      finish(reject, new Error(`${adapter.id}: exited before initialize (code=${code}, signal=${signal ?? ''}, stderr=${stderr.trim()})`));
     });
     child.stderr.on('data', (chunk) => { stderr = `${stderr}${chunk.toString()}`.slice(-8192); });
     child.stdout.on('data', (chunk) => {
