@@ -19,7 +19,7 @@ function handle(line) {
       sdkMajor: request.sdkMajor || 1,
       sdkMinor: request.sdkMinor || 36,
       sdkRelease: request.sdkRelease || 0,
-      capabilities: ['projectEvents', 'buildEvents', 'compilerDiagnostics', 'debugEvents']
+      capabilities: ['sdkEventSink', 'projectEvents', 'projectTargets', 'compilerEvents', 'buildEvents', 'compilerDiagnostics', 'debugEvents']
     });
   } else if (request.type === 'openProject') {
     emit({

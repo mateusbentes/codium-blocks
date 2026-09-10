@@ -19,6 +19,13 @@ enum class CodeBlocksEventKind {
     ProjectOpened,
     ProjectTarget,
     ProjectClosed,
+    ProjectActivated,
+    ProjectSaved,
+    ProjectTargetsChanged,
+    ProjectFileAdded,
+    ProjectFileRemoved,
+    ProjectFileChanged,
+    ProjectFileRenamed,
     BuildStarted,
     BuildFinished,
     CompilerDiagnostic,
@@ -43,6 +50,7 @@ struct CodeBlocksHostEvent final {
     int exitCode = 0;
     bool isError = false;
     wxString payload;
+    wxString oldFilePath;
 };
 
 struct CodeBlocksHostConfiguration final {

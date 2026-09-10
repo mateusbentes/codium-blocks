@@ -129,6 +129,22 @@ void EmitError(const wxString& code, const wxString& message)
          wxS("\",\"message\":\"") + JsonEscape(message) + wxS("\"}"));
 }
 
+void EmitSdkEvent(const codium::CodeBlocksHostEvent& event)
+{
+    wxString json = wxS("{\"type\":\"event\",\"event\":\"") +
+                    JsonEscape(codium::CodeBlocksEventKindName(event.kind)) +
+                    wxS("\",\"projectPath\":\"") + JsonEscape(event.projectPath) +
+                    wxS("\",\"target\":\"") + JsonEscape(event.target) +
+                    wxS("\",\"plugin\":\"") + JsonEscape(event.plugin) +
+                    wxS("\",\"message\":\"") + JsonEscape(event.message) +
+                    wxS("\",\"filePath\":\"") + JsonEscape(event.filePath) +
+                    wxS("\",\"oldFilePath\":\"") + JsonEscape(event.oldFilePath) +
+                    wxS("\",\"exitCode\":") + wxString::Format(wxS("%d"), event.exitCode) +
+                    wxS(",\"isError\":") + (event.isError ? wxS("true") : wxS("false")) +
+                    wxS(",\"payload\":\"") + JsonEscape(event.payload) + wxS("\"}");
+    Emit(json);
+}
+
 bool RedirectSdkStdout()
 {
 #ifdef _WIN32
@@ -192,7 +208,7 @@ public:
             stopRequested.store(true);
             if (wxTheApp) wxTheApp->ExitMainLoop();
         } else if (type == wxS("build")) {
-            EmitError(wxS("unsupported"), wxS("The Phase A adapter does not build projects yet."));
+            EmitError(wxS("unsupported"), wxS("The Code::Blocks adapter does not build projects yet; real compilation is planned for Phase C."));
         } else if (!type.empty()) {
             EmitError(wxS("unknownRequest"), wxString::Format(wxS("Unknown request type: %s"), type));
         }
@@ -247,7 +263,7 @@ private:
             wxS("{\"type\":\"ready\",\"contractMajor\":1,\"contractMinor\":0,\"sdkMajor\":%d,\"sdkMinor\":%d,\"sdkRelease\":%d,\"sdkIdentity\":\""),
             PLUGIN_SDK_VERSION_MAJOR, PLUGIN_SDK_VERSION_MINOR, PLUGIN_SDK_VERSION_RELEASE) +
              JsonEscape(bootstrap_->Report().sdkIdentity) +
-             wxS("\",\"capabilities\":[\"sdkBootstrap\",\"projectEvents\",\"projectTargets\",\"compilerPluginMatched\"]}"));
+             wxS("\",\"capabilities\":[\"sdkBootstrap\",\"sdkEventSink\",\"projectEvents\",\"projectTargets\",\"compilerEvents\",\"compilerPluginMatched\"]}"));
     }
 
     void HandleOpenProject(const wxString& projectFile)
@@ -262,9 +278,7 @@ private:
             EmitError(wxS("projectLoadFailed"), error);
             return;
         }
-        Emit(wxS("{\"type\":\"event\",\"event\":\"projectOpened\",\"projectPath\":\"") +
-             JsonEscape(projectFile) +
-             wxS("\",\"message\":\"Project opened by Code::Blocks SDK\"}"));
+        for (const auto& event : bootstrap_->DrainEvents()) EmitSdkEvent(event);
         for (const auto& target : bootstrap_->EnumerateTargets(project)) {
             Emit(wxS("{\"type\":\"event\",\"event\":\"projectTarget\",\"projectPath\":\"") +
                  JsonEscape(projectFile) + wxS("\",\"target\":\"") + JsonEscape(target.title) +
@@ -316,6 +330,7 @@ int main(int argc, char** argv)
     stopRequested.store(true);
     if (inputThread.joinable()) inputThread.join();
     session.Shutdown();
+    while (frame->GetEventHandler() != frame) frame->PopEventHandler(true);
     delete frame;
     wxTheApp->OnExit();
     wxEntryCleanup();

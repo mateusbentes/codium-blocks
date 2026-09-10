@@ -26,6 +26,12 @@ The adapter owns an explicit bootstrap object with the following lifecycle:
 
 The first real capability is intentionally modest and observable. Opening a `.cbp` emits `projectOpened` followed by one `projectTarget` event per real target. Each target event includes its title, compiler identifier, output path, and working directory. Build requests are not yet implemented by this phase; the adapter reports them as unsupported rather than pretending to provide a real compiler event stream.
 
+### Phase B event normalization
+
+The adapter now installs typed event sinks through `Manager::RegisterEventSink()` after the SDK manager is created. Project lifecycle events (`cbEVT_PROJECT_OPEN`, `cbEVT_PROJECT_CLOSE`, `cbEVT_PROJECT_ACTIVATE`, `cbEVT_PROJECT_SAVE`, target changes, and project file changes) are converted immediately into value-owned normalized events. The adapter never sends `cbProject*`, `cbPlugin*`, or other SDK pointers across JSON Lines. It also registers `cbEVT_COMPILER_STARTED` and `cbEVT_COMPILER_FINISHED`, preserving the active project, target, Compiler identity, exit code, and error status.
+
+This is event observation and normalization, not yet build execution. A compiler plugin may emit lifecycle events during a real operation, but the Phase B adapter does not initiate that operation or claim compiler output capture. The dedicated SDK event smoke test drives the official `Manager::ProcessEvent()` path with SDK event objects and verifies that project file changes and compiler success/failure statuses reach the normalized model. The real adapter smoke additionally verifies that the `projectOpened` event came from `cbEVT_PROJECT_OPEN`, rather than from a client-side synthetic fallback.
+
 The repository includes a Linux integration smoke test that starts the adapter under `xvfb-run`, negotiates the protocol, opens a fixture `.cbp`, and verifies the real `Debug` and `Release` targets returned by the installed Code::Blocks SDK. The test is not added when a usable SDK, runtime resources, compiler plugin, or virtual display is unavailable. The universal fake-adapter test remains independent of Code::Blocks and continues to run on every platform.
 
 ## Plugin and ABI safety policy
@@ -90,8 +96,8 @@ The production adapter is deliberately being developed in stages:
 | Stage | Status | Scope |
 |---|---|---|
 | A | Implemented | Matched `wxApp`/resource bootstrap, one allowlisted Compiler plugin, real `.cbp` loading, target enumeration, capability reporting, and graceful errors. |
-| B | Next | Register official SDK event sinks and normalize project/compiler lifecycle events without loading additional plugins. |
-| C | Planned | Add real batch compilation through the matched Code::Blocks compiler plugin, including compiler output and completion status. |
+| B | Implemented | Register official SDK event sinks and normalize project/compiler lifecycle events without loading additional plugins. |
+| C | Next | Add real batch compilation through the matched Code::Blocks compiler plugin, including compiler output and completion status. |
 | D | Planned | Add debugger and plugin-manager capabilities only behind explicit ABI, manifest, provenance, and workspace-trust policies. |
 
 This sequencing avoids claiming full Code::Blocks compatibility before the lifecycle, event mapping, compiler behavior, debugger ownership, and plugin policy have each been tested against matched SDK builds.

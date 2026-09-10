@@ -1,10 +1,13 @@
 #pragma once
 
+#include "codium/codeblocks_host.hpp"
+
 #include <wx/string.h>
 
 #include <vector>
 
 class cbProject;
+class CodeBlocksEvent;
 class wxFrame;
 
 namespace codium {
@@ -27,6 +30,8 @@ struct CodeBlocksSdkReport final {
     bool resourcesLoaded = false;
     bool compilerPluginLoaded = false;
     bool projectEnumerationAvailable = false;
+    bool eventSinkRegistered = false;
+    bool compilerEventsAvailable = false;
 };
 
 /**
@@ -50,6 +55,7 @@ public:
                wxString* error = nullptr);
     cbProject* LoadProject(const wxString& projectFile, wxString* error = nullptr);
     std::vector<CodeBlocksTargetInfo> EnumerateTargets(cbProject* project) const;
+    std::vector<CodeBlocksHostEvent> DrainEvents();
     void Shutdown();
 
     bool IsStarted() const { return started_; }
@@ -57,10 +63,16 @@ public:
 
 private:
     void Fail(const wxString& message, wxString* error);
+    void RegisterEventSinks();
+    void UnregisterEventSinks();
+    void OnSdkEvent(CodeBlocksEvent& event);
+    void PublishSdkEvent(CodeBlocksHostEvent event);
 
     wxFrame* appFrame_ = nullptr;
     cbProject* project_ = nullptr;
     CodeBlocksSdkReport report_;
+    std::vector<CodeBlocksHostEvent> events_;
+    bool eventSinksRegistered_ = false;
     bool started_ = false;
 };
 

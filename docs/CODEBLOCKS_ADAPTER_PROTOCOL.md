@@ -17,7 +17,7 @@ An SDK tuple of `0.0.0` means that the client requests discovery and does not im
 A compatible adapter responds with one `ready` message:
 
 ```json
-{"type":"ready","contractMajor":1,"contractMinor":0,"sdkMajor":2,"sdkMinor":23,"sdkRelease":0,"sdkIdentity":"Code::Blocks SDK 2.23.0","capabilities":["sdkBootstrap","projectEvents","projectTargets","compilerPluginMatched"]}
+{"type":"ready","contractMajor":1,"contractMinor":0,"sdkMajor":2,"sdkMinor":23,"sdkRelease":0,"sdkIdentity":"Code::Blocks SDK 2.23.0","capabilities":["sdkBootstrap","sdkEventSink","projectEvents","projectTargets","compilerEvents","compilerPluginMatched"]}
 ```
 
 The client accepts contract major `1` and a minor version from `0` through the currently implemented minor version. A future incompatible major version must be rejected before project or plugin operations begin. The `sdkIdentity` string is informational; the numeric SDK tuple is the compatibility value.
@@ -62,7 +62,40 @@ The adapter emits one target event for every `cbProject` target returned by the 
 
 `target` is the Code::Blocks target title. `compilerId` is the target compiler identifier. `outputPath` and `workingDirectory` are the values reported by the SDK and may be relative to the project base path.
 
-The existing normalized event names remain supported: `projectOpened`, `projectClosed`, `buildStarted`, `buildFinished`, `compilerDiagnostic`, `debugSessionStarted`, `debugSessionStopped`, and `pluginCommand`. Real compiler, debugger, and plugin-manager event translation is not claimed by Phase A.
+### Official SDK project events
+
+After bootstrap, the adapter registers typed event sinks with the Code::Blocks `Manager`. The following official SDK events are normalized without exposing SDK pointers across the process boundary:
+
+| Code::Blocks event | Normalized event | Important fields |
+|---|---|---|
+| `cbEVT_PROJECT_OPEN` | `projectOpened` | `projectPath`, `message` |
+| `cbEVT_PROJECT_CLOSE` | `projectClosed` | `projectPath`, `message` |
+| `cbEVT_PROJECT_ACTIVATE` | `projectActivated` | `projectPath`, `target` |
+| `cbEVT_PROJECT_SAVE` | `projectSaved` | `projectPath` |
+| `cbEVT_PROJECT_TARGETS_MODIFIED` | `projectTargetsChanged` | `projectPath` |
+| `cbEVT_PROJECT_FILE_ADDED` | `projectFileAdded` | `projectPath`, `filePath` |
+| `cbEVT_PROJECT_FILE_REMOVED` | `projectFileRemoved` | `projectPath`, `filePath` |
+| `cbEVT_PROJECT_FILE_CHANGED` | `projectFileChanged` | `projectPath`, `filePath` |
+| `cbEVT_PROJECT_FILE_RENAMED` | `projectFileRenamed` | `projectPath`, `oldFilePath`, `filePath` |
+
+For example:
+
+```json
+{"type":"event","event":"projectFileRenamed","projectPath":"/workspace/demo.cbp","filePath":"src/new.cpp","oldFilePath":"src/old.cpp","message":"Code::Blocks emitted cbEVT_PROJECT_FILE_RENAMED"}
+```
+
+### Official compiler lifecycle events
+
+The sink also normalizes the official compiler lifecycle events emitted by the matched Compiler plugin:
+
+| Code::Blocks event | Normalized event | Important fields |
+|---|---|---|
+| `cbEVT_COMPILER_STARTED` | `buildStarted` | `projectPath`, `target`, `plugin` |
+| `cbEVT_COMPILER_FINISHED` | `buildFinished` | `projectPath`, `target`, `plugin`, `exitCode`, `isError` |
+
+`cbEVT_COMPILER_FINISHED` carries its exit status in the SDK event integer field; the adapter preserves it as `exitCode` and sets `isError` for non-zero values. Compiler diagnostics and compiler process output are not fabricated by this phase. They will be connected when the adapter begins issuing real compiler operations.
+
+The existing normalized event names remain supported: `projectOpened`, `projectClosed`, `projectActivated`, `projectSaved`, `projectTargetsChanged`, `projectFileAdded`, `projectFileRemoved`, `projectFileChanged`, `projectFileRenamed`, `buildStarted`, `buildFinished`, `compilerDiagnostic`, `debugSessionStarted`, `debugSessionStopped`, and `pluginCommand`. The adapter now receives official project and compiler lifecycle events, but real compiler invocation, output capture, debugger, and plugin-manager operations are not claimed yet.
 
 Diagnostics use one-based line and column numbers so they can be displayed consistently with Code::Blocks output and converted to the native zero-based editor model.
 

@@ -197,6 +197,7 @@ endif()
 if(CODIUM_BLOCKS_CODEBLOCKS_ADAPTER_AVAILABLE)
     add_executable(codium-blocks-codeblocks-adapter
         native/src/codeblocks_adapter_main.cpp
+        native/src/codeblocks_host.cpp
         native/src/codeblocks_sdk_bootstrap.cpp
     )
     target_include_directories(codium-blocks-codeblocks-adapter PRIVATE
@@ -344,6 +345,17 @@ if(CODIUM_BLOCKS_CODEBLOCKS_ADAPTER_AVAILABLE AND UNIX AND NOT APPLE)
     target_include_directories(codium-blocks-codeblocks-real-adapter-smoke PRIVATE native/include)
     codium_blocks_enable_warnings(codium-blocks-codeblocks-real-adapter-smoke)
     target_link_libraries(codium-blocks-codeblocks-real-adapter-smoke PRIVATE ${wxWidgets_LIBRARIES})
+
+    add_executable(codium-blocks-codeblocks-sdk-events-smoke
+        native/src/codeblocks_host.cpp
+        native/src/codeblocks_sdk_bootstrap.cpp
+        tests/codeblocks-sdk-events-smoke.cpp
+    )
+    target_include_directories(codium-blocks-codeblocks-sdk-events-smoke PRIVATE
+        native/include ${CODIUM_BLOCKS_CODEBLOCKS_INCLUDE_DIRS})
+    codium_blocks_enable_warnings(codium-blocks-codeblocks-sdk-events-smoke)
+    target_link_libraries(codium-blocks-codeblocks-sdk-events-smoke PRIVATE
+        ${wxWidgets_LIBRARIES} ${CODIUM_BLOCKS_CODEBLOCKS_LINK_TARGET})
 endif()
 
 install(TARGETS codium-blocks RUNTIME DESTINATION bin)
@@ -392,6 +404,17 @@ if(BUILD_TESTING)
                     ${CODIUM_BLOCKS_XVFB_RUN} -a
                     $<TARGET_FILE:codium-blocks-codeblocks-real-adapter-smoke>
                     $<TARGET_FILE:codium-blocks-codeblocks-adapter>
+                    ${CMAKE_SOURCE_DIR}/tests/fixtures/codium-blocks-adapter.cbp
+                    ${CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR}
+                    ${CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN}
+            )
+            add_test(
+                NAME codeblocks-sdk-events-smoke
+                COMMAND ${CMAKE_COMMAND} -E env
+                    HOME=${CMAKE_CURRENT_BINARY_DIR}/codeblocks-adapter-home
+                    XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/codeblocks-adapter-home/config
+                    ${CODIUM_BLOCKS_XVFB_RUN} -a
+                    $<TARGET_FILE:codium-blocks-codeblocks-sdk-events-smoke>
                     ${CMAKE_SOURCE_DIR}/tests/fixtures/codium-blocks-adapter.cbp
                     ${CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR}
                     ${CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN}

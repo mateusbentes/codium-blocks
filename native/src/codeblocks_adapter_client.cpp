@@ -106,6 +106,13 @@ CodeBlocksEventKind EventKindFromName(const wxString& name)
     if (name == wxS("projectOpened")) return CodeBlocksEventKind::ProjectOpened;
     if (name == wxS("projectTarget")) return CodeBlocksEventKind::ProjectTarget;
     if (name == wxS("projectClosed")) return CodeBlocksEventKind::ProjectClosed;
+    if (name == wxS("projectActivated")) return CodeBlocksEventKind::ProjectActivated;
+    if (name == wxS("projectSaved")) return CodeBlocksEventKind::ProjectSaved;
+    if (name == wxS("projectTargetsChanged")) return CodeBlocksEventKind::ProjectTargetsChanged;
+    if (name == wxS("projectFileAdded")) return CodeBlocksEventKind::ProjectFileAdded;
+    if (name == wxS("projectFileRemoved")) return CodeBlocksEventKind::ProjectFileRemoved;
+    if (name == wxS("projectFileChanged")) return CodeBlocksEventKind::ProjectFileChanged;
+    if (name == wxS("projectFileRenamed")) return CodeBlocksEventKind::ProjectFileRenamed;
     if (name == wxS("buildStarted")) return CodeBlocksEventKind::BuildStarted;
     if (name == wxS("buildFinished")) return CodeBlocksEventKind::BuildFinished;
     if (name == wxS("compilerDiagnostic")) return CodeBlocksEventKind::CompilerDiagnostic;
@@ -294,6 +301,7 @@ void CodeBlocksAdapterClient::ProcessProtocolLine(const wxString& line,
     event.command = JsonStringField(line, wxS("command"));
     event.message = JsonStringField(line, wxS("message"));
     event.filePath = JsonStringField(line, wxS("filePath"));
+    event.oldFilePath = JsonStringField(line, wxS("oldFilePath"));
     event.compilerId = JsonStringField(line, wxS("compilerId"));
     event.outputPath = JsonStringField(line, wxS("outputPath"));
     event.workingDirectory = JsonStringField(line, wxS("workingDirectory"));

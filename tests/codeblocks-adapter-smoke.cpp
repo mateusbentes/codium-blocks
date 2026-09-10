@@ -63,6 +63,8 @@ int main(int argc, char** argv)
     if (!adapter.Start(wxS("node"), arguments, root, configuration, &error) ||
         !WaitForReady(adapter) || adapter.ContractMajor() != 1 || adapter.ContractMinor() != 0 ||
         adapter.SdkMajor() != 1 || adapter.SdkMinor() != 36 ||
+        adapter.Capabilities().Index(wxS("sdkEventSink")) == wxNOT_FOUND ||
+        adapter.Capabilities().Index(wxS("compilerEvents")) == wxNOT_FOUND ||
         adapter.Capabilities().Index(wxS("compilerDiagnostics")) == wxNOT_FOUND) {
         std::cerr << "codeblocks-adapter-smoke: handshake failed: " << error.ToStdString() << "\n";
         return 2;

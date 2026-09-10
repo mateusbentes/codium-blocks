@@ -32,6 +32,13 @@ wxString CodeBlocksEventKindName(CodeBlocksEventKind kind)
     case CodeBlocksEventKind::ProjectOpened: return wxS("projectOpened");
     case CodeBlocksEventKind::ProjectTarget: return wxS("projectTarget");
     case CodeBlocksEventKind::ProjectClosed: return wxS("projectClosed");
+    case CodeBlocksEventKind::ProjectActivated: return wxS("projectActivated");
+    case CodeBlocksEventKind::ProjectSaved: return wxS("projectSaved");
+    case CodeBlocksEventKind::ProjectTargetsChanged: return wxS("projectTargetsChanged");
+    case CodeBlocksEventKind::ProjectFileAdded: return wxS("projectFileAdded");
+    case CodeBlocksEventKind::ProjectFileRemoved: return wxS("projectFileRemoved");
+    case CodeBlocksEventKind::ProjectFileChanged: return wxS("projectFileChanged");
+    case CodeBlocksEventKind::ProjectFileRenamed: return wxS("projectFileRenamed");
     case CodeBlocksEventKind::BuildStarted: return wxS("buildStarted");
     case CodeBlocksEventKind::BuildFinished: return wxS("buildFinished");
     case CodeBlocksEventKind::CompilerDiagnostic: return wxS("compilerDiagnostic");

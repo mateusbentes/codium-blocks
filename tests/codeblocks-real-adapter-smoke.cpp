@@ -52,6 +52,8 @@ int main(int argc, char** argv)
         adapter.ContractMajor() != 1 || adapter.ContractMinor() != 0 ||
         adapter.SdkMajor() <= 0 || adapter.SdkMinor() < 0 || adapter.SdkRelease() < 0 ||
         adapter.Capabilities().Index(wxS("projectTargets")) == wxNOT_FOUND ||
+        adapter.Capabilities().Index(wxS("sdkEventSink")) == wxNOT_FOUND ||
+        adapter.Capabilities().Index(wxS("compilerEvents")) == wxNOT_FOUND ||
         adapter.Capabilities().Index(wxS("compilerPluginMatched")) == wxNOT_FOUND) {
         std::cerr << "codeblocks-real-adapter-smoke: handshake failed: " << error.ToStdString() << "\n";
         return 3;
@@ -63,6 +65,7 @@ int main(int argc, char** argv)
     }
 
     bool opened = false;
+    bool officialOpen = false;
     int targetCount = 0;
     bool debugFound = false;
     bool releaseFound = false;
@@ -72,6 +75,7 @@ int main(int argc, char** argv)
             if (event.kind == codium::CodeBlocksEventKind::ProjectOpened &&
                 event.projectPath == projectPath) {
                 opened = true;
+                officialOpen = event.message.Contains(wxS("cbEVT_PROJECT_OPEN"));
             }
             if (event.kind == codium::CodeBlocksEventKind::ProjectTarget &&
                 event.projectPath == projectPath) {
@@ -83,7 +87,7 @@ int main(int argc, char** argv)
     }
     adapter.Stop();
 
-    if (!opened || targetCount != 2 || !debugFound || !releaseFound) {
+    if (!opened || !officialOpen || targetCount != 2 || !debugFound || !releaseFound) {
         std::cerr << "codeblocks-real-adapter-smoke: project target enumeration failed\n";
         return 5;
     }

@@ -2378,6 +2378,13 @@ private:
         case codium::CodeBlocksEventKind::ProjectOpened:
         case codium::CodeBlocksEventKind::ProjectTarget:
         case codium::CodeBlocksEventKind::ProjectClosed:
+        case codium::CodeBlocksEventKind::ProjectActivated:
+        case codium::CodeBlocksEventKind::ProjectSaved:
+        case codium::CodeBlocksEventKind::ProjectTargetsChanged:
+        case codium::CodeBlocksEventKind::ProjectFileAdded:
+        case codium::CodeBlocksEventKind::ProjectFileRemoved:
+        case codium::CodeBlocksEventKind::ProjectFileChanged:
+        case codium::CodeBlocksEventKind::ProjectFileRenamed:
         case codium::CodeBlocksEventKind::DebugSessionStarted:
         case codium::CodeBlocksEventKind::DebugSessionStopped:
         case codium::CodeBlocksEventKind::PluginCommand:
