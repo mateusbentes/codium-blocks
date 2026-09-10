@@ -47,6 +47,7 @@ jobs:
           node --check tests/fake-dap.mjs
           node --check tests/fake-codeblocks-adapter.mjs
           node --check tests/host-smoke.mjs
+          node --check tests/real-lsp-smoke.mjs
 
       - name: Run Linux CTest
         run: ctest --test-dir build --output-on-failure
@@ -88,6 +89,7 @@ jobs:
           node --check tests/fake-dap.mjs
           node --check tests/fake-codeblocks-adapter.mjs
           node --check tests/host-smoke.mjs
+          node --check tests/real-lsp-smoke.mjs
 
       - name: Run macOS CTest
         run: ctest --test-dir build --output-on-failure
@@ -132,6 +134,7 @@ jobs:
           node --check tests/fake-dap.mjs
           node --check tests/fake-codeblocks-adapter.mjs
           node --check tests/host-smoke.mjs
+          node --check tests/real-lsp-smoke.mjs
 
       - name: Run Windows CTest
         shell: pwsh

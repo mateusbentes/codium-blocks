@@ -40,7 +40,7 @@ The current `1.0.1` development increment builds on the completed `0.9.0` baseli
 - hover rendering preserves multiple Markdown and code-content blocks;
 - Go to File, Go to Symbol, delimiter matching, automatic paired delimiters, basic indentation, and circular tab navigation;
 - normalized diagnostics and language-server result events;
-- an optional `tests/real-lsp-smoke.mjs` matrix that exercises installed clangd, rust-analyzer, gopls, and pyright-langserver binaries without making them build dependencies;
+- an optional `tests/real-lsp-smoke.mjs` matrix that exercises installed clangd, rust-analyzer, gopls, and pyright-langserver binaries in language-appropriate temporary workspaces without making them build dependencies; an unavailable or non-startable external toolchain is reported as skipped, while protocol failures after startup remain test failures;
 - a deterministic fake-LSP integration test.
 - native File, Language, and Extensions menus;
 - keyboard shortcuts for opening, saving, hover, and completion;

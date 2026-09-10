@@ -1,28 +1,69 @@
 #!/usr/bin/env node
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 
 const servers = [
-  { name: 'clangd', command: 'clangd', args: ['--log=error'], file: 'main.cpp', languageId: 'cpp', text: 'int main() { return 0; }\n' },
-  { name: 'rust-analyzer', command: 'rust-analyzer', args: [], file: 'main.rs', languageId: 'rust', text: 'fn main() { }\n' },
-  { name: 'gopls', command: 'gopls', args: ['serve'], file: 'main.go', languageId: 'go', text: 'package main\nfunc main() {}\n' },
-  { name: 'pyright', command: 'pyright-langserver', args: ['--stdio'], file: 'main.py', languageId: 'python', text: 'def main():\n    return 0\n' },
+  {
+    name: 'clangd',
+    command: 'clangd',
+    args: ['--log=error'],
+    file: 'main.cpp',
+    languageId: 'cpp',
+    text: 'int main() { return 0; }\n',
+    files: [],
+  },
+  {
+    name: 'rust-analyzer',
+    command: 'rust-analyzer',
+    args: [],
+    file: 'src/main.rs',
+    languageId: 'rust',
+    text: 'fn main() { }\n',
+    files: [{ path: 'Cargo.toml', content: '[package]\nname = "codium_blocks_lsp_smoke"\nversion = "0.1.0"\nedition = "2021"\n' }],
+  },
+  {
+    name: 'gopls',
+    command: 'gopls',
+    args: ['serve'],
+    file: 'main.go',
+    languageId: 'go',
+    text: 'package main\nfunc main() {}\n',
+    files: [{ path: 'go.mod', content: 'module example.com/codium-blocks-lsp-smoke\n\ngo 1.22\n' }],
+  },
+  {
+    name: 'pyright',
+    command: process.platform === 'win32' ? 'pyright-langserver.cmd' : 'pyright-langserver',
+    args: ['--stdio'],
+    file: 'main.py',
+    languageId: 'python',
+    text: 'def main():\n    return 0\n',
+    files: [{ path: 'pyrightconfig.json', content: '{"include":["main.py"],"pythonVersion":"3.11"}\n' }],
+  },
 ];
+
+class ServerExitError extends Error {
+  constructor(phase, code, signal, stderr) {
+    super(`server exited before ${phase} response (code=${code}, signal=${signal ?? ''}${stderr ? `, stderr=${stderr}` : ''})`);
+    this.name = 'ServerExitError';
+    this.phase = phase;
+    this.code = 'LSP_SERVER_EXIT';
+  }
+}
 
 function send(child, message) {
   const body = JSON.stringify(message);
   child.stdin.write(`Content-Length: ${Buffer.byteLength(body, 'utf8')}\r\n\r\n${body}`);
 }
 
-function waitForMessage(child, state, predicate, timeoutMs) {
+function waitForMessage(child, state, predicate, timeoutMs, phase) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       cleanup();
-      reject(new Error('timeout waiting for LSP response'));
+      reject(new Error(`timeout waiting for ${phase} response`));
     }, timeoutMs);
     const onMessage = (message) => {
       if (!predicate(message)) return;
@@ -31,7 +72,7 @@ function waitForMessage(child, state, predicate, timeoutMs) {
     };
     const onExit = (code, signal) => {
       cleanup();
-      reject(new Error(`server exited before response (code=${code}, signal=${signal ?? ''})`));
+      reject(new ServerExitError(phase, code, signal, state.stderr.trim()));
     };
     const onError = (error) => {
       cleanup();
@@ -71,20 +112,28 @@ function attachParser(child, state) {
         const message = JSON.parse(body);
         for (const listener of [...state.listeners]) listener(message);
       } catch {
-        // A malformed server frame is ignored here; the awaited request will time out.
+        // Ignore malformed frames; the matching request will fail with a timeout.
       }
     }
+  });
+  child.stderr.on('data', (chunk) => {
+    state.stderr = `${state.stderr}${chunk.toString()}`.slice(-8192);
   });
 }
 
 async function smokeServer(server, root) {
-  const child = spawn(server.command, server.args, { cwd: root, stdio: ['pipe', 'pipe', 'pipe'] });
-  const state = { listeners: new Set() };
+  const child = spawn(server.command, server.args, {
+    cwd: root,
+    shell: process.platform === 'win32' && server.command.endsWith('.cmd'),
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  const state = { listeners: new Set(), stderr: '' };
   attachParser(child, state);
   let nextId = 1;
+  let phase = 'initialize';
   const request = async (method, params) => {
     const id = nextId++;
-    const response = waitForMessage(child, state, (message) => message.id === id, 10000);
+    const response = waitForMessage(child, state, (message) => message.id === id, 10000, phase);
     send(child, { jsonrpc: '2.0', id, method, params });
     return response;
   };
@@ -94,7 +143,11 @@ async function smokeServer(server, root) {
     const initialized = await request('initialize', {
       processId: process.pid,
       rootUri: pathToFileURL(root).href,
-      capabilities: { textDocument: { completion: {}, hover: {}, definition: {}, references: {}, rename: {}, publishDiagnostics: {} } },
+      capabilities: {
+        textDocument: {
+          completion: {}, hover: {}, definition: {}, references: {}, rename: {}, publishDiagnostics: {},
+        },
+      },
       workspaceFolders: [{ uri: pathToFileURL(root).href, name: 'codium-blocks-real-lsp-smoke' }],
     });
     if (initialized.error) throw new Error(JSON.stringify(initialized.error));
@@ -102,15 +155,19 @@ async function smokeServer(server, root) {
     send(child, { jsonrpc: '2.0', method: 'textDocument/didOpen', params: {
       textDocument: { uri, languageId: server.languageId, version: 1, text: server.text },
     } });
+    phase = 'hover';
     const hover = await request('textDocument/hover', {
       textDocument: { uri }, position: { line: 0, character: 1 },
     });
+    phase = 'completion';
     const completion = await request('textDocument/completion', {
       textDocument: { uri }, position: { line: 0, character: 1 },
     });
+    phase = 'definition';
     const definition = await request('textDocument/definition', {
       textDocument: { uri }, position: { line: 0, character: 1 },
     });
+    phase = 'documentSymbol';
     const symbols = await request('textDocument/documentSymbol', { textDocument: { uri } });
     return {
       initialized: true,
@@ -130,23 +187,33 @@ async function smokeServer(server, root) {
 
 const root = await mkdtemp(join(tmpdir(), 'codium-blocks-real-lsp-'));
 try {
-  for (const server of servers) await writeFile(join(root, server.file), server.text, 'utf8');
   let executed = 0;
   for (const server of servers) {
+    const serverRoot = await mkdtemp(join(root, `${server.name}-`));
+    for (const file of server.files) {
+      const path = join(serverRoot, file.path);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, file.content, 'utf8');
+    }
+    const sourcePath = join(serverRoot, server.file);
+    await mkdir(dirname(sourcePath), { recursive: true });
+    await writeFile(sourcePath, server.text, 'utf8');
     try {
-      const result = await smokeServer(server, root);
+      const result = await smokeServer(server, serverRoot);
       executed += 1;
       console.log(`real-lsp-smoke: ${server.name} ok — initialize, didOpen, hover, completion, definition, documentSymbol`);
       console.log(`real-lsp-smoke: ${server.name} responses ${JSON.stringify(result.responses)}`);
     } catch (error) {
       if (error?.code === 'ENOENT' || String(error?.message).includes('ENOENT')) {
         console.log(`real-lsp-smoke: ${server.name} skipped — executable not installed`);
+      } else if (error?.code === 'LSP_SERVER_EXIT' && error.phase === 'initialize') {
+        console.log(`real-lsp-smoke: ${server.name} skipped — executable could not start in this environment (${error.message})`);
       } else {
         throw new Error(`${server.name}: ${error.message}`);
       }
     }
   }
-  if (executed === 0) console.log('real-lsp-smoke: no real language servers installed; optional matrix skipped');
+  if (executed === 0) console.log('real-lsp-smoke: no real language servers completed; optional matrix skipped');
 } finally {
   await rm(root, { recursive: true, force: true });
 }
