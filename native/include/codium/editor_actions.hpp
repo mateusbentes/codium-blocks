@@ -16,6 +16,13 @@ struct EditorLineColumn final {
     int column = 0;
 };
 
+struct EditorDelimiterPair final {
+    long first = -1;
+    long second = -1;
+
+    bool Found() const { return first >= 0 && second >= 0; }
+};
+
 class EditorActions final {
 public:
     static EditorMatch Find(const wxString& text, const wxString& query,
@@ -26,6 +33,8 @@ public:
                                int* replacementCount = nullptr);
     static long PositionForLineColumn(const wxString& text, int line, int column);
     static EditorLineColumn LineColumnForPosition(const wxString& text, long position);
+    static EditorDelimiterPair MatchingDelimiters(const wxString& text, long caret);
+    static wxString IndentationForNewline(const wxString& text, long caret, int indentWidth = 4);
 };
 
 } // namespace codium

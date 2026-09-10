@@ -33,6 +33,13 @@ public:
     bool RequestLanguageHover(const wxString& uri, int line, int character);
     bool RequestLanguageCompletion(const wxString& uri, int line, int character);
     bool RequestLanguageSemanticTokens(const wxString& uri);
+    bool RequestLanguageDefinition(const wxString& uri, int line, int character);
+    bool RequestLanguageDeclaration(const wxString& uri, int line, int character);
+    bool RequestLanguageReferences(const wxString& uri, int line, int character);
+    bool RequestLanguageDocumentSymbols(const wxString& uri);
+    bool RequestLanguageWorkspaceSymbols(const wxString& query);
+    bool RequestLanguageRename(const wxString& uri, int line, int character, const wxString& newName);
+    bool RequestLanguageCodeActions(const wxString& uri, int line, int character);
 
     // Poll is intentionally driven by the wxWidgets event loop. It keeps the
     // native UI responsive while the optional Node.js host runs out-of-process.

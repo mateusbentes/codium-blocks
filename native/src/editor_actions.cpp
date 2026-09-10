@@ -94,4 +94,67 @@ EditorLineColumn EditorActions::LineColumnForPosition(const wxString& text, long
     return result;
 }
 
+EditorDelimiterPair EditorActions::MatchingDelimiters(const wxString& text, long caret)
+{
+    caret = ClampPosition(text, caret);
+    long candidate = caret;
+    if (candidate >= static_cast<long>(text.length()) ||
+        wxString(wxS("([{)]}")).Find(text[static_cast<size_t>(candidate)]) == wxNOT_FOUND) {
+        candidate = caret > 0 ? caret - 1 : -1;
+    }
+    if (candidate < 0 || candidate >= static_cast<long>(text.length())) return {};
+    const wxChar opening = text[static_cast<size_t>(candidate)];
+    const wxChar closing = opening == wxChar('(') ? wxChar(')') :
+                           opening == wxChar('[') ? wxChar(']') :
+                           opening == wxChar('{') ? wxChar('}') :
+                           opening == wxChar(')') ? wxChar('(') :
+                           opening == wxChar(']') ? wxChar('[') :
+                           opening == wxChar('}') ? wxChar('{') : wxChar();
+    if (closing == wxChar()) return {};
+    const bool forward = opening == wxChar('(') || opening == wxChar('[') || opening == wxChar('{');
+    int depth = 0;
+    if (forward) {
+        for (long index = candidate; index < static_cast<long>(text.length()); ++index) {
+            if (text[static_cast<size_t>(index)] == opening) ++depth;
+            else if (text[static_cast<size_t>(index)] == closing && --depth == 0)
+                return {candidate, index};
+        }
+    } else {
+        for (long index = candidate; index >= 0; --index) {
+            if (text[static_cast<size_t>(index)] == opening) ++depth;
+            else if (text[static_cast<size_t>(index)] == closing && --depth == 0)
+                return {index, candidate};
+        }
+    }
+    return {};
+}
+
+wxString EditorActions::IndentationForNewline(const wxString& text, long caret, int indentWidth)
+{
+    caret = ClampPosition(text, caret);
+    indentWidth = std::max(1, indentWidth);
+    const int lineBreak = text.Left(caret).Find(wxChar('\n'), true);
+    const long lineStart = lineBreak == wxNOT_FOUND ? 0 : lineBreak + 1;
+    wxString indentation;
+    long index = lineStart;
+    while (index < caret && (text[static_cast<size_t>(index)] == wxChar(' ') ||
+                             text[static_cast<size_t>(index)] == wxChar('\t'))) {
+        indentation += text[static_cast<size_t>(index++)];
+    }
+    long previous = caret - 1;
+    while (previous >= lineStart && (text[static_cast<size_t>(previous)] == wxChar(' ') ||
+                                     text[static_cast<size_t>(previous)] == wxChar('\t'))) --previous;
+    const wxChar next = caret < static_cast<long>(text.length())
+        ? static_cast<wxChar>(text[static_cast<size_t>(caret)]) : wxChar();
+    const wxChar previousCode = previous >= lineStart
+        ? static_cast<wxChar>(text[static_cast<size_t>(previous)]) : wxChar();
+    if (previousCode == wxChar('{') || previousCode == wxChar('[') || previousCode == wxChar('(')) {
+        for (int count = 0; count < indentWidth; ++count) indentation += wxChar(' ');
+    } else if ((next == wxChar('}') || next == wxChar(']') || next == wxChar(')')) &&
+               indentation.length() >= static_cast<size_t>(indentWidth)) {
+        indentation.Truncate(indentation.length() - static_cast<size_t>(indentWidth));
+    }
+    return indentation;
+}
+
 } // namespace codium

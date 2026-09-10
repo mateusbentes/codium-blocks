@@ -9,6 +9,7 @@
 #include "codium/terminal_profile.hpp"
 #include "codium/dap_client.hpp"
 #include "codium/debug_model.hpp"
+#include "codium/lsp_navigation.hpp"
 #include "codium/native_contributions.hpp"
 #include "codium/extension_registry.hpp"
 #include "codium/codeblocks_bridge.hpp"
@@ -47,6 +48,7 @@
 #include <wx/wx.h>
 
 #include <algorithm>
+#include <cctype>
 #include <map>
 #include <set>
 #include <utility>
@@ -82,6 +84,15 @@ enum : int {
     ID_FIND_NEXT,
     ID_FIND_PREVIOUS,
     ID_GOTO_LINE,
+    ID_GO_TO_FILE,
+    ID_GO_TO_SYMBOL,
+    ID_GO_TO_DEFINITION,
+    ID_GO_TO_DECLARATION,
+    ID_FIND_REFERENCES,
+    ID_RENAME_SYMBOL,
+    ID_CODE_ACTIONS,
+    ID_NEXT_TAB,
+    ID_PREVIOUS_TAB,
     ID_TASK_PROCESS = wxID_HIGHEST + 500,
     ID_START_TERMINAL,
     ID_SEND_TERMINAL,
@@ -403,6 +414,13 @@ struct DebugFrameLocation final {
     wxString path;
 };
 
+enum class LspResultMode {
+    None,
+    Completion,
+    Locations,
+    CodeActions,
+};
+
 class MainFrame final : public wxFrame {
 public:
     MainFrame()
@@ -696,6 +714,7 @@ public:
                                 wxTE_MULTILINE | wxTE_READONLY | wxHSCROLL);
         outputRoot->Add(hover_, 0, wxBOTTOM | wxEXPAND, 4);
         completion_ = new wxListBox(outputPage, wxID_ANY, wxDefaultPosition, wxSize(-1, 55));
+        completion_->Bind(wxEVT_LISTBOX_DCLICK, [this](wxCommandEvent&) { ApplySelectedLspItem(); });
         outputRoot->Add(completion_, 0, wxBOTTOM | wxEXPAND, 4);
         log_ = new wxTextCtrl(outputPage, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
                               wxTE_MULTILINE | wxTE_READONLY | wxTE_RICH2 | wxHSCROLL);
@@ -753,6 +772,16 @@ private:
         editMenu->Append(ID_REPLACE_ALL_EDITOR, wxS("Replace all"));
         editMenu->AppendSeparator();
         editMenu->Append(ID_GOTO_LINE, wxS("Go to Line\tCtrl+G"));
+        editMenu->Append(ID_GO_TO_FILE, wxS("Go to File\tCtrl+P"));
+        editMenu->Append(ID_GO_TO_SYMBOL, wxS("Go to Symbol\tCtrl+Shift+O"));
+        editMenu->Append(ID_GO_TO_DEFINITION, wxS("Go to Definition\tF12"));
+        editMenu->Append(ID_GO_TO_DECLARATION, wxS("Go to Declaration"));
+        editMenu->Append(ID_FIND_REFERENCES, wxS("Find References\tShift+F12"));
+        editMenu->Append(ID_RENAME_SYMBOL, wxS("Rename Symbol\tF2"));
+        editMenu->Append(ID_CODE_ACTIONS, wxS("Code Actions\tCtrl+."));
+        editMenu->AppendSeparator();
+        editMenu->Append(ID_NEXT_TAB, wxS("Next Tab\tCtrl+Tab"));
+        editMenu->Append(ID_PREVIOUS_TAB, wxS("Previous Tab\tCtrl+Shift+Tab"));
         menuBar->Append(editMenu, wxS("&Edit"));
 
         auto* languageMenu = new wxMenu();
@@ -812,6 +841,15 @@ private:
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { ReplaceInEditor(); }, ID_REPLACE_EDITOR);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { ReplaceAllInEditor(); }, ID_REPLACE_ALL_EDITOR);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { GoToLine(); }, ID_GOTO_LINE);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { GoToFile(); }, ID_GO_TO_FILE);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { RequestDocumentSymbols(); }, ID_GO_TO_SYMBOL);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { RequestDefinition(); }, ID_GO_TO_DEFINITION);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { RequestDeclaration(); }, ID_GO_TO_DECLARATION);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { RequestReferences(); }, ID_FIND_REFERENCES);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { RenameSymbol(); }, ID_RENAME_SYMBOL);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { RequestCodeActions(); }, ID_CODE_ACTIONS);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { SwitchAdjacentTab(1); }, ID_NEXT_TAB);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { SwitchAdjacentTab(-1); }, ID_PREVIOUS_TAB);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StartLanguageServer(); }, ID_START_CLANGD);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { InitializeLanguageServer(); }, ID_INITIALIZE_LSP);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { RequestHover(); }, ID_HOVER);
@@ -848,6 +886,14 @@ private:
             wxAcceleratorEntry(wxACCEL_CTRL, wxKeyCode('G'), ID_GOTO_LINE),
             wxAcceleratorEntry(wxACCEL_NORMAL, WXK_F3, ID_FIND_NEXT),
             wxAcceleratorEntry(wxACCEL_SHIFT, WXK_F3, ID_FIND_PREVIOUS),
+            wxAcceleratorEntry(wxACCEL_CTRL, wxKeyCode('P'), ID_GO_TO_FILE),
+            wxAcceleratorEntry(wxACCEL_CTRL | wxACCEL_SHIFT, wxKeyCode('O'), ID_GO_TO_SYMBOL),
+            wxAcceleratorEntry(wxACCEL_NORMAL, WXK_F12, ID_GO_TO_DEFINITION),
+            wxAcceleratorEntry(wxACCEL_SHIFT, WXK_F12, ID_FIND_REFERENCES),
+            wxAcceleratorEntry(wxACCEL_NORMAL, WXK_F2, ID_RENAME_SYMBOL),
+            wxAcceleratorEntry(wxACCEL_CTRL, wxKeyCode('.'), ID_CODE_ACTIONS),
+            wxAcceleratorEntry(wxACCEL_CTRL, WXK_TAB, ID_NEXT_TAB),
+            wxAcceleratorEntry(wxACCEL_CTRL | wxACCEL_SHIFT, WXK_TAB, ID_PREVIOUS_TAB),
         };
         SetAcceleratorTable(wxAcceleratorTable(
             static_cast<int>(sizeof(accelerators) / sizeof(accelerators[0])), accelerators));
@@ -874,6 +920,46 @@ private:
         editor->SetFont(wxFont(11, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
         editor->Bind(wxEVT_TEXT, [this](wxCommandEvent& event) {
             OnEditorChanged(static_cast<wxTextCtrl*>(event.GetEventObject()));
+        });
+        editor->Bind(wxEVT_CHAR, [this](wxKeyEvent& event) {
+            auto* source = static_cast<wxTextCtrl*>(event.GetEventObject());
+            if (source != editor_) {
+                event.Skip();
+                return;
+            }
+            const long caret = source->GetInsertionPoint();
+            const int key = event.GetUnicodeKey() == WXK_NONE ? event.GetKeyCode() : event.GetUnicodeKey();
+            if (key == WXK_RETURN || key == WXK_NUMPAD_ENTER) {
+                const wxString indentation = codium::EditorActions::IndentationForNewline(source->GetValue(), caret);
+                source->WriteText(wxS("\n") + indentation);
+                return;
+            }
+            const wxChar typed = static_cast<wxChar>(key);
+            const wxChar closing = typed == wxChar('(') ? wxChar(')') :
+                                  typed == wxChar('[') ? wxChar(']') :
+                                  typed == wxChar('{') ? wxChar('}') :
+                                  typed == wxChar('"') ? wxChar('"') :
+                                  typed == wxChar('\'') ? wxChar('\'') : wxChar();
+            if (closing != wxChar()) {
+                long selectionStart = 0;
+                long selectionEnd = 0;
+                source->GetSelection(&selectionStart, &selectionEnd);
+                (void)selectionEnd;
+                source->WriteText(wxString(typed) + wxString(closing));
+                source->SetInsertionPoint(selectionStart + 1);
+                source->SetSelection(selectionStart + 1, selectionStart + 1);
+                return;
+            }
+            if ((typed == wxChar(')') || typed == wxChar(']') || typed == wxChar('}')) &&
+                caret < source->GetLastPosition() && source->GetValue()[static_cast<size_t>(caret)] == typed) {
+                source->SetInsertionPoint(caret + 1);
+                return;
+            }
+            event.Skip();
+        });
+        editor->Bind(wxEVT_KEY_UP, [this](wxKeyEvent& event) {
+            ApplyInlineProblems();
+            event.Skip();
         });
         const auto onScroll = [gutter, editor](wxScrollWinEvent& event) {
             gutter->SetFirstLine(editor->GetScrollPos(wxVERTICAL));
@@ -1091,6 +1177,7 @@ private:
                                   SyntaxStyle(codium::SemanticTokenDecoder::KindForType(token.type)));
             }
         }
+        HighlightMatchingDelimiter();
         for (const auto& problem : problemStore_.Problems()) {
             if (problem.stale || problem.path.empty() || problem.path != document_.Path()) continue;
             const long start = editor_->XYToPosition(problem.column, problem.line);
@@ -1101,6 +1188,22 @@ private:
             style.SetFontUnderlined(true);
             editor_->SetStyle(start, finish, style);
         }
+    }
+
+    void HighlightMatchingDelimiter()
+    {
+        matchingDelimiterPositions_.clear();
+        if (!editor_) return;
+        const auto pair = codium::EditorActions::MatchingDelimiters(
+            editor_->GetValue(), editor_->GetInsertionPoint());
+        if (!pair.Found()) return;
+        matchingDelimiterPositions_.push_back(pair.first);
+        matchingDelimiterPositions_.push_back(pair.second);
+        wxTextAttr style;
+        style.SetBackgroundColour(wxColour(220, 235, 255));
+        style.SetFontWeight(wxFONTWEIGHT_BOLD);
+        editor_->SetStyle(pair.first, pair.first + 1, style);
+        editor_->SetStyle(pair.second, pair.second + 1, style);
     }
 
     bool ProblemMatchesFilter(const codium::Problem& problem) const
@@ -2425,6 +2528,111 @@ private:
         UpdateTitle();
     }
 
+    void GoToFile()
+    {
+        if (!workspace_.IsOpen()) {
+            AppendLog(wxS("Open a workspace before using Go to File."));
+            return;
+        }
+        wxTextEntryDialog queryDialog(this, wxS("File name or workspace-relative path"), wxS("Go to File"));
+        if (queryDialog.ShowModal() != wxID_OK) return;
+        const wxString query = queryDialog.GetValue().Lower();
+        if (query.empty()) return;
+        wxArrayString choices;
+        wxArrayString paths;
+        for (const auto& path : workspace_.Files()) {
+            const wxString relative = workspace_.RelativePath(path);
+            if (relative.Lower().Find(query) == wxNOT_FOUND) continue;
+            choices.Add(relative);
+            paths.Add(path);
+        }
+        if (choices.IsEmpty()) {
+            AppendLog(wxS("Go to File found no matching workspace file."));
+            return;
+        }
+        wxSingleChoiceDialog choice(this, wxS("Select a file"), wxS("Go to File"), choices);
+        if (choice.ShowModal() == wxID_OK) OpenDocumentPath(paths[choice.GetSelection()]);
+    }
+
+    bool EnsureLanguageRequest(const wxString& action)
+    {
+        if (document_.IsUntitled()) {
+            AppendLog(wxS("Open a document before requesting ") + action + wxS("."));
+            return false;
+        }
+        if (!languageServerInitialized_) {
+            AppendLog(wxS("Initialize the language server before requesting ") + action + wxS("."));
+            return false;
+        }
+        return true;
+    }
+
+    void RequestDefinition()
+    {
+        if (EnsureLanguageRequest(wxS("definition")) &&
+            host_.RequestLanguageDefinition(DocumentUri(), CurrentEditorLine(), CurrentEditorCharacter())) {
+            lspResultMode_ = LspResultMode::Locations;
+            AppendLog(wxS("Request sent: textDocument/definition."));
+        }
+    }
+
+    void RequestDeclaration()
+    {
+        if (EnsureLanguageRequest(wxS("declaration")) &&
+            host_.RequestLanguageDeclaration(DocumentUri(), CurrentEditorLine(), CurrentEditorCharacter())) {
+            lspResultMode_ = LspResultMode::Locations;
+            AppendLog(wxS("Request sent: textDocument/declaration."));
+        }
+    }
+
+    void RequestReferences()
+    {
+        if (EnsureLanguageRequest(wxS("references")) &&
+            host_.RequestLanguageReferences(DocumentUri(), CurrentEditorLine(), CurrentEditorCharacter())) {
+            lspResultMode_ = LspResultMode::Locations;
+            AppendLog(wxS("Request sent: textDocument/references."));
+        }
+    }
+
+    void RequestDocumentSymbols()
+    {
+        if (EnsureLanguageRequest(wxS("document symbols")) && host_.RequestLanguageDocumentSymbols(DocumentUri())) {
+            lspResultMode_ = LspResultMode::Locations;
+            AppendLog(wxS("Request sent: textDocument/documentSymbol."));
+        }
+    }
+
+    void RequestWorkspaceSymbols()
+    {
+        if (!EnsureLanguageRequest(wxS("workspace symbols"))) return;
+        wxTextEntryDialog dialog(this, wxS("Symbol query"), wxS("Workspace Symbols"), lastSymbolQuery_);
+        if (dialog.ShowModal() != wxID_OK) return;
+        lastSymbolQuery_ = dialog.GetValue();
+        if (host_.RequestLanguageWorkspaceSymbols(lastSymbolQuery_)) {
+            lspResultMode_ = LspResultMode::Locations;
+            AppendLog(wxS("Request sent: workspace/symbol."));
+        }
+    }
+
+    void RenameSymbol()
+    {
+        if (!EnsureLanguageRequest(wxS("rename"))) return;
+        wxTextEntryDialog dialog(this, wxS("New symbol name"), wxS("Rename Symbol"));
+        if (dialog.ShowModal() != wxID_OK || dialog.GetValue().empty()) return;
+        if (host_.RequestLanguageRename(DocumentUri(), CurrentEditorLine(), CurrentEditorCharacter(), dialog.GetValue())) {
+            AppendLog(wxS("Request sent: textDocument/rename."));
+        }
+    }
+
+    void RequestCodeActions()
+    {
+        if (EnsureLanguageRequest(wxS("code actions")) &&
+            host_.RequestLanguageCodeActions(DocumentUri(), CurrentEditorLine(), CurrentEditorCharacter())) {
+            lspResultMode_ = LspResultMode::CodeActions;
+            AppendLog(wxS("Request sent: textDocument/codeAction."));
+        }
+    }
+
     void ShowCommandPalette()
     {
         const wxArrayString commands = {
@@ -2444,6 +2652,9 @@ private:
             wxS("Pause Code::Blocks debug"), wxS("Stop Code::Blocks debug"), wxS("Build and Run selected target"),
             wxS("Find"), wxS("Find next"), wxS("Find previous"), wxS("Replace"),
             wxS("Replace all"), wxS("Go to Line")
+            , wxS("Go to File"), wxS("Go to Symbol"), wxS("Go to Definition"),
+            wxS("Go to Declaration"), wxS("Find References"), wxS("Rename Symbol"),
+            wxS("Code Actions"), wxS("Workspace Symbols")
         };
         wxSingleChoiceDialog dialog(this, wxS("Select a command"), wxS("Command Palette"), commands);
         if (dialog.ShowModal() != wxID_OK) return;
@@ -2491,6 +2702,14 @@ private:
         case 40: ReplaceInEditor(); break;
         case 41: ReplaceAllInEditor(); break;
         case 42: GoToLine(); break;
+        case 43: GoToFile(); break;
+        case 44: RequestDocumentSymbols(); break;
+        case 45: RequestDefinition(); break;
+        case 46: RequestDeclaration(); break;
+        case 47: RequestReferences(); break;
+        case 48: RenameSymbol(); break;
+        case 49: RequestCodeActions(); break;
+        case 50: RequestWorkspaceSymbols(); break;
         default: break;
         }
     }
@@ -2614,9 +2833,22 @@ private:
             documentVersion_ = 1;
         }
         languageId_ = document_.IsUntitled() ? wxS("plaintext") : LanguageIdForPath(document_.Path());
+        semanticTokens_.clear();
         UpdateTitle();
         RefreshGutters();
         ApplyInlineProblems();
+        NotifyLanguageDocumentOpened();
+    }
+
+    void SwitchAdjacentTab(int direction)
+    {
+        if (!notebook_ || tabPaths_.empty()) return;
+        const int current = notebook_->GetSelection();
+        if (current == wxNOT_FOUND) return;
+        const int count = static_cast<int>(tabPaths_.size());
+        const int next = (current + direction + count) % count;
+        notebook_->SetSelection(next);
+        SwitchToTab(static_cast<size_t>(next));
     }
 
     void SaveFile()
@@ -3368,22 +3600,158 @@ private:
         RequestDebugScopes();
     }
 
+    wxString LspLocationLabel(const codium::LspLocation& location) const
+    {
+        const wxString path = codium::LspNavigation::UriToPath(
+            location.uri.empty() ? DocumentUri() : location.uri);
+        const wxString displayPath = workspace_.IsOpen() ? workspace_.RelativePath(path) : path;
+        const wxString name = location.name.empty() ? displayPath : location.name;
+        return wxString::Format(wxS("%s:%d:%d%s"), name, location.range.start.line + 1,
+                                location.range.start.character + 1,
+                                location.detail.empty() ? wxString() : wxS(" — ") + location.detail);
+    }
+
+    void OpenLspLocation(int index)
+    {
+        if (index < 0 || index >= static_cast<int>(lspLocations_.size())) return;
+        const auto& location = lspLocations_[static_cast<size_t>(index)];
+        const wxString path = codium::LspNavigation::UriToPath(
+            location.uri.empty() ? DocumentUri() : location.uri);
+        if (!path.empty() && wxFileExists(path)) OpenDocumentPath(path);
+        if (!editor_) return;
+        const long position = codium::EditorActions::PositionForLineColumn(
+            editor_->GetValue(), location.range.start.line, location.range.start.character);
+        editor_->SetInsertionPoint(position);
+        editor_->ShowPosition(position);
+        editor_->SetFocus();
+        UpdateTitle();
+    }
+
+    void ApplyWorkspaceEdits(const std::vector<codium::LspTextEdit>& edits)
+    {
+        if (edits.empty()) {
+            AppendLog(wxS("The language server returned no applicable text edits."));
+            return;
+        }
+        std::map<wxString, std::vector<codium::LspTextEdit>> grouped;
+        for (const auto& edit : edits) {
+            const wxString uri = edit.uri.empty() ? DocumentUri() : edit.uri;
+            grouped[uri].push_back(edit);
+        }
+        for (const auto& [uri, fileEdits] : grouped) {
+            const wxString path = codium::LspNavigation::UriToPath(uri);
+            if (path.empty()) continue;
+            if (path == document_.Path() && editor_) {
+                const wxString updated = codium::LspNavigation::ApplyTextEdits(editor_->GetValue(), fileEdits);
+                editor_->SetValue(updated);
+                document_.SetText(updated);
+                documents_[path].SetText(updated);
+                NotifyLanguageDocumentChanged();
+                UpdateTitle();
+                continue;
+            }
+            codium::Document document;
+            wxString error;
+            if (!document.Load(path, &error)) {
+                AppendLog(wxS("Could not load LSP edit target: ") + error);
+                continue;
+            }
+            document.SetText(codium::LspNavigation::ApplyTextEdits(document.Text(), fileEdits));
+            if (!document.Save(&error)) AppendLog(wxS("Could not save LSP edit target: ") + error);
+            else if (documents_.find(path) != documents_.end()) documents_[path] = document;
+        }
+        ApplyInlineProblems();
+        AppendLog(wxString::Format(wxS("Applied %zu LSP text edit(s)."), edits.size()));
+    }
+
+    void ApplyCompletionItem(const codium::LspCompletionItem& item)
+    {
+        if (!editor_) return;
+        codium::LspTextEdit edit = item.textEdit;
+        if (!item.hasTextEdit) {
+            const long caret = editor_->GetInsertionPoint();
+            long start = caret;
+            while (start > 0) {
+                const wxChar character = editor_->GetValue()[static_cast<size_t>(start - 1)];
+                if (!(std::isalnum(static_cast<unsigned char>(character)) || character == wxChar('_'))) break;
+                --start;
+            }
+            const auto from = codium::EditorActions::LineColumnForPosition(editor_->GetValue(), start);
+            const auto to = codium::EditorActions::LineColumnForPosition(editor_->GetValue(), caret);
+            edit.uri = DocumentUri();
+            edit.range = { {from.line, from.column}, {to.line, to.column} };
+        }
+        edit.newText = item.insertText.empty() ? item.label : item.insertText;
+        ApplyWorkspaceEdits({edit});
+        completion_->SetSelection(wxNOT_FOUND);
+        lspResultMode_ = LspResultMode::None;
+    }
+
+    void ApplySelectedLspItem()
+    {
+        const int selection = completion_ ? completion_->GetSelection() : wxNOT_FOUND;
+        if (selection == wxNOT_FOUND) return;
+        if (lspResultMode_ == LspResultMode::Completion && selection < static_cast<int>(lspCompletionItems_.size())) {
+            ApplyCompletionItem(lspCompletionItems_[static_cast<size_t>(selection)]);
+        } else if (lspResultMode_ == LspResultMode::Locations) {
+            OpenLspLocation(selection);
+        } else if (lspResultMode_ == LspResultMode::CodeActions && selection < static_cast<int>(lspCodeActions_.size())) {
+            ApplyWorkspaceEdits(lspCodeActions_[static_cast<size_t>(selection)].edits);
+            lspResultMode_ = LspResultMode::None;
+        }
+    }
+
     void ShowLanguageResult(const wxString& line)
     {
         if (!hover_) {
             return;
         }
         const wxString method = JsonStringField(line, wxS("method"));
-        const wxString value = JsonStringField(line, wxS("value"));
-        const wxString label = JsonStringField(line, wxS("label"));
         if (method == wxS("textDocument/hover")) {
-            hover_->SetValue(value.empty() ? line : value);
+            const wxString value = codium::LspNavigation::HoverTextFromResult(line);
+            hover_->SetValue(value.empty() ? wxS("No hover information was returned.") : value);
         } else if (method == wxS("textDocument/completion")) {
+            lspCompletionItems_ = codium::LspNavigation::CompletionItemsFromResult(line);
+            lspResultMode_ = LspResultMode::Completion;
             if (completion_) {
                 completion_->Clear();
-                completion_->Append(label.empty() ? line : label);
+                for (const auto& item : lspCompletionItems_) {
+                    completion_->Append(item.detail.empty() ? item.label : item.label + wxS(" — ") + item.detail);
+                }
             }
-            hover_->SetValue(label.empty() ? line : wxString::Format(wxS("Completion: %s"), label));
+            hover_->SetValue(wxString::Format(wxS("Completion items: %zu. Double-click an item to apply it."),
+                                              lspCompletionItems_.size()));
+        } else if (method == wxS("textDocument/definition") || method == wxS("textDocument/declaration") ||
+                   method == wxS("textDocument/references") || method == wxS("textDocument/documentSymbol") ||
+                   method == wxS("workspace/symbol")) {
+            lspLocations_ = codium::LspNavigation::LocationsFromResult(
+                line, method == wxS("textDocument/documentSymbol"));
+            for (auto& location : lspLocations_) {
+                if (location.uri.empty()) location.uri = DocumentUri();
+            }
+            lspResultMode_ = LspResultMode::Locations;
+            if (completion_) {
+                completion_->Clear();
+                for (const auto& location : lspLocations_) completion_->Append(LspLocationLabel(location));
+            }
+            hover_->SetValue(wxString::Format(wxS("%s results: %zu. Double-click a location to open it."),
+                                              method, lspLocations_.size()));
+            if ((method == wxS("textDocument/definition") || method == wxS("textDocument/declaration")) &&
+                lspLocations_.size() == 1) {
+                OpenLspLocation(0);
+            }
+        } else if (method == wxS("textDocument/rename")) {
+            ApplyWorkspaceEdits(codium::LspNavigation::WorkspaceEditsFromResult(line));
+        } else if (method == wxS("textDocument/codeAction")) {
+            lspCodeActions_ = codium::LspNavigation::CodeActionsFromResult(line);
+            lspResultMode_ = LspResultMode::CodeActions;
+            if (completion_) {
+                completion_->Clear();
+                for (const auto& action : lspCodeActions_) completion_->Append(
+                    action.kind.empty() ? action.title : action.title + wxS(" [") + action.kind + wxS("]"));
+            }
+            hover_->SetValue(wxString::Format(wxS("Code actions: %zu. Double-click an action to apply it."),
+                                              lspCodeActions_.size()));
         } else if (method == wxS("initialize")) {
             semanticTokenTypes_ = codium::SemanticTokenDecoder::TokenTypesFromInitialize(line);
             semanticTokensSupported_ = line.Find(wxS("\"semanticTokensProvider\"")) != wxNOT_FOUND;
@@ -3558,6 +3926,7 @@ private:
     wxTextCtrl* log_ = nullptr;
     wxString lastSearchQuery_;
     wxString lastReplacement_;
+    wxString lastSymbolQuery_;
     bool lastSearchMatchCase_ = true;
     wxTimer timer_;
     bool loadingDocument_ = false;
@@ -3567,6 +3936,11 @@ private:
     bool semanticTokensSupported_ = false;
     wxArrayString semanticTokenTypes_;
     std::vector<codium::SemanticToken> semanticTokens_;
+    LspResultMode lspResultMode_ = LspResultMode::None;
+    std::vector<codium::LspCompletionItem> lspCompletionItems_;
+    std::vector<codium::LspLocation> lspLocations_;
+    std::vector<codium::LspCodeAction> lspCodeActions_;
+    std::vector<long> matchingDelimiterPositions_;
     wxColour ansiColour_ = wxColour(230, 230, 230);
     std::vector<wxString> terminalHistory_;
     size_t historyIndex_ = 0;

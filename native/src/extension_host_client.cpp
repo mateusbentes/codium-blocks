@@ -182,6 +182,81 @@ bool ExtensionHostClient::RequestLanguageSemanticTokens(const wxString& uri)
         requestId, params));
 }
 
+bool ExtensionHostClient::RequestLanguageDefinition(const wxString& uri, int line, int character)
+{
+    const wxString params = wxString::Format(
+        wxS("{\"textDocument\":{\"uri\":\"%s\"},\"position\":{\"line\":%d,\"character\":%d}}"),
+        JsonEscape(uri), line, character);
+    const int requestId = nextLanguageRequestId_++;
+    return SendRaw(wxString::Format(
+        wxS("{\"type\":\"languageServerRequest\",\"message\":{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"textDocument/definition\",\"params\":%s}}"),
+        requestId, params));
+}
+
+bool ExtensionHostClient::RequestLanguageDeclaration(const wxString& uri, int line, int character)
+{
+    const wxString params = wxString::Format(
+        wxS("{\"textDocument\":{\"uri\":\"%s\"},\"position\":{\"line\":%d,\"character\":%d}}"),
+        JsonEscape(uri), line, character);
+    const int requestId = nextLanguageRequestId_++;
+    return SendRaw(wxString::Format(
+        wxS("{\"type\":\"languageServerRequest\",\"message\":{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"textDocument/declaration\",\"params\":%s}}"),
+        requestId, params));
+}
+
+bool ExtensionHostClient::RequestLanguageReferences(const wxString& uri, int line, int character)
+{
+    const wxString params = wxString::Format(
+        wxS("{\"textDocument\":{\"uri\":\"%s\"},\"position\":{\"line\":%d,\"character\":%d},\"context\":{\"includeDeclaration\":true}}"),
+        JsonEscape(uri), line, character);
+    const int requestId = nextLanguageRequestId_++;
+    return SendRaw(wxString::Format(
+        wxS("{\"type\":\"languageServerRequest\",\"message\":{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"textDocument/references\",\"params\":%s}}"),
+        requestId, params));
+}
+
+bool ExtensionHostClient::RequestLanguageDocumentSymbols(const wxString& uri)
+{
+    const wxString params = wxString::Format(
+        wxS("{\"textDocument\":{\"uri\":\"%s\"}}"), JsonEscape(uri));
+    const int requestId = nextLanguageRequestId_++;
+    return SendRaw(wxString::Format(
+        wxS("{\"type\":\"languageServerRequest\",\"message\":{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"textDocument/documentSymbol\",\"params\":%s}}"),
+        requestId, params));
+}
+
+bool ExtensionHostClient::RequestLanguageWorkspaceSymbols(const wxString& query)
+{
+    const wxString params = wxString::Format(wxS("{\"query\":\"%s\"}"), JsonEscape(query));
+    const int requestId = nextLanguageRequestId_++;
+    return SendRaw(wxString::Format(
+        wxS("{\"type\":\"languageServerRequest\",\"message\":{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"workspace/symbol\",\"params\":%s}}"),
+        requestId, params));
+}
+
+bool ExtensionHostClient::RequestLanguageRename(const wxString& uri, int line, int character,
+                                                const wxString& newName)
+{
+    const wxString params = wxString::Format(
+        wxS("{\"textDocument\":{\"uri\":\"%s\"},\"position\":{\"line\":%d,\"character\":%d},\"newName\":\"%s\"}"),
+        JsonEscape(uri), line, character, JsonEscape(newName));
+    const int requestId = nextLanguageRequestId_++;
+    return SendRaw(wxString::Format(
+        wxS("{\"type\":\"languageServerRequest\",\"message\":{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"textDocument/rename\",\"params\":%s}}"),
+        requestId, params));
+}
+
+bool ExtensionHostClient::RequestLanguageCodeActions(const wxString& uri, int line, int character)
+{
+    const wxString params = wxString::Format(
+        wxS("{\"textDocument\":{\"uri\":\"%s\"},\"range\":{\"start\":{\"line\":%d,\"character\":%d},\"end\":{\"line\":%d,\"character\":%d}},\"context\":{\"diagnostics\":[]}}"),
+        JsonEscape(uri), line, character, line, character + 1);
+    const int requestId = nextLanguageRequestId_++;
+    return SendRaw(wxString::Format(
+        wxS("{\"type\":\"languageServerRequest\",\"message\":{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"textDocument/codeAction\",\"params\":%s}}"),
+        requestId, params));
+}
+
 wxArrayString ExtensionHostClient::Poll()
 {
     wxArrayString lines;

@@ -43,6 +43,19 @@ int main()
         return 4;
     }
 
-    std::cout << "editor-actions-smoke: ok — search, replace, and line navigation\n";
+    const wxString delimiters = wxS("if (value[0] == 1) { return; }");
+    const long brace = delimiters.Find(wxChar('{'));
+    const auto pair = codium::EditorActions::MatchingDelimiters(delimiters, brace + 1);
+    if (!pair.Found() || pair.first != brace || pair.second != delimiters.Find(wxChar('}'))) {
+        std::cerr << "editor-actions-smoke: delimiter matching failed\n";
+        return 5;
+    }
+    if (codium::EditorActions::IndentationForNewline(wxS("if {"), 4) != wxS("    ") ||
+        codium::EditorActions::IndentationForNewline(wxS("if {\n    }"), 9) != wxEmptyString) {
+        std::cerr << "editor-actions-smoke: automatic indentation failed\n";
+        return 6;
+    }
+
+    std::cout << "editor-actions-smoke: ok — search, replace, navigation, delimiters, indentation\n";
     return 0;
 }

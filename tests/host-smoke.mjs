@@ -140,10 +140,11 @@ try {
   await waitFor((message) => message.type === 'response' && message.id === 11);
   const hover = await waitFor((message) => message.type === 'event' &&
     message.event === 'languageServerMessage' && message.message.id === 102);
-  assert.equal(hover.message.result.contents[0].value, 'Hover response from fake LSP');
+  assert.equal(hover.message.result.contents[0].value, 'int main()');
+  assert.equal(hover.message.result.contents[1], 'Hover response from fake LSP');
   const normalizedHover = await waitFor((message) => message.type === 'event' && message.event === 'languageServerResult' &&
     message.method === 'textDocument/hover');
-  assert.equal(normalizedHover.result.contents[0].value, 'Hover response from fake LSP');
+  assert.equal(normalizedHover.result.contents[0].value, 'int main()');
 
   send({ id: 12, type: 'languageServerRequest', message: {
     jsonrpc: '2.0', id: 104, method: 'textDocument/semanticTokens/full',
@@ -169,12 +170,52 @@ try {
     message.method === 'textDocument/completion');
   assert.equal(normalizedCompletion.result.items[0].label, 'codiumBlocksCompletion');
 
-  send({ id: 14, type: 'stopLanguageServer' });
-  const fakeStopped = await waitFor((message) => message.type === 'response' && message.id === 14);
+  send({ id: 16, type: 'languageServerRequest', message: {
+    jsonrpc: '2.0', id: 105, method: 'textDocument/definition', params: {},
+  } });
+  await waitFor((message) => message.type === 'response' && message.id === 16);
+  const definition = await waitFor((message) => message.type === 'event' &&
+    message.event === 'languageServerResult' && message.method === 'textDocument/definition');
+  assert.equal(definition.result[0].uri, 'file:///workspace/main.cpp');
+
+  send({ id: 17, type: 'languageServerRequest', message: {
+    jsonrpc: '2.0', id: 106, method: 'textDocument/references', params: {},
+  } });
+  await waitFor((message) => message.type === 'response' && message.id === 17);
+  const references = await waitFor((message) => message.type === 'event' &&
+    message.event === 'languageServerResult' && message.method === 'textDocument/references');
+  assert.equal(references.result.length, 1);
+
+  send({ id: 18, type: 'languageServerRequest', message: {
+    jsonrpc: '2.0', id: 107, method: 'textDocument/documentSymbol', params: {},
+  } });
+  await waitFor((message) => message.type === 'response' && message.id === 18);
+  const symbols = await waitFor((message) => message.type === 'event' &&
+    message.event === 'languageServerResult' && message.method === 'textDocument/documentSymbol');
+  assert.equal(symbols.result[0].name, 'main');
+
+  send({ id: 19, type: 'languageServerRequest', message: {
+    jsonrpc: '2.0', id: 108, method: 'textDocument/rename', params: { newName: 'renamed' },
+  } });
+  await waitFor((message) => message.type === 'response' && message.id === 19);
+  const rename = await waitFor((message) => message.type === 'event' &&
+    message.event === 'languageServerResult' && message.method === 'textDocument/rename');
+  assert.equal(rename.result.changes['file:///workspace/main.cpp'][0].newText, 'renamed');
+
+  send({ id: 20, type: 'languageServerRequest', message: {
+    jsonrpc: '2.0', id: 109, method: 'textDocument/codeAction', params: {},
+  } });
+  await waitFor((message) => message.type === 'response' && message.id === 20);
+  const codeActions = await waitFor((message) => message.type === 'event' &&
+    message.event === 'languageServerResult' && message.method === 'textDocument/codeAction');
+  assert.equal(codeActions.result[0].title, 'Apply fake quick fix');
+
+  send({ id: 21, type: 'stopLanguageServer' });
+  const fakeStopped = await waitFor((message) => message.type === 'response' && message.id === 21);
   assert.equal(fakeStopped.stopped, true);
 
-  send({ id: 15, type: 'shutdown' });
-  await waitFor((message) => message.type === 'response' && message.id === 15);
+  send({ id: 22, type: 'shutdown' });
+  await waitFor((message) => message.type === 'response' && message.id === 22);
   await once(child, 'exit');
   console.log('host-smoke: ok — commands, configuration, contributions, and LSP process manager without Electron');
 } finally {

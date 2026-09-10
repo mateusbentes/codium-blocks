@@ -23,6 +23,13 @@ function handle(message) {
             },
             full: true,
           },
+          definitionProvider: true,
+          declarationProvider: true,
+          referencesProvider: true,
+          documentSymbolProvider: true,
+          workspaceSymbolProvider: true,
+          renameProvider: true,
+          codeActionProvider: true,
           textDocumentSync: 1,
         },
         serverInfo: { name: 'codium-blocks-fake-lsp', version: '0.1.0' },
@@ -52,7 +59,7 @@ function handle(message) {
     send({
       jsonrpc: '2.0',
       id: message.id,
-      result: { contents: [{ language: 'text', value: 'Hover response from fake LSP' }] },
+      result: { contents: [{ language: 'cpp', value: 'int main()' }, 'Hover response from fake LSP'] },
     });
     return;
   }
@@ -66,11 +73,82 @@ function handle(message) {
     return;
   }
 
+  if (message.method === 'textDocument/definition' || message.method === 'textDocument/declaration') {
+    send({
+      jsonrpc: '2.0',
+      id: message.id,
+      result: [{ uri: 'file:///workspace/main.cpp', range: {
+        start: { line: 0, character: 4 }, end: { line: 0, character: 8 },
+      } }],
+    });
+    return;
+  }
+
+  if (message.method === 'textDocument/references') {
+    send({
+      jsonrpc: '2.0',
+      id: message.id,
+      result: [{ uri: 'file:///workspace/main.cpp', range: {
+        start: { line: 0, character: 4 }, end: { line: 0, character: 8 },
+      } }],
+    });
+    return;
+  }
+
+  if (message.method === 'textDocument/documentSymbol') {
+    send({
+      jsonrpc: '2.0',
+      id: message.id,
+      result: [{ name: 'main', kind: 12, range: {
+        start: { line: 0, character: 0 }, end: { line: 0, character: 12 },
+      }, selectionRange: { start: { line: 0, character: 4 }, end: { line: 0, character: 8 } } }],
+    });
+    return;
+  }
+
+  if (message.method === 'workspace/symbol') {
+    send({
+      jsonrpc: '2.0',
+      id: message.id,
+      result: [{ name: 'main', kind: 12, uri: 'file:///workspace/main.cpp', range: {
+        start: { line: 0, character: 0 }, end: { line: 0, character: 12 },
+      } }],
+    });
+    return;
+  }
+
+  if (message.method === 'textDocument/rename') {
+    send({
+      jsonrpc: '2.0',
+      id: message.id,
+      result: { changes: { 'file:///workspace/main.cpp': [{ range: {
+        start: { line: 0, character: 4 }, end: { line: 0, character: 8 },
+      }, newText: message.params.newName }] } },
+    });
+    return;
+  }
+
+  if (message.method === 'textDocument/codeAction') {
+    send({
+      jsonrpc: '2.0',
+      id: message.id,
+      result: [{ title: 'Apply fake quick fix', kind: 'quickfix', edit: {
+        changes: { 'file:///workspace/main.cpp': [{ range: {
+          start: { line: 0, character: 0 }, end: { line: 0, character: 0 },
+        }, newText: '// quick fix\n' }] },
+      } }],
+    });
+    return;
+  }
+
   if (message.method === 'textDocument/completion') {
     send({
       jsonrpc: '2.0',
       id: message.id,
-      result: { isIncomplete: false, items: [{ label: 'codiumBlocksCompletion', detail: 'Fake LSP completion' }] },
+      result: { isIncomplete: false, items: [{ label: 'codiumBlocksCompletion', detail: 'Fake LSP completion',
+        documentation: { kind: 'markdown', value: 'Completion **documentation**' },
+        textEdit: { range: { start: { line: 0, character: 0 }, end: { line: 0, character: 3 } }, newText: 'codiumBlocksCompletion()' },
+      }] },
     });
   }
 }
