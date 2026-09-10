@@ -12,11 +12,15 @@ namespace {
 bool WaitForReady(codium::CodeBlocksAdapterClient& adapter)
 {
     // The first Code::Blocks plugin bootstrap can be slow on a fresh hosted
-    // runner, especially while wxWidgets and the SDK initialize resources.
-    // Keep this bounded, but do not turn normal runner variance into a false
-    // handshake failure after only three seconds.
-    for (int index = 0; index < 1500 && adapter.IsRunning(); ++index) {
-        wxMilliSleep(10);
+    // runner, especially while wxWidgets, the SDK, the Debugger plugin, and
+    // the matched private provider initialize resources and shared libraries.
+    // Keep this bounded, but do not turn normal cold-runner variance into a
+    // false handshake failure after only a few seconds.
+    constexpr int kPollIntervalMs = 10;
+    constexpr int kHandshakeTimeoutMs = 60 * 1000;
+    for (int elapsed = 0; elapsed < kHandshakeTimeoutMs && adapter.IsRunning();
+         elapsed += kPollIntervalMs) {
+        wxMilliSleep(kPollIntervalMs);
         adapter.PollEvents();
         if (adapter.IsReady()) return true;
     }
