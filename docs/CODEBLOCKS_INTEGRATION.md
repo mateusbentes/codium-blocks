@@ -22,17 +22,18 @@ The adapter owns an explicit bootstrap object with the following lifecycle:
 4. It loads exactly one caller-selected `Compiler` plugin path. The path must be supplied explicitly and the plugin must register as Code::Blocks `Compiler` against the headers and library used to build the adapter.
 5. It marks the SDK application state as started and exposes project enumeration.
 6. It calls `ProjectManager::LoadProject()` and enumerates real `cbProject` build targets through `GetBuildTargetsCount()` and `GetBuildTarget()`.
-7. It closes projects and frees the Code::Blocks manager before the adapter process exits.
+7. It activates the matched `cbCompilerPlugin`, accepts a real target build, and drains normalized compiler lifecycle and PipedProcess output events asynchronously.
+8. It explicitly unloads the matched plugin before freeing the Code::Blocks manager; this follows the SDK ownership order and avoids leaving plugin destruction to a partially torn-down manager.
 
-The first real capability is intentionally modest and observable. Opening a `.cbp` emits `projectOpened` followed by one `projectTarget` event per real target. Each target event includes its title, compiler identifier, output path, and working directory. Build requests are not yet implemented by this phase; the adapter reports them as unsupported rather than pretending to provide a real compiler event stream.
+The first real capabilities are intentionally narrow and observable. Opening a `.cbp` emits `projectOpened` followed by one `projectTarget` event per real target. Each target event includes its title, compiler identifier, output path, and working directory. A build request now invokes the matched Code::Blocks Compiler plugin, emits official `buildStarted` and `buildFinished` events, forwards compiler stdout/stderr as `compilerOutput`, and preserves the SDK exit status. The adapter does not load debugger or arbitrary third-party plugins.
 
 ### Phase B event normalization
 
 The adapter now installs typed event sinks through `Manager::RegisterEventSink()` after the SDK manager is created. Project lifecycle events (`cbEVT_PROJECT_OPEN`, `cbEVT_PROJECT_CLOSE`, `cbEVT_PROJECT_ACTIVATE`, `cbEVT_PROJECT_SAVE`, target changes, and project file changes) are converted immediately into value-owned normalized events. The adapter never sends `cbProject*`, `cbPlugin*`, or other SDK pointers across JSON Lines. It also registers `cbEVT_COMPILER_STARTED` and `cbEVT_COMPILER_FINISHED`, preserving the active project, target, Compiler identity, exit code, and error status.
 
-This is event observation and normalization, not yet build execution. A compiler plugin may emit lifecycle events during a real operation, but the Phase B adapter does not initiate that operation or claim compiler output capture. The dedicated SDK event smoke test drives the official `Manager::ProcessEvent()` path with SDK event objects and verifies that project file changes and compiler success/failure statuses reach the normalized model. The real adapter smoke additionally verifies that the `projectOpened` event came from `cbEVT_PROJECT_OPEN`, rather than from a client-side synthetic fallback.
+Phase B established event observation and normalization. Phase C builds on it by initiating a real operation through the matched Compiler plugin. The dedicated SDK event smoke test drives the official `Manager::ProcessEvent()` path with SDK event objects and verifies that project file changes and compiler success/failure statuses reach the normalized model. The real adapter smoke additionally compiles a small C++ fixture, verifies a real executable artifact, checks `cbEVT_COMPILER_STARTED`/`cbEVT_COMPILER_FINISHED`, and captures a deterministic compiler warning through `compilerOutput`.
 
-The repository includes a Linux integration smoke test that starts the adapter under `xvfb-run`, negotiates the protocol, opens a fixture `.cbp`, and verifies the real `Debug` and `Release` targets returned by the installed Code::Blocks SDK. The test is not added when a usable SDK, runtime resources, compiler plugin, or virtual display is unavailable. The universal fake-adapter test remains independent of Code::Blocks and continues to run on every platform.
+The repository includes a Linux integration smoke test that starts the adapter under `xvfb-run`, negotiates the protocol, opens a fixture `.cbp`, verifies the real `Debug` and `Release` targets returned by the installed Code::Blocks SDK, and builds the fixture through the matched Compiler plugin. It checks the produced executable, official compiler lifecycle events, and captured warning output. The test is not added when a usable SDK, runtime resources, compiler plugin, or virtual display is unavailable. The universal fake-adapter test remains independent of Code::Blocks and continues to run on every platform.
 
 ## Plugin and ABI safety policy
 
@@ -48,7 +49,7 @@ The current adapter therefore follows these rules:
 | ABI check | Require the plugin's embedded SDK version to match the adapter's compiled SDK. |
 | Resource check | Require the configured data directory to contain the official `resources.zip`. |
 | Third-party plugins | Do not load arbitrary discovered plugins. Plugin attach and plugin command events remain future work. |
-| Build behavior | Do not emit fake build success. Phase A reports build as unsupported. |
+| Build behavior | Invoke only the matched Compiler plugin; preserve asynchronous output and completion status, and never emit fake success. |
 
 The process boundary limits a plugin crash to the adapter process, but it does not make arbitrary native plugins trustworthy. Workspace trust, installation provenance, and a future explicit allowlist remain required before any broader plugin policy is considered.
 
@@ -85,7 +86,7 @@ The older `CODIUM_BLOCKS_ENABLE_CODEBLOCKS_SDK` option still exposes optional SD
 
 ## Protocol and capability reporting
 
-The native client and adapter use the versioned JSON Lines contract in [`CODEBLOCKS_ADAPTER_PROTOCOL.md`](CODEBLOCKS_ADAPTER_PROTOCOL.md). The contract remains `1.0` for this compatible Phase A addition. A `ready` response reports the compiled SDK version, a human-readable SDK identity, and capabilities such as `sdkBootstrap`, `projectEvents`, `projectTargets`, and `compilerPluginMatched`.
+The native client and adapter use the versioned JSON Lines contract in [`CODEBLOCKS_ADAPTER_PROTOCOL.md`](CODEBLOCKS_ADAPTER_PROTOCOL.md). The contract remains `1.0`; Phase C is an additive implementation behind the existing `build` request. A `ready` response reports the compiled SDK version, a human-readable SDK identity, and capabilities such as `sdkBootstrap`, `projectEvents`, `projectTargets`, `compilerEvents`, `compilerBuild`, `compilerOutput`, and `compilerPluginMatched`.
 
 A handshake with SDK version `0.0.0` requests capability discovery without imposing a version. A non-zero requested SDK tuple must match exactly. A contract major mismatch or unsupported minor version is rejected before project operations begin.
 
@@ -97,7 +98,7 @@ The production adapter is deliberately being developed in stages:
 |---|---|---|
 | A | Implemented | Matched `wxApp`/resource bootstrap, one allowlisted Compiler plugin, real `.cbp` loading, target enumeration, capability reporting, and graceful errors. |
 | B | Implemented | Register official SDK event sinks and normalize project/compiler lifecycle events without loading additional plugins. |
-| C | Next | Add real batch compilation through the matched Code::Blocks compiler plugin, including compiler output and completion status. |
+| C | Implemented | Invoke the matched Compiler plugin for real target builds, forward compiler output, normalize completion status, and validate the result with a compilable fixture. |
 | D | Planned | Add debugger and plugin-manager capabilities only behind explicit ABI, manifest, provenance, and workspace-trust policies. |
 
 This sequencing avoids claiming full Code::Blocks compatibility before the lifecycle, event mapping, compiler behavior, debugger ownership, and plugin policy have each been tested against matched SDK builds.

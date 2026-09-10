@@ -3,6 +3,7 @@
 #include <wx/app.h>
 #include <wx/frame.h>
 #include <wx/string.h>
+#include <wx/timer.h>
 
 #include <cbplugin.h>
 #include <cbproject.h>
@@ -185,11 +186,18 @@ bool ParseOptions(int argc, char** argv, AdapterOptions* options, wxString* erro
     return true;
 }
 
-class AdapterSession final {
+class AdapterSession final : public wxEvtHandler {
 public:
     explicit AdapterSession(const AdapterOptions& options)
-        : options_(options), bootstrap_(nullptr)
+        : options_(options), bootstrap_(nullptr), eventTimer_(this)
     {
+        Bind(wxEVT_TIMER, &AdapterSession::OnTimer, this);
+    }
+
+    ~AdapterSession() override
+    {
+        eventTimer_.Stop();
+        Unbind(wxEVT_TIMER, &AdapterSession::OnTimer, this);
     }
 
     void SetFrame(wxFrame* frame)
@@ -208,7 +216,9 @@ public:
             stopRequested.store(true);
             if (wxTheApp) wxTheApp->ExitMainLoop();
         } else if (type == wxS("build")) {
-            EmitError(wxS("unsupported"), wxS("The Code::Blocks adapter does not build projects yet; real compilation is planned for Phase C."));
+            HandleBuild(JsonStringField(line, "projectFile"),
+                        JsonStringField(line, "target"),
+                        JsonStringField(line, "configuration"));
         } else if (!type.empty()) {
             EmitError(wxS("unknownRequest"), wxString::Format(wxS("Unknown request type: %s"), type));
         }
@@ -216,10 +226,16 @@ public:
 
     void Shutdown()
     {
+        eventTimer_.Stop();
         if (bootstrap_) bootstrap_->Shutdown();
     }
 
 private:
+    void OnTimer(wxTimerEvent&)
+    {
+        if (bootstrap_) EmitPendingSdkEvents();
+    }
+
     void HandleHandshake(const std::string& line)
     {
         if (ready_) return;
@@ -263,7 +279,7 @@ private:
             wxS("{\"type\":\"ready\",\"contractMajor\":1,\"contractMinor\":0,\"sdkMajor\":%d,\"sdkMinor\":%d,\"sdkRelease\":%d,\"sdkIdentity\":\""),
             PLUGIN_SDK_VERSION_MAJOR, PLUGIN_SDK_VERSION_MINOR, PLUGIN_SDK_VERSION_RELEASE) +
              JsonEscape(bootstrap_->Report().sdkIdentity) +
-             wxS("\",\"capabilities\":[\"sdkBootstrap\",\"sdkEventSink\",\"projectEvents\",\"projectTargets\",\"compilerEvents\",\"compilerPluginMatched\"]}"));
+             wxS("\",\"capabilities\":[\"sdkBootstrap\",\"sdkEventSink\",\"projectEvents\",\"projectTargets\",\"compilerEvents\",\"compilerBuild\",\"compilerOutput\",\"compilerPluginMatched\"]}"));
     }
 
     void HandleOpenProject(const wxString& projectFile)
@@ -278,7 +294,7 @@ private:
             EmitError(wxS("projectLoadFailed"), error);
             return;
         }
-        for (const auto& event : bootstrap_->DrainEvents()) EmitSdkEvent(event);
+        EmitPendingSdkEvents();
         for (const auto& target : bootstrap_->EnumerateTargets(project)) {
             Emit(wxS("{\"type\":\"event\",\"event\":\"projectTarget\",\"projectPath\":\"") +
                  JsonEscape(projectFile) + wxS("\",\"target\":\"") + JsonEscape(target.title) +
@@ -289,8 +305,31 @@ private:
         }
     }
 
+    void HandleBuild(const wxString& projectFile,
+                     const wxString& target,
+                     const wxString& configuration)
+    {
+        if (!ready_) {
+            EmitError(wxS("notReady"), wxS("The Code::Blocks SDK adapter is not ready."));
+            return;
+        }
+        wxString error;
+        if (!bootstrap_->BuildProject(projectFile, target, configuration, &error)) {
+            EmitError(wxS("buildStartFailed"), error);
+            return;
+        }
+        EmitPendingSdkEvents();
+        eventTimer_.Start(25);
+    }
+
+    void EmitPendingSdkEvents()
+    {
+        for (const auto& event : bootstrap_->DrainEvents()) EmitSdkEvent(event);
+    }
+
     AdapterOptions options_;
     std::unique_ptr<codium::CodeBlocksSdkBootstrap> bootstrap_;
+    wxTimer eventTimer_;
     bool ready_ = false;
 };
 
@@ -305,6 +344,10 @@ int main(int argc, char** argv)
         if (!error.empty()) EmitError(wxS("invalidArguments"), error);
         return error.empty() ? 0 : 2;
     }
+    // ConfigManager discovers the Code::Blocks data root during its first
+    // Manager initialization. Set the official override before wx starts so
+    // manager_resources.zip and resources.zip resolve deterministically.
+    wxSetEnv(wxS("CODEBLOCKS_DATA_DIR"), options.dataDirectory);
     if (!wxEntryStart(argc, argv)) {
         EmitError(wxS("wxStartupFailed"), wxS("wxEntryStart failed."));
         return 3;

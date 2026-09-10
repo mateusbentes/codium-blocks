@@ -115,6 +115,7 @@ CodeBlocksEventKind EventKindFromName(const wxString& name)
     if (name == wxS("projectFileRenamed")) return CodeBlocksEventKind::ProjectFileRenamed;
     if (name == wxS("buildStarted")) return CodeBlocksEventKind::BuildStarted;
     if (name == wxS("buildFinished")) return CodeBlocksEventKind::BuildFinished;
+    if (name == wxS("compilerOutput")) return CodeBlocksEventKind::CompilerOutput;
     if (name == wxS("compilerDiagnostic")) return CodeBlocksEventKind::CompilerDiagnostic;
     if (name == wxS("debugSessionStarted")) return CodeBlocksEventKind::DebugSessionStarted;
     if (name == wxS("debugSessionStopped")) return CodeBlocksEventKind::DebugSessionStopped;

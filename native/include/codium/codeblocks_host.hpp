@@ -28,6 +28,7 @@ enum class CodeBlocksEventKind {
     ProjectFileRenamed,
     BuildStarted,
     BuildFinished,
+    CompilerOutput,
     CompilerDiagnostic,
     DebugSessionStarted,
     DebugSessionStopped,

@@ -2375,6 +2375,15 @@ private:
             if (buildOutput_) buildOutput_->AppendText(event.message + wxS("\n"));
             SetStatusText(event.exitCode == 0 ? wxS("Code::Blocks build succeeded") : wxS("Code::Blocks build failed"), 1);
             break;
+        case codium::CodeBlocksEventKind::CompilerOutput: {
+            if (buildOutput_) buildOutput_->AppendText(event.message + wxS("\n"));
+            const wxString problemLine = event.isError ? wxS("[stderr] ") + event.message : event.message;
+            const wxString root = event.projectPath.empty()
+                ? WorkspaceDirectory()
+                : wxFileName(event.projectPath).GetPath();
+            problemStore_.AddCompilerLine(problemLine, source, root);
+            break;
+        }
         case codium::CodeBlocksEventKind::ProjectOpened:
         case codium::CodeBlocksEventKind::ProjectTarget:
         case codium::CodeBlocksEventKind::ProjectClosed:
@@ -2638,6 +2647,7 @@ private:
                 }
                 HandleCodeBlocksEvent(event);
                 problemsChanged = problemsChanged || event.kind == codium::CodeBlocksEventKind::CompilerDiagnostic ||
+                                  event.kind == codium::CodeBlocksEventKind::CompilerOutput ||
                                   event.kind == codium::CodeBlocksEventKind::BuildStarted;
             }
             if (codeBlocksAdapter_.HandshakeReceived() && !codeBlocksAdapter_.IsReady()) {

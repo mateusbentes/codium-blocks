@@ -4,13 +4,17 @@
 
 #include <wx/string.h>
 
+#include <memory>
 #include <vector>
 
 class cbProject;
+class cbCompilerPlugin;
 class CodeBlocksEvent;
 class wxFrame;
 
 namespace codium {
+
+class CodeBlocksCompilerOutputFilter;
 
 struct CodeBlocksTargetInfo final {
     wxString title;
@@ -29,9 +33,11 @@ struct CodeBlocksSdkReport final {
     bool wxAppReady = false;
     bool resourcesLoaded = false;
     bool compilerPluginLoaded = false;
+    bool compilerPluginAttached = false;
     bool projectEnumerationAvailable = false;
     bool eventSinkRegistered = false;
     bool compilerEventsAvailable = false;
+    bool compilerOutputAvailable = false;
 };
 
 /**
@@ -55,6 +61,10 @@ public:
                wxString* error = nullptr);
     cbProject* LoadProject(const wxString& projectFile, wxString* error = nullptr);
     std::vector<CodeBlocksTargetInfo> EnumerateTargets(cbProject* project) const;
+    bool BuildProject(const wxString& projectFile,
+                      const wxString& target,
+                      const wxString& configuration,
+                      wxString* error = nullptr);
     std::vector<CodeBlocksHostEvent> DrainEvents();
     void Shutdown();
 
@@ -62,14 +72,22 @@ public:
     const CodeBlocksSdkReport& Report() const { return report_; }
 
 private:
+    friend class CodeBlocksCompilerOutputFilter;
+
     void Fail(const wxString& message, wxString* error);
     void RegisterEventSinks();
     void UnregisterEventSinks();
     void OnSdkEvent(CodeBlocksEvent& event);
+    void OnCompilerOutput(CodeBlocksEvent& event);
+    void OnCompilerError(CodeBlocksEvent& event);
+    void BindCompilerOutput();
+    void UnbindCompilerOutput();
     void PublishSdkEvent(CodeBlocksHostEvent event);
 
     wxFrame* appFrame_ = nullptr;
     cbProject* project_ = nullptr;
+    cbCompilerPlugin* compilerPlugin_ = nullptr;
+    std::unique_ptr<CodeBlocksCompilerOutputFilter> compilerOutputFilter_;
     CodeBlocksSdkReport report_;
     std::vector<CodeBlocksHostEvent> events_;
     bool eventSinksRegistered_ = false;

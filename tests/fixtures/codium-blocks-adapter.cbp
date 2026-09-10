@@ -20,5 +20,8 @@
         <Option compiler="gcc" />
       </Target>
     </Build>
+    <Unit filename="codium-blocks-adapter.cpp">
+      <Option compilerVar="CPP" />
+    </Unit>
   </Project>
 </CodeBlocks_project_file>

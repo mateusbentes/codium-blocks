@@ -1,6 +1,8 @@
 #include "codium/codeblocks_adapter_client.hpp"
 
 #include <wx/init.h>
+#include <wx/filefn.h>
+#include <wx/filename.h>
 #include <wx/string.h>
 
 #include <iostream>
@@ -35,6 +37,9 @@ int main(int argc, char** argv)
         std::cerr << "codeblocks-real-adapter-smoke: SDK paths are missing\n";
         return 2;
     }
+    const wxString fixtureDirectory = wxFileName(projectPath).GetPath();
+    wxFileName::Rmdir(fixtureDirectory + wxS("/bin"), wxPATH_RMDIR_RECURSIVE);
+    wxFileName::Rmdir(fixtureDirectory + wxS("/obj"), wxPATH_RMDIR_RECURSIVE);
 
     codium::CodeBlocksAdapterClient adapter(nullptr);
     wxArrayString arguments;
@@ -85,11 +90,41 @@ int main(int argc, char** argv)
             }
         }
     }
-    adapter.Stop();
 
     if (!opened || !officialOpen || targetCount != 2 || !debugFound || !releaseFound) {
+        adapter.Stop();
         std::cerr << "codeblocks-real-adapter-smoke: project target enumeration failed\n";
         return 5;
+    }
+
+    if (!adapter.BuildTarget(projectPath, wxS("Debug"), wxS("Debug"))) {
+        adapter.Stop();
+        std::cerr << "codeblocks-real-adapter-smoke: real build request failed\n";
+        return 6;
+    }
+    bool buildStarted = false;
+    bool buildFinished = false;
+    bool compilerOutput = false;
+    int buildExitCode = -1;
+    for (int index = 0; index < 1200 && adapter.IsRunning() && !buildFinished; ++index) {
+        wxMilliSleep(25);
+        for (const auto& event : adapter.PollEvents()) {
+            if (event.kind == codium::CodeBlocksEventKind::BuildStarted) buildStarted = true;
+            if (event.kind == codium::CodeBlocksEventKind::CompilerOutput && !event.message.empty()) {
+                compilerOutput = true;
+            }
+            if (event.kind == codium::CodeBlocksEventKind::BuildFinished) {
+                buildFinished = true;
+                buildExitCode = event.exitCode;
+            }
+        }
+    }
+    const wxFileName outputFile(wxFileName(projectPath).GetPath() + wxS("/bin/debug/fixture"));
+    adapter.Stop();
+    if (!buildStarted || !compilerOutput || !buildFinished || buildExitCode != 0 ||
+        !outputFile.FileExists()) {
+        std::cerr << "codeblocks-real-adapter-smoke: compiler build events or output failed\n";
+        return 7;
     }
 
     codium::CodeBlocksAdapterClient failedAdapter(nullptr);
@@ -98,7 +133,7 @@ int main(int argc, char** argv)
     failedArguments.Add(wxString::Format(wxS("--compiler-plugin=%s"), compilerPlugin));
     if (!failedAdapter.Start(adapterPath, failedArguments, dataDirectory, configuration, &error)) {
         std::cerr << "codeblocks-real-adapter-smoke: failure probe could not start\n";
-        return 6;
+        return 8;
     }
     for (int index = 0; index < 300 && failedAdapter.IsRunning(); ++index) {
         wxMilliSleep(10);
@@ -107,7 +142,7 @@ int main(int argc, char** argv)
     }
     if (failedAdapter.LastErrorCode() != wxS("bootstrapFailed") || failedAdapter.IsReady()) {
         std::cerr << "codeblocks-real-adapter-smoke: resource failure was not reported safely\n";
-        return 7;
+        return 9;
     }
     failedAdapter.Stop();
 

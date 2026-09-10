@@ -41,6 +41,7 @@ wxString CodeBlocksEventKindName(CodeBlocksEventKind kind)
     case CodeBlocksEventKind::ProjectFileRenamed: return wxS("projectFileRenamed");
     case CodeBlocksEventKind::BuildStarted: return wxS("buildStarted");
     case CodeBlocksEventKind::BuildFinished: return wxS("buildFinished");
+    case CodeBlocksEventKind::CompilerOutput: return wxS("compilerOutput");
     case CodeBlocksEventKind::CompilerDiagnostic: return wxS("compilerDiagnostic");
     case CodeBlocksEventKind::DebugSessionStarted: return wxS("debugSessionStarted");
     case CodeBlocksEventKind::DebugSessionStopped: return wxS("debugSessionStopped");

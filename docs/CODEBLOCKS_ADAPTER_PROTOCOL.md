@@ -17,7 +17,7 @@ An SDK tuple of `0.0.0` means that the client requests discovery and does not im
 A compatible adapter responds with one `ready` message:
 
 ```json
-{"type":"ready","contractMajor":1,"contractMinor":0,"sdkMajor":2,"sdkMinor":23,"sdkRelease":0,"sdkIdentity":"Code::Blocks SDK 2.23.0","capabilities":["sdkBootstrap","sdkEventSink","projectEvents","projectTargets","compilerEvents","compilerPluginMatched"]}
+{"type":"ready","contractMajor":1,"contractMinor":0,"sdkMajor":2,"sdkMinor":23,"sdkRelease":0,"sdkIdentity":"Code::Blocks SDK 2.23.0","capabilities":["sdkBootstrap","sdkEventSink","projectEvents","projectTargets","compilerEvents","compilerBuild","compilerOutput","compilerPluginMatched"]}
 ```
 
 The client accepts contract major `1` and a minor version from `0` through the currently implemented minor version. A future incompatible major version must be rejected before project or plugin operations begin. The `sdkIdentity` string is informational; the numeric SDK tuple is the compatibility value.
@@ -28,19 +28,19 @@ If initialization fails, the adapter emits a structured error and does not emit 
 {"type":"error","code":"bootstrapFailed","message":"Code::Blocks resources.zip could not be loaded."}
 ```
 
-Possible Phase A error codes include `invalidArguments`, `sdkMismatch`, `bootstrapFailed`, `notReady`, and `projectLoadFailed`.
+Possible error codes include `invalidArguments`, `sdkMismatch`, `bootstrapFailed`, `notReady`, `projectLoadFailed`, and `buildStartFailed`.
 
 ## Requests
 
 The contract defines three request types:
 
-| Type | Required fields | Phase A behavior |
+| Type | Required fields | Phase C behavior |
 |---|---|---|
 | `openProject` | `projectFile` | Loads a `.cbp` through the real Code::Blocks `ProjectManager` and emits project events. |
-| `build` | `projectFile`, `target`, `configuration` | Reports `unsupported` until the matched compiler-plugin lifecycle is implemented. It must not emit fake build success. |
+| `build` | `projectFile`, `target`, `configuration` | Invokes the matched Code::Blocks Compiler plugin for the selected target, then emits asynchronous compiler lifecycle/output events. It never emits fake build success. |
 | `shutdown` | none | Closes the loaded project, frees the Code::Blocks manager, and terminates the adapter. |
 
-The adapter executable receives its runtime boundary separately from the JSON protocol. Its Phase A command line requires `--data-dir=DIR` for the Code::Blocks data directory and `--compiler-plugin=FILE` for the explicitly selected matching Compiler plugin. The adapter does not search or scan a plugin directory.
+The adapter executable receives its runtime boundary separately from the JSON protocol. Its command line requires `--data-dir=DIR` for the Code::Blocks data directory and `--compiler-plugin=FILE` for the explicitly selected matching Compiler plugin. The adapter does not search or scan a plugin directory.
 
 ## Events
 
@@ -92,10 +92,12 @@ The sink also normalizes the official compiler lifecycle events emitted by the m
 |---|---|---|
 | `cbEVT_COMPILER_STARTED` | `buildStarted` | `projectPath`, `target`, `plugin` |
 | `cbEVT_COMPILER_FINISHED` | `buildFinished` | `projectPath`, `target`, `plugin`, `exitCode`, `isError` |
+| `cbEVT_PIPEDPROCESS_STDOUT` | `compilerOutput` | `projectPath`, `target`, `plugin`, `message`, `payload` |
+| `cbEVT_PIPEDPROCESS_STDERR` | `compilerOutput` | `projectPath`, `target`, `plugin`, `message`, `payload`, `isError` |
 
-`cbEVT_COMPILER_FINISHED` carries its exit status in the SDK event integer field; the adapter preserves it as `exitCode` and sets `isError` for non-zero values. Compiler diagnostics and compiler process output are not fabricated by this phase. They will be connected when the adapter begins issuing real compiler operations.
+`cbEVT_COMPILER_FINISHED` carries its exit status in the SDK event integer field; the adapter preserves it as `exitCode` and sets `isError` for non-zero values. Piped compiler lines are forwarded without SDK pointers. stderr lines are marked `isError` because the SDK does not expose a richer severity classification at this boundary; the native Problems parser can still distinguish GCC/Clang warning text from errors.
 
-The existing normalized event names remain supported: `projectOpened`, `projectClosed`, `projectActivated`, `projectSaved`, `projectTargetsChanged`, `projectFileAdded`, `projectFileRemoved`, `projectFileChanged`, `projectFileRenamed`, `buildStarted`, `buildFinished`, `compilerDiagnostic`, `debugSessionStarted`, `debugSessionStopped`, and `pluginCommand`. The adapter now receives official project and compiler lifecycle events, but real compiler invocation, output capture, debugger, and plugin-manager operations are not claimed yet.
+The existing normalized event names remain supported: `projectOpened`, `projectClosed`, `projectActivated`, `projectSaved`, `projectTargetsChanged`, `projectFileAdded`, `projectFileRemoved`, `projectFileChanged`, `projectFileRenamed`, `buildStarted`, `buildFinished`, `compilerOutput`, `compilerDiagnostic`, `debugSessionStarted`, `debugSessionStopped`, and `pluginCommand`. The adapter now performs real matched-Compiler builds and output capture; debugger and arbitrary plugin-manager operations remain outside this phase.
 
 Diagnostics use one-based line and column numbers so they can be displayed consistently with Code::Blocks output and converted to the native zero-based editor model.
 
@@ -103,9 +105,9 @@ Diagnostics use one-based line and column numbers so they can be displayed consi
 
 The adapter is an optional executable selected through `CODIUM_BLOCKS_CODEBLOCKS_ADAPTER` or a native file chooser. Its working directory is the active workspace, arguments are passed as a native argument vector, and the protocol does not invoke a POSIX shell. Workspace trust remains required before starting it or sending build requests.
 
-Code::Blocks plugins are native C++ modules whose ABI depends on the host SDK, build flags, resources, and manager lifecycle. Phase A loads only the explicitly supplied, version-matched Compiler plugin in the dedicated adapter process. It does not load arbitrary discovered plugins, and it does not load any Code::Blocks plugin into `codium-blocks` itself. A process boundary limits the failure scope of the adapter but is not a trust mechanism for third-party native code.
+Code::Blocks plugins are native C++ modules whose ABI depends on the host SDK, build flags, resources, and manager lifecycle. Phase C loads only the explicitly supplied, version-matched Compiler plugin in the dedicated adapter process and invokes its real build API. It does not load arbitrary discovered plugins, and it does not load any Code::Blocks plugin into `codium-blocks` itself. A process boundary limits the failure scope of the adapter but is not a trust mechanism for third-party native code.
 
-The repository includes a deterministic fake adapter and a universal client smoke test. It also includes an optional Linux integration smoke test that uses the installed Code::Blocks SDK, official resources, a matched Compiler plugin, and `xvfb-run` to verify real `.cbp` target enumeration. The optional test is omitted when those runtime prerequisites are unavailable.
+The repository includes a deterministic fake adapter and a universal client smoke test. It also includes an optional Linux integration smoke test that uses the installed Code::Blocks SDK, official resources, a matched Compiler plugin, and `xvfb-run` to verify real `.cbp` target enumeration, compiler lifecycle events, compiler output, and a produced executable. The optional test is omitted when those runtime prerequisites are unavailable.
 
 ## References
 

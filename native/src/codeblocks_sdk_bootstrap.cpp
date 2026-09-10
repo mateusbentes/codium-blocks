@@ -1,6 +1,8 @@
 #include "codium/codeblocks_sdk_bootstrap.hpp"
 
 #include <wx/app.h>
+#include <wx/dir.h>
+#include <wx/eventfilter.h>
 #include <wx/filefn.h>
 #include <wx/filename.h>
 #include <wx/fs_mem.h>
@@ -8,6 +10,7 @@
 #include <wx/frame.h>
 #include <wx/image.h>
 #include <wx/xrc/xmlres.h>
+#include <wx/xml/xml.h>
 
 #include <cbplugin.h>
 #include <cbproject.h>
@@ -50,6 +53,34 @@ wxString ActiveTarget(CodeBlocksEvent& event)
 }
 
 } // namespace
+
+class CodeBlocksCompilerOutputFilter final : public wxEventFilter
+{
+public:
+    explicit CodeBlocksCompilerOutputFilter(CodeBlocksSdkBootstrap* owner)
+        : owner_(owner)
+    {
+    }
+
+    int FilterEvent(wxEvent& event) override
+    {
+        if (!owner_) return Event_Skip;
+        if (event.GetEventType() != cbEVT_PIPEDPROCESS_STDOUT &&
+            event.GetEventType() != cbEVT_PIPEDPROCESS_STDERR) {
+            return Event_Skip;
+        }
+        auto* codeBlocksEvent = dynamic_cast<CodeBlocksEvent*>(&event);
+        if (!codeBlocksEvent) return Event_Skip;
+        if (event.GetEventType() == cbEVT_PIPEDPROCESS_STDERR)
+            owner_->OnCompilerError(*codeBlocksEvent);
+        else
+            owner_->OnCompilerOutput(*codeBlocksEvent);
+        return Event_Skip;
+    }
+
+private:
+    CodeBlocksSdkBootstrap* owner_ = nullptr;
+};
 
 CodeBlocksSdkBootstrap::CodeBlocksSdkBootstrap(wxFrame* appFrame)
     : appFrame_(appFrame)
@@ -116,6 +147,22 @@ void CodeBlocksSdkBootstrap::UnregisterEventSinks()
     report_.compilerEventsAvailable = false;
 }
 
+void CodeBlocksSdkBootstrap::BindCompilerOutput()
+{
+    if (!compilerPlugin_ || report_.compilerOutputAvailable) return;
+    compilerOutputFilter_ = std::make_unique<CodeBlocksCompilerOutputFilter>(this);
+    wxEvtHandler::AddFilter(compilerOutputFilter_.get());
+    report_.compilerOutputAvailable = true;
+}
+
+void CodeBlocksSdkBootstrap::UnbindCompilerOutput()
+{
+    if (!compilerPlugin_ || !report_.compilerOutputAvailable) return;
+    wxEvtHandler::RemoveFilter(compilerOutputFilter_.get());
+    compilerOutputFilter_.reset();
+    report_.compilerOutputAvailable = false;
+}
+
 void CodeBlocksSdkBootstrap::PublishSdkEvent(CodeBlocksHostEvent event)
 {
     events_.push_back(std::move(event));
@@ -179,6 +226,33 @@ void CodeBlocksSdkBootstrap::OnSdkEvent(CodeBlocksEvent& event)
     PublishSdkEvent(std::move(normalized));
 }
 
+void CodeBlocksSdkBootstrap::OnCompilerOutput(CodeBlocksEvent& event)
+{
+    if (event.GetString().empty()) return;
+    CodeBlocksHostEvent normalized;
+    normalized.kind = CodeBlocksEventKind::CompilerOutput;
+    normalized.projectPath = project_ ? project_->GetFilename() : wxString();
+    normalized.target = project_ ? project_->GetActiveBuildTarget() : wxString();
+    normalized.plugin = wxS("Compiler");
+    normalized.message = event.GetString();
+    normalized.payload = event.GetString();
+    PublishSdkEvent(std::move(normalized));
+}
+
+void CodeBlocksSdkBootstrap::OnCompilerError(CodeBlocksEvent& event)
+{
+    if (event.GetString().empty()) return;
+    CodeBlocksHostEvent normalized;
+    normalized.kind = CodeBlocksEventKind::CompilerOutput;
+    normalized.projectPath = project_ ? project_->GetFilename() : wxString();
+    normalized.target = project_ ? project_->GetActiveBuildTarget() : wxString();
+    normalized.plugin = wxS("Compiler");
+    normalized.message = event.GetString();
+    normalized.payload = event.GetString();
+    normalized.isError = true;
+    PublishSdkEvent(std::move(normalized));
+}
+
 bool CodeBlocksSdkBootstrap::Start(const wxString& dataDirectory,
                                    const wxString& compilerPlugin,
                                    wxString* error)
@@ -203,14 +277,16 @@ bool CodeBlocksSdkBootstrap::Start(const wxString& dataDirectory,
     wxSetEnv(wxS("CODEBLOCKS_DATA_DIR"), dataDirectory);
     RegisterWxResources();
 
-    Manager* manager = Manager::Get(appFrame_);
+    Manager* manager = Manager::Get();
     if (!manager) {
         Fail(wxS("Code::Blocks Manager initialization returned null."), error);
         return false;
     }
+    manager->GetConfigManager(wxS("app"))->Write(wxS("data_path"), dataDirectory);
+    Manager::SetBatchBuild(true);
+    manager = Manager::Get(appFrame_);
     RegisterEventSinks();
 
-    manager->GetConfigManager(wxS("app"))->Write(wxS("data_path"), dataDirectory);
     report_.dataDirectory = dataDirectory;
     report_.wxAppReady = true;
 
@@ -234,17 +310,74 @@ bool CodeBlocksSdkBootstrap::Start(const wxString& dataDirectory,
         Manager::Free();
         return false;
     }
-    if (!plugins->FindPluginByName(wxS("Compiler"))) {
+
+    // CompilerGCC registers its CompilerFactory entries in OnAttach(), but
+    // LoadSettings() follows immediately and can open AutoDetectCompilers for
+    // a fresh profile. Seed only the standard GCC entry before AttachPlugin;
+    // existing user values remain authoritative. Windows and macOS adapters
+    // will supply their own toolchain profile policy later.
+    ConfigManager* compilerConfig = manager->GetConfigManager(wxS("compiler"));
+    if (compilerConfig->Read(wxString(wxS("settings_version"))).empty())
+        compilerConfig->Write(wxString(wxS("settings_version")), wxString(wxS("0.0.3")), false);
+    const auto seedCompiler = [compilerConfig](const wxString& id, const wxString& name) {
+        const wxString base = wxString(wxS("/sets/")) + id;
+        if (compilerConfig->Read(base + wxString(wxS("/name"))).empty())
+            compilerConfig->Write(base + wxString(wxS("/name")), name, false);
+        if (compilerConfig->Read(base + wxString(wxS("/master_path"))).empty())
+            compilerConfig->Write(base + wxString(wxS("/master_path")), wxString(wxS("/usr")), false);
+    };
+    if (wxFileExists(wxS("/usr/bin/gcc"))) {
+        seedCompiler(wxString(wxS("gcc")), wxString(wxS("GNU GCC Compiler")));
+        seedCompiler(wxString(wxS("icc")), wxString(wxS("Intel C/C++ Compiler")));
+        seedCompiler(wxString(wxS("gdc")), wxString(wxS("GDC D Compiler")));
+        seedCompiler(wxString(wxS("gfortran")), wxString(wxS("GNU Fortran Compiler")));
+        seedCompiler(wxString(wxS("g95")), wxString(wxS("G95 Fortran Compiler")));
+        seedCompiler(wxString(wxS("arm-elf-gcc")), wxString(wxS("GNU GCC Compiler for ARM")));
+
+        wxDir compilerDirectory(dataDirectory + wxString(wxS("/compilers")));
+        wxString compilerFile;
+        bool hasCompilerFile = compilerDirectory.GetFirst(&compilerFile, wxS("compiler_*.xml"), wxDIR_FILES);
+        while (hasCompilerFile) {
+            wxXmlDocument compilerDefinition(dataDirectory + wxString(wxS("/compilers/")) + compilerFile);
+            wxXmlNode* root = compilerDefinition.GetRoot();
+            if (root && root->GetName() == wxS("CodeBlocks_compiler")) {
+                wxString platform;
+                const wxString id = root->GetAttribute(wxS("id"), wxEmptyString);
+                const wxString name = root->GetAttribute(wxS("name"), wxEmptyString);
+                const bool platformMatches =
+                    !root->GetAttribute(wxS("platform"), &platform) || platform == wxS("linux") || platform == wxS("unix");
+                if (platformMatches && !id.empty() && !name.empty())
+                    seedCompiler(id, name);
+            }
+            hasCompilerFile = compilerDirectory.GetNext(&compilerFile);
+        }
+    }
+    cbPlugin* loadedPlugin = plugins->FindPluginByName(wxS("Compiler"));
+    if (!loadedPlugin) {
         Fail(wxS("The selected native plugin did not register as Code::Blocks Compiler."), error);
         UnregisterEventSinks();
         Manager::Free();
         return false;
     }
-
+    compilerPlugin_ = dynamic_cast<cbCompilerPlugin*>(loadedPlugin);
+    if (!compilerPlugin_) {
+        Fail(wxS("The selected Code::Blocks plugin is not a compiler plugin."), error);
+        UnregisterEventSinks();
+        Manager::Free();
+        return false;
+    }
+    if (!plugins->AttachPlugin(compilerPlugin_, true)) {
+        Fail(wxS("The matched Code::Blocks Compiler plugin could not be attached."), error);
+        compilerPlugin_ = nullptr;
+        UnregisterEventSinks();
+        Manager::Free();
+        return false;
+    }
     report_.compilerPlugin = compilerPlugin;
     report_.compilerPluginLoaded = true;
+    report_.compilerPluginAttached = true;
+    BindCompilerOutput();
     report_.projectEnumerationAvailable = true;
-    Manager::SetBatchBuild(true);
     Manager::SetAppStartedUp(true);
     started_ = true;
     return true;
@@ -279,6 +412,54 @@ cbProject* CodeBlocksSdkBootstrap::LoadProject(const wxString& projectFile,
     return project_;
 }
 
+bool CodeBlocksSdkBootstrap::BuildProject(const wxString& projectFile,
+                                          const wxString& target,
+                                          const wxString& configuration,
+                                          wxString* error)
+{
+    if (!started_ || !compilerPlugin_) {
+        Fail(wxS("The Code::Blocks Compiler plugin is not available."), error);
+        return false;
+    }
+    if (compilerPlugin_->IsRunning()) {
+        Fail(wxS("A Code::Blocks build is already running."), error);
+        return false;
+    }
+
+    if (!project_ || project_->GetFilename() != projectFile) {
+        if (!LoadProject(projectFile, error)) return false;
+    }
+    if (!project_) {
+        Fail(wxS("Code::Blocks project is not loaded."), error);
+        return false;
+    }
+
+    wxString buildTarget = target;
+    if (buildTarget.empty() || buildTarget.CmpNoCase(wxS("all")) == 0) {
+        buildTarget = configuration.empty() ? project_->GetFirstValidBuildTargetName()
+                                            : configuration;
+    }
+    if (buildTarget.empty()) {
+        Fail(wxS("No Code::Blocks build target was selected."), error);
+        return false;
+    }
+    if (!project_->BuildTargetValid(buildTarget, false)) {
+        Fail(wxString::Format(wxS("Code::Blocks build target does not exist: %s"), buildTarget), error);
+        return false;
+    }
+
+    const int result = compilerPlugin_->Build(buildTarget);
+    // CompilerGCC returns -3 when its asynchronous command queue is already
+    // advancing to the next process. The build has still been accepted; only
+    // -1/-2 represent a rejected or invalid build request here.
+    if (result == -1 || result == -2) {
+        Fail(wxString::Format(wxS("Code::Blocks Compiler rejected build target %s (status %d)."),
+                              buildTarget, result), error);
+        return false;
+    }
+    return true;
+}
+
 std::vector<CodeBlocksTargetInfo> CodeBlocksSdkBootstrap::EnumerateTargets(cbProject* project) const
 {
     std::vector<CodeBlocksTargetInfo> targets;
@@ -308,10 +489,17 @@ void CodeBlocksSdkBootstrap::Shutdown()
     if (!started_) return;
     ProjectManager* projectManager = Manager::Get()->GetProjectManager();
     if (projectManager) projectManager->CloseAllProjects(true);
+    UnbindCompilerOutput();
     UnregisterEventSinks();
     Manager::SetAppShuttingDown(true);
+    if (compilerPlugin_) {
+        PluginManager* plugins = Manager::Get()->GetPluginManager();
+        if (plugins) plugins->UnloadPlugin(compilerPlugin_);
+        compilerPlugin_ = nullptr;
+    }
     Manager::Free();
     project_ = nullptr;
+    compilerPlugin_ = nullptr;
     started_ = false;
 }
 
