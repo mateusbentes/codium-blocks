@@ -118,6 +118,8 @@ try {
   assert.equal(initialized.message.result.capabilities.hoverProvider, true);
   await waitFor((message) => message.type === 'event' && message.event === 'languageServerResult' &&
     message.method === 'initialize');
+  assert.deepEqual(initialized.message.result.capabilities.semanticTokensProvider.legend.tokenTypes,
+    ['type', 'function', 'keyword', 'number']);
 
   send({ id: 10, type: 'languageServerNotification', message: {
     jsonrpc: '2.0', method: 'textDocument/didOpen', params: {
@@ -144,9 +146,22 @@ try {
   assert.equal(normalizedHover.result.contents[0].value, 'Hover response from fake LSP');
 
   send({ id: 12, type: 'languageServerRequest', message: {
-    jsonrpc: '2.0', id: 103, method: 'textDocument/completion', params: {},
+    jsonrpc: '2.0', id: 104, method: 'textDocument/semanticTokens/full',
+    params: { textDocument: { uri: 'file:///workspace/main.cpp' } },
   } });
   await waitFor((message) => message.type === 'response' && message.id === 12);
+  const semanticTokens = await waitFor((message) => message.type === 'event' &&
+    message.event === 'languageServerMessage' && message.message.id === 104);
+  assert.deepEqual(semanticTokens.message.result.data,
+    [0, 0, 3, 0, 0, 0, 4, 4, 1, 0, 1, 0, 6, 2, 0, 0, 7, 2, 3, 0]);
+  const normalizedSemanticTokens = await waitFor((message) => message.type === 'event' &&
+    message.event === 'languageServerResult' && message.method === 'textDocument/semanticTokens/full');
+  assert.equal(normalizedSemanticTokens.result.data[3], 0);
+
+  send({ id: 13, type: 'languageServerRequest', message: {
+    jsonrpc: '2.0', id: 103, method: 'textDocument/completion', params: {},
+  } });
+  await waitFor((message) => message.type === 'response' && message.id === 13);
   const completion = await waitFor((message) => message.type === 'event' &&
     message.event === 'languageServerMessage' && message.message.id === 103);
   assert.equal(completion.message.result.items[0].label, 'codiumBlocksCompletion');
@@ -154,12 +169,12 @@ try {
     message.method === 'textDocument/completion');
   assert.equal(normalizedCompletion.result.items[0].label, 'codiumBlocksCompletion');
 
-  send({ id: 13, type: 'stopLanguageServer' });
-  const fakeStopped = await waitFor((message) => message.type === 'response' && message.id === 13);
+  send({ id: 14, type: 'stopLanguageServer' });
+  const fakeStopped = await waitFor((message) => message.type === 'response' && message.id === 14);
   assert.equal(fakeStopped.stopped, true);
 
-  send({ id: 14, type: 'shutdown' });
-  await waitFor((message) => message.type === 'response' && message.id === 14);
+  send({ id: 15, type: 'shutdown' });
+  await waitFor((message) => message.type === 'response' && message.id === 15);
   await once(child, 'exit');
   console.log('host-smoke: ok — commands, configuration, contributions, and LSP process manager without Electron');
 } finally {

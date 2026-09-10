@@ -52,9 +52,21 @@ int main()
         return 4;
     }
 
+    const wxString html = wxS("<script>const answer = 42;</script><style>body { color: red; }</style>");
+    const auto htmlTokens = codium::SyntaxHighlighter::Tokenize(html, wxS("html"));
+    if (!HasToken(htmlTokens, codium::SyntaxTokenKind::Tag, 0, 8) ||
+        !HasToken(htmlTokens, codium::SyntaxTokenKind::Keyword, 8, 5) ||
+        !HasToken(htmlTokens, codium::SyntaxTokenKind::Number, 23, 2) ||
+        !HasToken(htmlTokens, codium::SyntaxTokenKind::Tag, 26, 9) ||
+        !HasToken(htmlTokens, codium::SyntaxTokenKind::Tag, 35, 7) ||
+        !HasToken(htmlTokens, codium::SyntaxTokenKind::Property, 49, 5)) {
+        std::cerr << "syntax-highlighting-smoke: HTML embedded tokenization failed\n";
+        return 5;
+    }
+
     if (!codium::SyntaxHighlighter::Tokenize(wxS("plain text"), wxS("plaintext")).empty()) {
         std::cerr << "syntax-highlighting-smoke: plaintext unexpectedly tokenized\n";
-        return 5;
+        return 6;
     }
 
     std::cout << "syntax-highlighting-smoke: ok — native language tokenization\n";

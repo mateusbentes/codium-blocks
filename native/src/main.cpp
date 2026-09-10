@@ -14,6 +14,7 @@
 #include "codium/codeblocks_bridge.hpp"
 #include "codium/codeblocks_adapter_client.hpp"
 #include "codium/problem_model.hpp"
+#include "codium/semantic_tokens.hpp"
 #include "codium/syntax_highlighting.hpp"
 #include "codium/vsix_manager.hpp"
 #include "codium/workspace.hpp"
@@ -677,6 +678,7 @@ public:
         AddButton(fileControls, wxS("Initialize LSP"), [this](wxCommandEvent&) { InitializeLanguageServer(); }, outputPage);
         AddButton(fileControls, wxS("Hover"), [this](wxCommandEvent&) { RequestHover(); }, outputPage);
         AddButton(fileControls, wxS("Completion"), [this](wxCommandEvent&) { RequestCompletion(); }, outputPage);
+        AddButton(fileControls, wxS("Semantic tokens"), [this](wxCommandEvent&) { RequestSemanticTokens(); }, outputPage);
         AddButton(fileControls, wxS("Stop LSP"), [this](wxCommandEvent&) { StopLanguageServer(); }, outputPage);
         outputRoot->Add(fileControls, 0, wxBOTTOM | wxEXPAND, 4);
         auto* extensionControls = new wxBoxSizer(wxHORIZONTAL);
@@ -1081,6 +1083,14 @@ private:
         if (!editor_) return;
         ApplySyntaxHighlighting();
         const long end = editor_->GetLastPosition();
+        for (const auto& token : semanticTokens_) {
+            const long start = std::max(0L, token.start);
+            const long finish = std::min(end, start + std::max(0L, token.length));
+            if (finish > start) {
+                editor_->SetStyle(start, finish,
+                                  SyntaxStyle(codium::SemanticTokenDecoder::KindForType(token.type)));
+            }
+        }
         for (const auto& problem : problemStore_.Problems()) {
             if (problem.stale || problem.path.empty() || problem.path != document_.Path()) continue;
             const long start = editor_->XYToPosition(problem.column, problem.line);
@@ -2691,6 +2701,8 @@ private:
         if (!host_.IsRunning()) {
             StartHost();
         }
+        semanticTokensSupported_ = false;
+        semanticTokens_.clear();
         if (host_.StartLanguageServer(wxS("clangd"))) {
             AppendLog(wxS("Request sent: start clangd through the Extension Host."));
         }
@@ -2714,6 +2726,8 @@ private:
             return;
         }
         host_.OpenLanguageDocument(DocumentUri(), languageId_, documentVersion_, document_.Text());
+        semanticTokens_.clear();
+        if (semanticTokensSupported_) host_.RequestLanguageSemanticTokens(DocumentUri());
     }
 
     void NotifyLanguageDocumentChanged()
@@ -2722,6 +2736,8 @@ private:
             return;
         }
         host_.ChangeLanguageDocument(DocumentUri(), documentVersion_, document_.Text());
+        semanticTokens_.clear();
+        if (semanticTokensSupported_) host_.RequestLanguageSemanticTokens(DocumentUri());
     }
 
     wxString ProjectRootUri() const
@@ -2775,8 +2791,25 @@ private:
         }
     }
 
+    void RequestSemanticTokens()
+    {
+        if (document_.IsUntitled()) {
+            AppendLog(wxS("Open a document before requesting semantic tokens."));
+            return;
+        }
+        if (!languageServerInitialized_) {
+            AppendLog(wxS("Initialize the language server before requesting semantic tokens."));
+            return;
+        }
+        if (host_.RequestLanguageSemanticTokens(DocumentUri())) {
+            AppendLog(wxS("Request sent: textDocument/semanticTokens/full."));
+        }
+    }
+
     void StopLanguageServer()
     {
+        semanticTokensSupported_ = false;
+        semanticTokens_.clear();
         if (host_.StopLanguageServer()) {
             AppendLog(wxS("Request sent: stop the language server."));
         }
@@ -3352,7 +3385,18 @@ private:
             }
             hover_->SetValue(label.empty() ? line : wxString::Format(wxS("Completion: %s"), label));
         } else if (method == wxS("initialize")) {
+            semanticTokenTypes_ = codium::SemanticTokenDecoder::TokenTypesFromInitialize(line);
+            semanticTokensSupported_ = line.Find(wxS("\"semanticTokensProvider\"")) != wxNOT_FOUND;
+            if (semanticTokensSupported_ && !document_.IsUntitled()) {
+                host_.RequestLanguageSemanticTokens(DocumentUri());
+            }
             hover_->SetValue(wxS("Language server initialized."));
+        } else if (method == wxS("textDocument/semanticTokens/full")) {
+            semanticTokens_ = codium::SemanticTokenDecoder::DecodeFullResponse(
+                line, semanticTokenTypes_, document_.Text());
+            semanticTokensSupported_ = true;
+            ApplyInlineProblems();
+            hover_->SetValue(wxString::Format(wxS("Semantic tokens applied: %zu"), semanticTokens_.size()));
         }
     }
 
@@ -3520,6 +3564,9 @@ private:
     int documentVersion_ = 1;
     bool languageServerInitialized_ = false;
     wxString languageId_ = wxS("plaintext");
+    bool semanticTokensSupported_ = false;
+    wxArrayString semanticTokenTypes_;
+    std::vector<codium::SemanticToken> semanticTokens_;
     wxColour ansiColour_ = wxColour(230, 230, 230);
     std::vector<wxString> terminalHistory_;
     size_t historyIndex_ = 0;

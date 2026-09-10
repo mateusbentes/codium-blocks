@@ -16,6 +16,13 @@ function handle(message) {
         capabilities: {
           hoverProvider: true,
           completionProvider: { triggerCharacters: ['.'] },
+          semanticTokensProvider: {
+            legend: {
+              tokenTypes: ['type', 'function', 'keyword', 'number'],
+              tokenModifiers: [],
+            },
+            full: true,
+          },
           textDocumentSync: 1,
         },
         serverInfo: { name: 'codium-blocks-fake-lsp', version: '0.1.0' },
@@ -46,6 +53,15 @@ function handle(message) {
       jsonrpc: '2.0',
       id: message.id,
       result: { contents: [{ language: 'text', value: 'Hover response from fake LSP' }] },
+    });
+    return;
+  }
+
+  if (message.method === 'textDocument/semanticTokens/full') {
+    send({
+      jsonrpc: '2.0',
+      id: message.id,
+      result: { data: [0, 0, 3, 0, 0, 0, 4, 4, 1, 0, 1, 0, 6, 2, 0, 0, 7, 2, 3, 0] },
     });
     return;
   }

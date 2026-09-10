@@ -230,6 +230,7 @@ endif()
 add_executable(codium-blocks
     native/src/document.cpp
     native/src/editor_actions.cpp
+    native/src/semantic_tokens.cpp
     native/src/syntax_highlighting.cpp
     native/src/main.cpp
     native/src/extension_host_client.cpp
@@ -348,6 +349,14 @@ add_executable(codium-blocks-syntax-highlighting-smoke
 target_include_directories(codium-blocks-syntax-highlighting-smoke PRIVATE native/include)
 codium_blocks_enable_warnings(codium-blocks-syntax-highlighting-smoke)
 target_link_libraries(codium-blocks-syntax-highlighting-smoke PRIVATE ${wxWidgets_LIBRARIES})
+
+add_executable(codium-blocks-semantic-tokens-smoke
+    native/src/semantic_tokens.cpp
+    tests/semantic-tokens-smoke.cpp
+)
+target_include_directories(codium-blocks-semantic-tokens-smoke PRIVATE native/include)
+codium_blocks_enable_warnings(codium-blocks-semantic-tokens-smoke)
+target_link_libraries(codium-blocks-semantic-tokens-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
 add_executable(codium-blocks-vsix-smoke
     native/src/vsix_manager.cpp
@@ -534,6 +543,7 @@ if(BUILD_TESTING)
     add_test(NAME document-smoke COMMAND codium-blocks-document-smoke)
     add_test(NAME editor-actions-smoke COMMAND codium-blocks-editor-actions-smoke)
     add_test(NAME syntax-highlighting-smoke COMMAND codium-blocks-syntax-highlighting-smoke)
+    add_test(NAME semantic-tokens-smoke COMMAND codium-blocks-semantic-tokens-smoke)
     add_test(NAME vsix-smoke COMMAND codium-blocks-vsix-smoke)
     add_test(NAME security-smoke COMMAND codium-blocks-security-smoke)
     add_test(NAME workspace-smoke COMMAND codium-blocks-workspace-smoke)

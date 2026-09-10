@@ -121,7 +121,7 @@ bool ExtensionHostClient::StopLanguageServer()
 bool ExtensionHostClient::InitializeLanguageServer(const wxString& rootUri)
 {
     const wxString params = wxString::Format(
-        wxS("{\"processId\":null,\"rootUri\":\"%s\",\"capabilities\":{\"textDocument\":{\"completion\":{\"completionItem\":{\"snippetSupport\":false}},\"hover\":{},\"publishDiagnostics\":{}}}}"),
+        wxS("{\"processId\":null,\"rootUri\":\"%s\",\"capabilities\":{\"textDocument\":{\"completion\":{\"completionItem\":{\"snippetSupport\":false}},\"hover\":{},\"publishDiagnostics\":{},\"semanticTokens\":{\"requests\":{\"range\":false,\"full\":true},\"tokenTypes\":[],\"tokenModifiers\":[],\"formats\":[\"relative\"]}}}}"),
         JsonEscape(rootUri));
     const int requestId = nextLanguageRequestId_++;
     return SendRaw(wxString::Format(
@@ -169,6 +169,16 @@ bool ExtensionHostClient::RequestLanguageCompletion(const wxString& uri, int lin
     const int requestId = nextLanguageRequestId_++;
     return SendRaw(wxString::Format(
         wxS("{\"type\":\"languageServerRequest\",\"message\":{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"textDocument/completion\",\"params\":%s}}"),
+        requestId, params));
+}
+
+bool ExtensionHostClient::RequestLanguageSemanticTokens(const wxString& uri)
+{
+    const wxString params = wxString::Format(
+        wxS("{\"textDocument\":{\"uri\":\"%s\"}}"), JsonEscape(uri));
+    const int requestId = nextLanguageRequestId_++;
+    return SendRaw(wxString::Format(
+        wxS("{\"type\":\"languageServerRequest\",\"message\":{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"textDocument/semanticTokens/full\",\"params\":%s}}"),
         requestId, params));
 }
 

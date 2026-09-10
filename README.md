@@ -34,6 +34,7 @@ The current `1.0.1` development increment builds on the completed `0.9.0` baseli
 - LSP initialization and `initialized` handshake;
 - `textDocument/didOpen` and `textDocument/didChange` synchronization;
 - hover and completion requests;
+- `textDocument/semanticTokens/full` requests with LSP legend decoding and native style composition;
 - normalized diagnostics and language-server result events;
 - a deterministic fake-LSP integration test.
 - native File, Language, and Extensions menus;

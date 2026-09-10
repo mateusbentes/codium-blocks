@@ -192,6 +192,24 @@ std::vector<SyntaxToken> SyntaxHighlighter::Tokenize(const wxString& text,
             while (index < text.length() && text[index] != wxChar('>')) ++index;
             if (index < text.length()) ++index;
             AddToken(&tokens, start, index, Kind::Tag);
+            const wxString openingTag = text.Mid(start, index - start).Lower();
+            const wxString embeddedLanguage = openingTag.StartsWith(wxS("<script"))
+                ? wxString(wxS("javascript"))
+                : openingTag.StartsWith(wxS("<style")) ? wxString(wxS("css")) : wxString();
+            if (!embeddedLanguage.empty()) {
+                const wxString closingTag = embeddedLanguage == wxS("javascript")
+                    ? wxString(wxS("</script")) : wxString(wxS("</style"));
+                const int relativeEnd = text.Mid(index).Lower().Find(closingTag);
+                if (relativeEnd != wxNOT_FOUND) {
+                    const size_t bodyEnd = index + static_cast<size_t>(relativeEnd);
+                    const auto embeddedTokens = Tokenize(text.Mid(index, bodyEnd - index), embeddedLanguage);
+                    for (const auto& token : embeddedTokens) {
+                        AddToken(&tokens, index + static_cast<size_t>(token.start),
+                                 index + static_cast<size_t>(token.start + token.length), token.kind);
+                    }
+                    index = bodyEnd;
+                }
+            }
             lineStart = false;
             continue;
         }
@@ -242,7 +260,8 @@ std::vector<SyntaxToken> SyntaxHighlighter::Tokenize(const wxString& text,
                 size_t next = index;
                 while (next < text.length() && (text[next] == wxChar(' ') || text[next] == wxChar('\t'))) ++next;
                 if (next < text.length() && text[next] == wxChar('(')) kind = Kind::Function;
-                else if (languageId == wxS("json") && next < text.length() && text[next] == wxChar(':'))
+                else if ((languageId == wxS("json") || languageId == wxS("css")) &&
+                         next < text.length() && text[next] == wxChar(':'))
                     kind = Kind::Property;
             }
             if (kind != Kind::Plain) AddToken(&tokens, start, index, kind);

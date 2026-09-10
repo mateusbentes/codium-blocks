@@ -32,6 +32,7 @@ public:
     bool ChangeLanguageDocument(const wxString& uri, int version, const wxString& text);
     bool RequestLanguageHover(const wxString& uri, int line, int character);
     bool RequestLanguageCompletion(const wxString& uri, int line, int character);
+    bool RequestLanguageSemanticTokens(const wxString& uri);
 
     // Poll is intentionally driven by the wxWidgets event loop. It keeps the
     // native UI responsive while the optional Node.js host runs out-of-process.
