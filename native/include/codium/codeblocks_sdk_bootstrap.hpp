@@ -46,6 +46,9 @@ struct CodeBlocksSdkReport final {
     bool debuggerPluginAttached = false;
     bool debuggerEventsAvailable = false;
     bool debuggerControlAvailable = false;
+    bool debuggerSnapshotAvailable = false;
+    bool debuggerPublicStateAvailable = false;
+    bool debuggerPrivateDataAvailable = false;
     bool workspaceTrusted = false;
 };
 
@@ -85,6 +88,7 @@ public:
     bool ContinueDebug(wxString* error = nullptr);
     bool PauseDebug(wxString* error = nullptr);
     bool StopDebug(wxString* error = nullptr);
+    bool RequestDebugSnapshot(const wxString& dataKind, wxString* error = nullptr);
     std::vector<CodeBlocksHostEvent> DrainEvents();
     void Shutdown();
 
@@ -100,6 +104,7 @@ private:
     void OnSdkEvent(CodeBlocksEvent& event);
     void OnCompilerOutput(CodeBlocksEvent& event);
     void OnCompilerError(CodeBlocksEvent& event);
+    void PublishDebugSnapshot(const wxString& dataKind);
     void BindCompilerOutput();
     void UnbindCompilerOutput();
     void RemovePluginStaging();

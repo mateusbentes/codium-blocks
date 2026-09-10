@@ -2401,6 +2401,13 @@ private:
             problemStore_.AddCompilerLine(problemLine, source, root);
             break;
         }
+        case codium::CodeBlocksEventKind::DebugSnapshot:
+            if (debugConsole_) {
+                debugConsole_->AppendText(wxString::Format(
+                    wxS("Code::Blocks debugger snapshot (%s): %s\n"),
+                    event.dataKind, event.snapshotJson.empty() ? event.payload : event.snapshotJson));
+            }
+            break;
         case codium::CodeBlocksEventKind::ProjectOpened:
         case codium::CodeBlocksEventKind::ProjectTarget:
         case codium::CodeBlocksEventKind::ProjectClosed:

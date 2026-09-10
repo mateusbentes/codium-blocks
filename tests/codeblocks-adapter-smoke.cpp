@@ -67,7 +67,9 @@ int main(int argc, char** argv)
         adapter.Capabilities().Index(wxS("compilerEvents")) == wxNOT_FOUND ||
         adapter.Capabilities().Index(wxS("compilerDiagnostics")) == wxNOT_FOUND ||
         adapter.Capabilities().Index(wxS("debuggerEvents")) == wxNOT_FOUND ||
-        adapter.Capabilities().Index(wxS("debuggerControl")) == wxNOT_FOUND) {
+        adapter.Capabilities().Index(wxS("debuggerControl")) == wxNOT_FOUND ||
+        adapter.Capabilities().Index(wxS("debuggerSnapshot")) == wxNOT_FOUND ||
+        adapter.Capabilities().Index(wxS("debuggerDataUnavailable")) == wxNOT_FOUND) {
         std::cerr << "codeblocks-adapter-smoke: handshake failed: " << error.ToStdString() << "\n";
         return 2;
     }
@@ -130,6 +132,38 @@ int main(int argc, char** argv)
         return 8;
     }
 
+    if (!adapter.RequestDebugSnapshot(wxS("state"))) {
+        std::cerr << "codeblocks-adapter-smoke: state snapshot request failed\n";
+        return 9;
+    }
+    bool snapshotSeen = false;
+    for (int i = 0; i < 200 && adapter.IsRunning() && !snapshotSeen; ++i) {
+        wxMilliSleep(10);
+        for (const auto& event : adapter.PollEvents()) {
+            if (event.kind == codium::CodeBlocksEventKind::DebugSnapshot &&
+                event.dataKind == wxS("state") && event.payload.Find(wxS("currentFile")) != wxNOT_FOUND) {
+                snapshotSeen = true;
+            }
+        }
+    }
+    if (!snapshotSeen) {
+        std::cerr << "codeblocks-adapter-smoke: public debugger snapshot failed\n";
+        return 10;
+    }
+
+    if (!adapter.RequestDebugSnapshot(wxS("frames"))) {
+        std::cerr << "codeblocks-adapter-smoke: private data request could not be sent\n";
+        return 11;
+    }
+    for (int i = 0; i < 200 && adapter.IsRunning() && adapter.LastErrorCode().empty(); ++i) {
+        wxMilliSleep(10);
+        adapter.PollEvents();
+    }
+    if (adapter.LastErrorCode() != wxS("debugDataUnavailable")) {
+        std::cerr << "codeblocks-adapter-smoke: unsupported debugger data was not reported\n";
+        return 12;
+    }
+
     adapter.Stop();
     codium::CodeBlocksAdapterClient incompatibleAdapter(nullptr);
     wxArrayString incompatibleArguments;
@@ -137,7 +171,7 @@ int main(int argc, char** argv)
     incompatibleArguments.Add(wxS("--incompatible"));
     if (!incompatibleAdapter.Start(wxS("node"), incompatibleArguments, root, configuration, &error)) {
         std::cerr << "codeblocks-adapter-smoke: incompatible adapter could not start\n";
-        return 9;
+        return 13;
     }
     for (int i = 0; i < 200 && incompatibleAdapter.IsRunning() && !incompatibleAdapter.HandshakeReceived(); ++i) {
         wxMilliSleep(10);
@@ -145,7 +179,7 @@ int main(int argc, char** argv)
     }
     if (!incompatibleAdapter.HandshakeReceived() || incompatibleAdapter.IsReady()) {
         std::cerr << "codeblocks-adapter-smoke: incompatible contract was accepted\n";
-        return 10;
+        return 14;
     }
     incompatibleAdapter.Stop();
     std::cout << "codeblocks-adapter-smoke: ok — JSON Lines handshake, capabilities, project, build, and diagnostics\n";

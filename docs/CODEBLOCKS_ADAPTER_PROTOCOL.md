@@ -2,7 +2,7 @@
 
 Codium::Blocks communicates with an optional Code::Blocks host adapter through **JSON Lines** over the adapter process standard input and standard output. The native application never loads a Code::Blocks library or plugin into its own address space through this protocol.
 
-The compatible adapter contract is **1.1**. Version `1.0` clients remain compatible because the debugger requests and events are additive. Clients must ignore events they do not use and must reject unsupported contract major versions.
+The compatible adapter contract is **1.2**. Versions `1.0` and `1.1` remain compatible because the debugger snapshot request and event are additive. Clients must ignore fields and events they do not use and must reject unsupported contract major versions.
 
 ## Handshake
 
@@ -17,7 +17,7 @@ An SDK tuple of `0.0.0` means that the client requests discovery and does not im
 A compatible adapter responds with one `ready` message:
 
 ```json
-{"type":"ready","contractMajor":1,"contractMinor":1,"sdkMajor":2,"sdkMinor":23,"sdkRelease":0,"sdkIdentity":"Code::Blocks SDK 2.23.0","capabilities":["sdkBootstrap","sdkEventSink","projectEvents","projectTargets","compilerEvents","compilerBuild","compilerOutput","compilerPluginMatched","debuggerPluginMatched","debuggerEvents","debuggerControl"]}
+{"type":"ready","contractMajor":1,"contractMinor":2,"sdkMajor":2,"sdkMinor":23,"sdkRelease":0,"sdkIdentity":"Code::Blocks SDK 2.23.0","capabilities":["sdkBootstrap","sdkEventSink","projectEvents","projectTargets","compilerEvents","compilerBuild","compilerOutput","compilerPluginMatched","debuggerPluginMatched","debuggerEvents","debuggerControl","debuggerSnapshot","debuggerPublicState","debuggerDataUnavailable"]}
 ```
 
 The client accepts contract major `1` and a minor version from `0` through the currently implemented minor version. A future incompatible major version must be rejected before project or plugin operations begin. The `sdkIdentity` string is informational; the numeric SDK tuple is the compatibility value.
@@ -28,7 +28,7 @@ If initialization fails, the adapter emits a structured error and does not emit 
 {"type":"error","code":"bootstrapFailed","message":"Code::Blocks resources.zip could not be loaded."}
 ```
 
-Possible error codes include `invalidArguments`, `sdkMismatch`, `bootstrapFailed`, `notReady`, `projectLoadFailed`, `buildStartFailed`, `debugStartFailed`, and `debugControlFailed`.
+Possible error codes include `invalidArguments`, `sdkMismatch`, `bootstrapFailed`, `notReady`, `projectLoadFailed`, `buildStartFailed`, `debugStartFailed`, `debugControlFailed`, `debugSnapshotFailed`, and `debugDataUnavailable`.
 
 ## Requests
 
@@ -42,6 +42,7 @@ The contract defines the following request types:
 | `continueDebug` | none | Continues the active Code::Blocks debug session. |
 | `pauseDebug` | none | Breaks the active debuggee. |
 | `stopDebug` | none | Stops the active Code::Blocks debug session. |
+| `requestDebugSnapshot` | `dataKind` (`state`, `frames`, `threads`, `breakpoints`, `watches`, or `variables`) | Requests a value-owned debugger data snapshot. Phase E.1 implements `state`; private model kinds return `debugDataUnavailable`. |
 | `shutdown` | none | Closes the loaded project, frees the Code::Blocks manager, and terminates the adapter. |
 
 The adapter executable receives its runtime boundary separately from the JSON protocol. Its command line requires `--data-dir=DIR` for the Code::Blocks data directory and `--compiler-plugin=FILE` for the explicitly selected matching Compiler plugin. `--debugger-plugin=FILE` is optional and enables the matched Debugger capability. When present, the adapter requires the Compiler and Debugger files to come from the same plugin directory, stages only those two files, and scans that private staging directory. The adapter never scans the user's complete plugin directory.
@@ -101,7 +102,7 @@ The sink also normalizes the official compiler lifecycle events emitted by the m
 
 `cbEVT_COMPILER_FINISHED` carries its exit status in the SDK event integer field; the adapter preserves it as `exitCode` and sets `isError` for non-zero values. Piped compiler lines are forwarded without SDK pointers. stderr lines are marked `isError` because the SDK does not expose a richer severity classification at this boundary; the native Problems parser can still distinguish GCC/Clang warning text from errors.
 
-The existing normalized event names remain supported: `projectOpened`, `projectClosed`, `projectActivated`, `projectSaved`, `projectTargetsChanged`, `projectFileAdded`, `projectFileRemoved`, `projectFileChanged`, `projectFileRenamed`, `buildStarted`, `buildFinished`, `compilerOutput`, `compilerDiagnostic`, `debugSessionStarted`, `debugSessionStopped`, `debugSessionPaused`, `debugSessionContinued`, `debugSessionCursorChanged`, `debugSessionUpdated`, and `pluginCommand`.
+The existing normalized event names remain supported: `projectOpened`, `projectClosed`, `projectActivated`, `projectSaved`, `projectTargetsChanged`, `projectFileAdded`, `projectFileRemoved`, `projectFileChanged`, `projectFileRenamed`, `buildStarted`, `buildFinished`, `compilerOutput`, `compilerDiagnostic`, `debugSessionStarted`, `debugSessionStopped`, `debugSessionPaused`, `debugSessionContinued`, `debugSessionCursorChanged`, `debugSessionUpdated`, `debugSnapshot`, and `pluginCommand`.
 
 Diagnostics use one-based line and column numbers so they can be displayed consistently with Code::Blocks output and converted to the native zero-based editor model.
 
@@ -118,7 +119,21 @@ When the optional Debugger plugin is enabled, the adapter registers the official
 | `cbEVT_DEBUGGER_CURSOR_CHANGED` | `debugSessionCursorChanged` | `projectPath`, `target`, `plugin`, `line`, `column` when supplied by the SDK |
 | `cbEVT_DEBUGGER_UPDATED` | `debugSessionUpdated` | `projectPath`, `target`, `plugin`, `exitCode` containing the SDK update kind |
 
-The Phase D adapter supplies no-op debugger windows and menu handlers inside the adapter process. This lets a matched Debugger plugin execute its real GDB session without requiring Code::Blocks GUI objects in the main Codium::Blocks process. The current boundary exposes session lifecycle and control only; stack, thread, breakpoint, watch, and variable data remain future protocol additions.
+The Phase D adapter supplies no-op debugger windows and menu handlers inside the adapter process. This lets a matched Debugger plugin execute its real GDB session without requiring Code::Blocks GUI objects in the main Codium::Blocks process. Phase E.1 adds a `debugSnapshot` event for public, value-owned debugger state.
+
+The `state` snapshot contains running, stopped, busy, exit-code, active-frame, current-source-location, breakpoint-count, and `SupportsFeature` flags. The adapter does not dereference `cbStackFrame`, `cbThread`, `cbBreakpoint`, or `cbWatch` objects in the generic build because the installed public SDK only forward-declares those model types. Requests for `frames`, `threads`, `breakpoints`, `watches`, or `variables` therefore return `debugDataUnavailable` and keep the session alive. Full model transport requires a separately matched DebuggerGDB private-provider build with an exact source, ABI, and compiler identity.
+
+The event uses value-owned fields only:
+
+```json
+{"type":"event","event":"debugSnapshot","plugin":"Debugger","dataKind":"state","snapshotJson":"{\"stopped\":true,\"activeFrame\":0,\"privateDataAvailable\":false}","message":"Public Code::Blocks debugger state snapshot"}
+```
+
+An unsupported request is explicit and non-fatal:
+
+```json
+{"type":"error","code":"debugDataUnavailable","dataKind":"frames","capability":"debuggerDataUnavailable","message":"The matched Code::Blocks SDK does not expose value-owned frames data through its public ABI."}
+```
 
 ## Process and security boundary
 
@@ -126,7 +141,7 @@ The adapter is an optional executable selected through `CODIUM_BLOCKS_CODEBLOCKS
 
 Code::Blocks plugins are native C++ modules whose ABI depends on the host SDK, build flags, resources, and manager lifecycle. Phase D loads only explicitly supplied, version-matched Compiler and Debugger plugins from one matched installation in the dedicated adapter process. It does not load arbitrary discovered plugins, and it does not load any Code::Blocks plugin into `codium-blocks` itself. A process boundary limits the failure scope of the adapter but is not a trust mechanism for third-party native code. Native debugger loading is refused for an untrusted workspace.
 
-The repository includes a deterministic fake adapter and a universal client smoke test. It also includes an optional Linux integration smoke test that uses the installed Code::Blocks SDK, official resources, matched Compiler and Debugger plugins, and `xvfb-run` to verify real `.cbp` target enumeration, compiler lifecycle events, compiler output, a produced executable, debugger launch, and debugger events. The optional test is omitted when those runtime prerequisites are unavailable.
+The repository includes a deterministic fake adapter and a universal client smoke test. It also includes an optional Linux integration smoke test that uses the installed Code::Blocks SDK, official resources, matched Compiler and Debugger plugins, and `xvfb-run` to verify real `.cbp` target enumeration, compiler lifecycle events, compiler output, a produced executable, debugger launch, debugger events, the public state snapshot, and graceful rejection of private model data. The optional test is omitted when those runtime prerequisites are unavailable.
 
 ## References
 
@@ -134,3 +149,6 @@ The repository includes a deterministic fake adapter and a universal client smok
 [2]: https://svn.code.sf.net/p/codeblocks/code/trunk/src/sdk/projectmanager.cpp "Code::Blocks ProjectManager implementation"
 [3]: https://svn.code.sf.net/p/codeblocks/code/trunk/src/sdk/pluginmanager.cpp "Code::Blocks PluginManager implementation"
 [4]: https://github.com/mateusbentes/codium-blocks/blob/main/docs/CODEBLOCKS_INTEGRATION.md "Codium::Blocks Code::Blocks integration policy"
+[5]: https://svn.code.sf.net/p/codeblocks/code/trunk/src/include/cbplugin.h "Code::Blocks public debugger plugin interface"
+[6]: https://svn.code.sf.net/p/codeblocks/code/trunk/src/include/sdk_events.h "Code::Blocks official debugger events"
+[7]: https://svn.code.sf.net/p/codeblocks/code/trunk/src/plugins/debuggergdb/debugger_defs.h "Code::Blocks DebuggerGDB private data definitions"

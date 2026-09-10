@@ -36,6 +36,7 @@ public:
     bool ContinueDebug();
     bool PauseDebug();
     bool StopDebug();
+    bool RequestDebugSnapshot(const wxString& dataKind = wxS("state"));
 
     wxArrayString Poll();
     std::vector<CodeBlocksHostEvent> PollEvents();

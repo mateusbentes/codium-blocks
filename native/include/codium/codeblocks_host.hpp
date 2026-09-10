@@ -9,7 +9,7 @@ namespace codium {
 
 struct CodeBlocksHostContract final {
     static constexpr int kMajor = 1;
-    static constexpr int kMinor = 1;
+    static constexpr int kMinor = 2;
 
     static wxString Version();
     static bool Supports(int major, int minor);
@@ -36,6 +36,7 @@ enum class CodeBlocksEventKind {
     DebugSessionContinued,
     DebugSessionCursorChanged,
     DebugSessionUpdated,
+    DebugSnapshot,
     PluginCommand
 };
 
@@ -56,6 +57,10 @@ struct CodeBlocksHostEvent final {
     bool isError = false;
     wxString payload;
     wxString oldFilePath;
+    // Additive Phase E.1 fields. Existing 1.0/1.1 aggregate initializers
+    // remain source-compatible because these fields are trailing and optional.
+    wxString dataKind;
+    wxString snapshotJson;
 };
 
 struct CodeBlocksHostConfiguration final {
@@ -81,3 +86,7 @@ private:
 wxString CodeBlocksEventKindName(CodeBlocksEventKind kind);
 
 } // namespace codium
+
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Codium::Blocks Contributors
+// The contract remains intentionally value-owned across the process boundary.

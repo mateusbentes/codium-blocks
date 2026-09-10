@@ -75,6 +75,23 @@ bool SamePath(const wxString& left, const wxString& right)
 #endif
 }
 
+wxString JsonEscape(const wxString& value)
+{
+    wxString escaped;
+    escaped.reserve(value.length() + 8);
+    for (const wxChar ch : value) {
+        switch (static_cast<wchar_t>(ch)) {
+        case '\\': escaped += wxS("\\\\"); break;
+        case '"': escaped += wxS("\\\""); break;
+        case '\n': escaped += wxS("\\n"); break;
+        case '\r': escaped += wxS("\\r"); break;
+        case '\t': escaped += wxS("\\t"); break;
+        default: escaped += ch; break;
+        }
+    }
+    return escaped;
+}
+
 bool CopyAllowlistedPlugin(const wxString& source,
                            const wxString& stagingDirectory,
                            wxString* stagedPath,
@@ -571,6 +588,9 @@ bool CodeBlocksSdkBootstrap::Start(const wxString& dataDirectory,
         report_.debuggerPluginLoaded = true;
         report_.debuggerPluginAttached = true;
         report_.debuggerControlAvailable = true;
+        report_.debuggerSnapshotAvailable = true;
+        report_.debuggerPublicStateAvailable = true;
+        report_.debuggerPrivateDataAvailable = false;
     }
     started_ = true;
     return true;
@@ -720,6 +740,74 @@ bool CodeBlocksSdkBootstrap::StopDebug(wxString* error)
     return true;
 }
 
+void CodeBlocksSdkBootstrap::PublishDebugSnapshot(const wxString& dataKind)
+{
+    if (!debuggerPlugin_) return;
+
+    const bool running = debuggerPlugin_->IsRunning();
+    const bool stopped = debuggerPlugin_->IsStopped();
+    const bool busy = debuggerPlugin_->IsBusy();
+    wxString currentFile;
+    int currentLine = 0;
+    int activeFrame = 0;
+    int breakpointCount = 0;
+    if (stopped) {
+        debuggerPlugin_->GetCurrentPosition(currentFile, currentLine);
+        activeFrame = debuggerPlugin_->GetActiveStackFrame();
+    }
+    if (debuggerPlugin_->SupportsFeature(cbDebuggerFeature::Breakpoints))
+        breakpointCount = debuggerPlugin_->GetBreakpointsCount();
+
+    const bool supportsBreakpoints = debuggerPlugin_->SupportsFeature(cbDebuggerFeature::Breakpoints);
+    const bool supportsCallstack = debuggerPlugin_->SupportsFeature(cbDebuggerFeature::Callstack);
+    const bool supportsThreads = debuggerPlugin_->SupportsFeature(cbDebuggerFeature::Threads);
+    const bool supportsWatches = debuggerPlugin_->SupportsFeature(cbDebuggerFeature::Watches);
+    const bool supportsValueTooltips = debuggerPlugin_->SupportsFeature(cbDebuggerFeature::ValueTooltips);
+
+    const wxString snapshot = wxString::Format(
+        wxS("{\"dataKind\":\"%s\",\"running\":%s,\"stopped\":%s,\"busy\":%s,"
+            "\"exitCode\":%d,\"activeFrame\":%d,\"currentFile\":\"%s\","
+            "\"currentLine\":%d,\"currentColumn\":0,\"breakpointCount\":%d,"
+            "\"supportsBreakpoints\":%s,\"supportsCallstack\":%s,"
+            "\"supportsThreads\":%s,\"supportsWatches\":%s,"
+            "\"supportsValueTooltips\":%s,\"privateDataAvailable\":false}"),
+        JsonEscape(dataKind), running ? wxS("true") : wxS("false"),
+        stopped ? wxS("true") : wxS("false"), busy ? wxS("true") : wxS("false"),
+        debuggerPlugin_->GetExitCode(), activeFrame, JsonEscape(currentFile), currentLine,
+        breakpointCount, supportsBreakpoints ? wxS("true") : wxS("false"),
+        supportsCallstack ? wxS("true") : wxS("false"), supportsThreads ? wxS("true") : wxS("false"),
+        supportsWatches ? wxS("true") : wxS("false"), supportsValueTooltips ? wxS("true") : wxS("false"));
+
+    CodeBlocksHostEvent event;
+    event.kind = CodeBlocksEventKind::DebugSnapshot;
+    event.projectPath = project_ ? project_->GetFilename() : wxString();
+    event.plugin = wxS("Debugger");
+    event.dataKind = dataKind;
+    event.snapshotJson = snapshot;
+    event.payload = snapshot;
+    event.message = wxS("Public Code::Blocks debugger state snapshot");
+    PublishSdkEvent(std::move(event));
+}
+
+bool CodeBlocksSdkBootstrap::RequestDebugSnapshot(const wxString& dataKind, wxString* error)
+{
+    if (!started_ || !debuggerPlugin_) {
+        Fail(wxS("The Code::Blocks Debugger plugin is not available."), error);
+        return false;
+    }
+
+    const wxString requested = dataKind.empty() ? wxS("state") : dataKind;
+    if (requested != wxS("state")) {
+        Fail(wxString::Format(
+                 wxS("The matched Code::Blocks SDK does not expose value-owned %s data through its public ABI."),
+                 requested),
+             error);
+        return false;
+    }
+    PublishDebugSnapshot(requested);
+    return true;
+}
+
 std::vector<CodeBlocksTargetInfo> CodeBlocksSdkBootstrap::EnumerateTargets(cbProject* project) const
 {
     std::vector<CodeBlocksTargetInfo> targets;
@@ -769,6 +857,9 @@ void CodeBlocksSdkBootstrap::Shutdown()
     report_.debuggerPluginAttached = false;
     report_.debuggerPluginLoaded = false;
     report_.debuggerControlAvailable = false;
+    report_.debuggerSnapshotAvailable = false;
+    report_.debuggerPublicStateAvailable = false;
+    report_.debuggerPrivateDataAvailable = false;
     RemovePluginStaging();
     started_ = false;
 }

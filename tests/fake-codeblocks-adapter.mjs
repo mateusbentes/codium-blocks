@@ -19,7 +19,7 @@ function handle(line) {
       sdkMajor: request.sdkMajor || 1,
       sdkMinor: request.sdkMinor || 36,
       sdkRelease: request.sdkRelease || 0,
-      capabilities: ['sdkEventSink', 'projectEvents', 'projectTargets', 'compilerEvents', 'buildEvents', 'compilerDiagnostics', 'debuggerPluginMatched', 'debuggerEvents', 'debuggerControl']
+      capabilities: ['sdkEventSink', 'projectEvents', 'projectTargets', 'compilerEvents', 'buildEvents', 'compilerDiagnostics', 'debuggerPluginMatched', 'debuggerEvents', 'debuggerControl', 'debuggerSnapshot', 'debuggerPublicState', 'debuggerDataUnavailable']
     });
   } else if (request.type === 'openProject') {
     emit({
@@ -67,6 +67,21 @@ function handle(line) {
     emit({ type: 'event', event: 'debugSessionPaused', plugin: 'Debugger', message: 'Debug session paused' });
   } else if (request.type === 'stopDebug') {
     emit({ type: 'event', event: 'debugSessionStopped', plugin: 'Debugger', exitCode: 0, message: 'Debug session stopped' });
+  } else if (request.type === 'requestDebugSnapshot') {
+    const dataKind = request.dataKind || 'state';
+    if (dataKind !== 'state') {
+      emit({ type: 'error', code: 'debugDataUnavailable', dataKind,
+        capability: 'debuggerPublicState',
+        message: `The fake adapter does not expose ${dataKind} model data.` });
+    } else {
+      emit({ type: 'event', event: 'debugSnapshot', plugin: 'Debugger', dataKind,
+        snapshotJson: JSON.stringify({ dataKind, running: false, stopped: true, busy: false,
+          exitCode: 0, activeFrame: 0, currentFile: 'src/main.cpp', currentLine: 12,
+          currentColumn: 0, breakpointCount: 0, supportsBreakpoints: false,
+          supportsCallstack: false, supportsThreads: false, supportsWatches: false,
+          supportsValueTooltips: false, privateDataAvailable: false }),
+        message: 'Fake public Code::Blocks debugger state snapshot' });
+    }
   } else if (request.type === 'shutdown') {
     process.exit(0);
   }

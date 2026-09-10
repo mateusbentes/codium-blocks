@@ -123,6 +123,7 @@ CodeBlocksEventKind EventKindFromName(const wxString& name)
     if (name == wxS("debugSessionContinued")) return CodeBlocksEventKind::DebugSessionContinued;
     if (name == wxS("debugSessionCursorChanged")) return CodeBlocksEventKind::DebugSessionCursorChanged;
     if (name == wxS("debugSessionUpdated")) return CodeBlocksEventKind::DebugSessionUpdated;
+    if (name == wxS("debugSnapshot")) return CodeBlocksEventKind::DebugSnapshot;
     return CodeBlocksEventKind::PluginCommand;
 }
 
@@ -269,6 +270,13 @@ bool CodeBlocksAdapterClient::StopDebug()
     return ready_ && SendRaw(wxS("{\"type\":\"stopDebug\"}"));
 }
 
+bool CodeBlocksAdapterClient::RequestDebugSnapshot(const wxString& dataKind)
+{
+    return ready_ && SendRaw(wxString::Format(
+        wxS("{\"type\":\"requestDebugSnapshot\",\"dataKind\":\"%s\"}"),
+        JsonEscape(dataKind.empty() ? wxS("state") : dataKind)));
+}
+
 wxArrayString CodeBlocksAdapterClient::Poll()
 {
     wxArrayString lines;
@@ -339,7 +347,9 @@ void CodeBlocksAdapterClient::ProcessProtocolLine(const wxString& line,
     event.column = JsonIntField(line, wxS("column"));
     event.exitCode = JsonIntField(line, wxS("exitCode"));
     event.isError = JsonTrueField(line, wxS("isError"));
-    event.payload = line;
+    event.dataKind = JsonStringField(line, wxS("dataKind"));
+    event.snapshotJson = JsonStringField(line, wxS("snapshotJson"));
+    event.payload = event.snapshotJson.empty() ? line : event.snapshotJson;
     events->push_back(event);
 }
 

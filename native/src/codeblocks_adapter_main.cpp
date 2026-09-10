@@ -9,6 +9,7 @@
 #include <cbproject.h>
 
 #include <atomic>
+#include <algorithm>
 #include <memory>
 #include <iostream>
 #include <mutex>
@@ -144,6 +145,13 @@ void EmitError(const wxString& code, const wxString& message)
          wxS("\",\"message\":\"") + JsonEscape(message) + wxS("\"}"));
 }
 
+void EmitDataUnavailable(const wxString& dataKind, const wxString& message)
+{
+    Emit(wxS("{\"type\":\"error\",\"code\":\"debugDataUnavailable\",\"dataKind\":\"") +
+         JsonEscape(dataKind) + wxS("\",\"capability\":\"debuggerDataUnavailable\",\"message\":\"") +
+         JsonEscape(message) + wxS("\"}"));
+}
+
 void EmitSdkEvent(const codium::CodeBlocksHostEvent& event)
 {
     wxString json = wxS("{\"type\":\"event\",\"event\":\"") +
@@ -161,7 +169,9 @@ void EmitSdkEvent(const codium::CodeBlocksHostEvent& event)
                     wxS(",\"column\":") + wxString::Format(wxS("%d"), event.column) +
                     wxS(",\"exitCode\":") + wxString::Format(wxS("%d"), event.exitCode) +
                     wxS(",\"isError\":") + (event.isError ? wxS("true") : wxS("false")) +
-                    wxS(",\"payload\":\"") + JsonEscape(event.payload) + wxS("\"}");
+                    wxS(",\"payload\":\"") + JsonEscape(event.payload) +
+                    wxS("\",\"dataKind\":\"") + JsonEscape(event.dataKind) +
+                    wxS("\",\"snapshotJson\":\"") + JsonEscape(event.snapshotJson) + wxS("\"}");
     Emit(json);
 }
 
@@ -252,6 +262,8 @@ public:
             HandleDebugControl(wxS("pause"));
         } else if (type == wxS("stopDebug")) {
             HandleDebugControl(wxS("stop"));
+        } else if (type == wxS("requestDebugSnapshot")) {
+            HandleDebugSnapshot(JsonStringField(line, "dataKind"));
         } else if (!type.empty()) {
             EmitError(wxS("unknownRequest"), wxString::Format(wxS("Unknown request type: %s"), type));
         }
@@ -274,7 +286,7 @@ private:
         if (ready_) return;
         const int requestedMajor = JsonIntField(line, "contractMajor", 1);
         const int requestedMinor = JsonIntField(line, "contractMinor", 0);
-        if (requestedMajor != 1 || requestedMinor < 0 || requestedMinor > 1) {
+        if (requestedMajor != 1 || requestedMinor < 0 || requestedMinor > codium::CodeBlocksHostContract::kMinor) {
             Emit(wxString::Format(
                 wxS("{\"type\":\"ready\",\"contractMajor\":2,\"contractMinor\":0,\"sdkMajor\":%d,\"sdkMinor\":%d,\"sdkRelease\":%d,\"capabilities\":[]}"),
                 PLUGIN_SDK_VERSION_MAJOR, PLUGIN_SDK_VERSION_MINOR, PLUGIN_SDK_VERSION_RELEASE));
@@ -311,10 +323,12 @@ private:
         ready_ = true;
         wxString capabilities = wxS("\"sdkBootstrap\",\"sdkEventSink\",\"projectEvents\",\"projectTargets\",\"compilerEvents\",\"compilerBuild\",\"compilerOutput\",\"compilerPluginMatched\"");
         if (bootstrap_->Report().debuggerPluginAttached) {
-            capabilities += wxS(",\"debuggerPluginMatched\",\"debuggerEvents\",\"debuggerControl\"");
+            capabilities += wxS(",\"debuggerPluginMatched\",\"debuggerEvents\",\"debuggerControl\",\"debuggerSnapshot\",\"debuggerPublicState\",\"debuggerDataUnavailable\"");
         }
+        const int negotiatedMinor = std::min(requestedMinor, codium::CodeBlocksHostContract::kMinor);
         Emit(wxString::Format(
-            wxS("{\"type\":\"ready\",\"contractMajor\":1,\"contractMinor\":1,\"sdkMajor\":%d,\"sdkMinor\":%d,\"sdkRelease\":%d,\"sdkIdentity\":\""),
+            wxS("{\"type\":\"ready\",\"contractMajor\":1,\"contractMinor\":%d,\"sdkMajor\":%d,\"sdkMinor\":%d,\"sdkRelease\":%d,\"sdkIdentity\":\""),
+            negotiatedMinor,
             PLUGIN_SDK_VERSION_MAJOR, PLUGIN_SDK_VERSION_MINOR, PLUGIN_SDK_VERSION_RELEASE) +
              JsonEscape(bootstrap_->Report().sdkIdentity) +
              wxS("\",\"capabilities\":[") + capabilities + wxS("]}"));
@@ -392,6 +406,22 @@ private:
         }
         EmitPendingSdkEvents();
         eventTimer_.Start(25);
+    }
+
+    void HandleDebugSnapshot(const wxString& dataKind)
+    {
+        if (!ready_) {
+            EmitError(wxS("notReady"), wxS("The Code::Blocks SDK adapter is not ready."));
+            return;
+        }
+        const wxString requested = dataKind.empty() ? wxS("state") : dataKind;
+        wxString error;
+        if (!bootstrap_->RequestDebugSnapshot(requested, &error)) {
+            if (requested != wxS("state")) EmitDataUnavailable(requested, error);
+            else EmitError(wxS("debugSnapshotFailed"), error);
+            return;
+        }
+        EmitPendingSdkEvents();
     }
 
     void EmitPendingSdkEvents()

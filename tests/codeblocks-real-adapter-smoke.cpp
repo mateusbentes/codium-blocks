@@ -56,16 +56,18 @@ int main(int argc, char** argv)
     wxString error;
     if (!adapter.Start(adapterPath, arguments, dataDirectory, configuration, &error) ||
         !WaitForReady(adapter) ||
-        adapter.ContractMajor() != 1 || adapter.ContractMinor() != 1 ||
+        adapter.ContractMajor() != 1 || adapter.ContractMinor() != 2 ||
         adapter.SdkMajor() <= 0 || adapter.SdkMinor() < 0 || adapter.SdkRelease() < 0 ||
         adapter.Capabilities().Index(wxS("projectTargets")) == wxNOT_FOUND ||
         adapter.Capabilities().Index(wxS("sdkEventSink")) == wxNOT_FOUND ||
         adapter.Capabilities().Index(wxS("compilerEvents")) == wxNOT_FOUND ||
         adapter.Capabilities().Index(wxS("compilerPluginMatched")) == wxNOT_FOUND ||
         (!debuggerPlugin.empty() &&
-         (adapter.Capabilities().Index(wxS("debuggerPluginMatched")) == wxNOT_FOUND ||
-          adapter.Capabilities().Index(wxS("debuggerEvents")) == wxNOT_FOUND ||
-          adapter.Capabilities().Index(wxS("debuggerControl")) == wxNOT_FOUND))) {
+          (adapter.Capabilities().Index(wxS("debuggerPluginMatched")) == wxNOT_FOUND ||
+           adapter.Capabilities().Index(wxS("debuggerEvents")) == wxNOT_FOUND ||
+          adapter.Capabilities().Index(wxS("debuggerControl")) == wxNOT_FOUND ||
+          adapter.Capabilities().Index(wxS("debuggerSnapshot")) == wxNOT_FOUND ||
+          adapter.Capabilities().Index(wxS("debuggerDataUnavailable")) == wxNOT_FOUND))) {
         std::cerr << "codeblocks-real-adapter-smoke: handshake failed: " << error.ToStdString() << "\n";
         return 3;
     }
@@ -136,34 +138,53 @@ int main(int argc, char** argv)
         bool debugObserved = false;
         bool debugStopped = false;
         bool stopRequested = false;
-        for (int index = 0; index < 1200 && adapter.IsRunning() && !debugObserved; ++index) {
+        bool snapshotRequested = false;
+        bool snapshotSeen = false;
+        bool privateDataRequested = false;
+        bool privateDataRejected = false;
+        for (int index = 0; index < 1200 && adapter.IsRunning() && !debugStopped; ++index) {
             wxMilliSleep(25);
             for (const auto& event : adapter.PollEvents()) {
-                if (event.kind == codium::CodeBlocksEventKind::DebugSessionStarted) debugStarted = true;
-                if (event.kind == codium::CodeBlocksEventKind::DebugSessionPaused) {
+                if (event.kind == codium::CodeBlocksEventKind::DebugSessionStarted) {
+                    debugStarted = true;
                     debugObserved = true;
                 }
+                if (event.kind == codium::CodeBlocksEventKind::DebugSessionPaused) debugObserved = true;
                 if (event.kind == codium::CodeBlocksEventKind::DebugSessionStopped) {
                     debugObserved = true;
                     debugStopped = true;
                 }
-            }
-            if (debugStarted && !stopRequested && (debugObserved || index >= 200)) {
-                stopRequested = adapter.StopDebug();
-            }
-        }
-        if (stopRequested) {
-            for (int index = 0; index < 200 && adapter.IsRunning() && !debugStopped; ++index) {
-                wxMilliSleep(25);
-                for (const auto& event : adapter.PollEvents()) {
-                    if (event.kind == codium::CodeBlocksEventKind::DebugSessionStopped) debugStopped = true;
+                if (event.kind == codium::CodeBlocksEventKind::DebugSnapshot &&
+                    event.dataKind == wxS("state") && event.payload.Find(wxS("stopped")) != wxNOT_FOUND) {
+                    snapshotSeen = true;
                 }
             }
+            if (debugObserved && !snapshotRequested) {
+                if (!adapter.RequestDebugSnapshot(wxS("state"))) {
+                    adapter.Stop();
+                    std::cerr << "codeblocks-real-adapter-smoke: public debugger snapshot request failed\n";
+                    return 10;
+                }
+                snapshotRequested = true;
+            }
+            if (snapshotSeen && !privateDataRequested) {
+                if (!adapter.RequestDebugSnapshot(wxS("frames"))) {
+                    adapter.Stop();
+                    std::cerr << "codeblocks-real-adapter-smoke: private data request could not be sent\n";
+                    return 11;
+                }
+                privateDataRequested = true;
+            }
+            if (privateDataRequested && adapter.LastErrorCode() == wxS("debugDataUnavailable"))
+                privateDataRejected = true;
+            if (debugStarted && privateDataRejected && !stopRequested)
+                stopRequested = adapter.StopDebug();
         }
-        if (!debugStarted || !debugObserved || (stopRequested && !debugStopped)) {
+        if (!debugStarted || !debugObserved || !snapshotSeen || !privateDataRejected ||
+            (stopRequested && !debugStopped)) {
             adapter.Stop();
             std::cerr << "codeblocks-real-adapter-smoke: debugger events were not observed\n";
-            return 9;
+            return 14;
         }
     }
     adapter.Stop();
@@ -182,7 +203,7 @@ int main(int argc, char** argv)
         untrustedArguments.Add(wxS("--workspace-untrusted"));
         if (!untrustedAdapter.Start(adapterPath, untrustedArguments, dataDirectory, configuration, &error)) {
             std::cerr << "codeblocks-real-adapter-smoke: trust policy probe could not start\n";
-            return 10;
+            return 15;
         }
         for (int index = 0; index < 300 && untrustedAdapter.IsRunning(); ++index) {
             wxMilliSleep(10);
@@ -191,7 +212,7 @@ int main(int argc, char** argv)
         }
         if (untrustedAdapter.LastErrorCode() != wxS("bootstrapFailed") || untrustedAdapter.IsReady()) {
             std::cerr << "codeblocks-real-adapter-smoke: untrusted debugger was accepted\n";
-            return 11;
+            return 16;
         }
         untrustedAdapter.Stop();
     }
@@ -202,7 +223,7 @@ int main(int argc, char** argv)
     failedArguments.Add(wxString::Format(wxS("--compiler-plugin=%s"), compilerPlugin));
     if (!failedAdapter.Start(adapterPath, failedArguments, dataDirectory, configuration, &error)) {
         std::cerr << "codeblocks-real-adapter-smoke: failure probe could not start\n";
-        return 12;
+            return 17;
     }
     for (int index = 0; index < 300 && failedAdapter.IsRunning(); ++index) {
         wxMilliSleep(10);
@@ -211,7 +232,7 @@ int main(int argc, char** argv)
     }
     if (failedAdapter.LastErrorCode() != wxS("bootstrapFailed") || failedAdapter.IsReady()) {
         std::cerr << "codeblocks-real-adapter-smoke: resource failure was not reported safely\n";
-        return 13;
+            return 18;
     }
     failedAdapter.Stop();
 

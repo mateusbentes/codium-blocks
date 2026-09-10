@@ -49,9 +49,13 @@ wxString CodeBlocksEventKindName(CodeBlocksEventKind kind)
     case CodeBlocksEventKind::DebugSessionContinued: return wxS("debugSessionContinued");
     case CodeBlocksEventKind::DebugSessionCursorChanged: return wxS("debugSessionCursorChanged");
     case CodeBlocksEventKind::DebugSessionUpdated: return wxS("debugSessionUpdated");
+    case CodeBlocksEventKind::DebugSnapshot: return wxS("debugSnapshot");
     case CodeBlocksEventKind::PluginCommand: return wxS("pluginCommand");
     }
     return wxS("unknown");
 }
 
 } // namespace codium
+
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Codium::Blocks Contributors
