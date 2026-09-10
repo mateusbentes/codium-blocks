@@ -30,6 +30,7 @@ wxString CodeBlocksEventKindName(CodeBlocksEventKind kind)
 {
     switch (kind) {
     case CodeBlocksEventKind::ProjectOpened: return wxS("projectOpened");
+    case CodeBlocksEventKind::ProjectTarget: return wxS("projectTarget");
     case CodeBlocksEventKind::ProjectClosed: return wxS("projectClosed");
     case CodeBlocksEventKind::BuildStarted: return wxS("buildStarted");
     case CodeBlocksEventKind::BuildFinished: return wxS("buildFinished");

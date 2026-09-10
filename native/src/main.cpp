@@ -96,6 +96,34 @@ wxString ParentDirectory(wxString path)
     return separator == wxNOT_FOUND ? wxString(wxEmptyString) : path.Left(separator);
 }
 
+wxString FindCodeBlocksDataDirectory(const codium::CodeBlocksBridge& bridge)
+{
+    const wxString roots[] = {
+        bridge.Root(),
+        bridge.Root() + wxS("/share/codeblocks"),
+        bridge.Root() + wxS("/../share/codeblocks")
+    };
+    for (const auto& root : roots) {
+        if (wxFileExists(root + wxS("/resources.zip"))) return wxFileName(root).GetFullPath();
+    }
+    return wxEmptyString;
+}
+
+wxString FindCodeBlocksCompilerPlugin(const codium::CodeBlocksBridge& bridge)
+{
+    const wxString names[] = {
+        wxS("libcompiler.so"), wxS("libcompiler.dylib"), wxS("compiler.dylib"),
+        wxS("compiler.dll"), wxS("compiler.so")
+    };
+    for (const auto& directory : bridge.PluginDirectories()) {
+        for (const auto& name : names) {
+            const wxString candidate = directory + wxFILE_SEP_PATH + name;
+            if (wxFileExists(candidate)) return wxFileName(candidate).GetFullPath();
+        }
+    }
+    return wxEmptyString;
+}
+
 wxString DetectProjectRoot()
 {
     const wxString executable = wxStandardPaths::Get().GetExecutablePath();
@@ -2290,6 +2318,14 @@ private:
         configuration.projectFile = CodeBlocksProjectFile();
         wxString error;
         wxArrayString arguments;
+        const wxString dataDirectory = FindCodeBlocksDataDirectory(codeBlocksBridge_);
+        const wxString compilerPlugin = FindCodeBlocksCompilerPlugin(codeBlocksBridge_);
+        if (dataDirectory.empty() || compilerPlugin.empty()) {
+            AppendLog(wxS("Code::Blocks adapter requires resources.zip and a matching Compiler plugin; discovery found neither complete runtime path."));
+            return;
+        }
+        arguments.Add(wxS("--data-dir=") + dataDirectory);
+        arguments.Add(wxS("--compiler-plugin=") + compilerPlugin);
         if (!codeBlocksAdapter_.Start(executable, arguments, workspace_.RootPath(), configuration, &error)) {
             AppendLog(wxS("Code::Blocks adapter error: ") + error);
             return;
@@ -2340,6 +2376,7 @@ private:
             SetStatusText(event.exitCode == 0 ? wxS("Code::Blocks build succeeded") : wxS("Code::Blocks build failed"), 1);
             break;
         case codium::CodeBlocksEventKind::ProjectOpened:
+        case codium::CodeBlocksEventKind::ProjectTarget:
         case codium::CodeBlocksEventKind::ProjectClosed:
         case codium::CodeBlocksEventKind::DebugSessionStarted:
         case codium::CodeBlocksEventKind::DebugSessionStopped:

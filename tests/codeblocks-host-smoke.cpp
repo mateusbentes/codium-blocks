@@ -17,21 +17,30 @@ int main()
     bus.Publish(codium::CodeBlocksHostEvent{
         codium::CodeBlocksEventKind::ProjectOpened,
         wxS("/workspace/demo.cbp"), wxS("app"), wxEmptyString, wxEmptyString,
-        wxS("Project opened"), wxEmptyString, 0, 0, 0, false, wxEmptyString});
+        wxS("Project opened"), wxEmptyString, wxEmptyString, wxEmptyString,
+        wxEmptyString, 0, 0, 0, false, wxEmptyString});
+    bus.Publish(codium::CodeBlocksHostEvent{
+        codium::CodeBlocksEventKind::ProjectTarget,
+        wxS("/workspace/demo.cbp"), wxS("Debug"), wxEmptyString, wxEmptyString,
+        wxS("Project target enumerated"), wxEmptyString, wxS("gcc"),
+        wxS("bin/demo"), wxS("bin"), 0, 0, 0, false, wxEmptyString});
     bus.Publish(codium::CodeBlocksHostEvent{
         codium::CodeBlocksEventKind::CompilerDiagnostic,
         wxS("/workspace/demo.cbp"), wxS("app"), wxS("Compiler"), wxEmptyString,
-        wxS("missing header"), wxS("src/main.cpp"), 11, 4, 1, true, wxEmptyString});
+        wxS("missing header"), wxS("src/main.cpp"), wxEmptyString, wxEmptyString,
+        wxEmptyString, 11, 4, 1, true, wxEmptyString});
     if (bus.Empty()) {
         std::cerr << "codeblocks-host-smoke: event bus unexpectedly empty\n";
         return 2;
     }
 
     const auto events = bus.Drain();
-    if (events.size() != 2 || !bus.Empty() ||
+    if (events.size() != 3 || !bus.Empty() ||
         CodeBlocksEventKindName(events[0].kind) != wxS("projectOpened") ||
-        CodeBlocksEventKindName(events[1].kind) != wxS("compilerDiagnostic") ||
-        events[1].line != 11 || events[1].column != 4 || !events[1].isError) {
+        CodeBlocksEventKindName(events[1].kind) != wxS("projectTarget") ||
+        events[1].compilerId != wxS("gcc") ||
+        CodeBlocksEventKindName(events[2].kind) != wxS("compilerDiagnostic") ||
+        events[2].line != 11 || events[2].column != 4 || !events[2].isError) {
         std::cerr << "codeblocks-host-smoke: event normalization failed\n";
         return 3;
     }

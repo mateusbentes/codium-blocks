@@ -104,6 +104,7 @@ wxArrayString JsonStringArrayField(const wxString& line, const wxString& field)
 CodeBlocksEventKind EventKindFromName(const wxString& name)
 {
     if (name == wxS("projectOpened")) return CodeBlocksEventKind::ProjectOpened;
+    if (name == wxS("projectTarget")) return CodeBlocksEventKind::ProjectTarget;
     if (name == wxS("projectClosed")) return CodeBlocksEventKind::ProjectClosed;
     if (name == wxS("buildStarted")) return CodeBlocksEventKind::BuildStarted;
     if (name == wxS("buildFinished")) return CodeBlocksEventKind::BuildFinished;
@@ -165,6 +166,8 @@ bool CodeBlocksAdapterClient::Start(const wxString& executable,
     sdkMinor_ = 0;
     sdkRelease_ = 0;
     capabilities_.Clear();
+    lastErrorCode_.clear();
+    lastErrorMessage_.clear();
     if (!StartHandshake(configuration)) {
         if (error) *error = wxS("Could not send Code::Blocks adapter handshake.");
         Stop();
@@ -276,6 +279,11 @@ void CodeBlocksAdapterClient::ProcessProtocolLine(const wxString& line,
         ready_ = CodeBlocksHostContract::Supports(contractMajor_, contractMinor_);
         return;
     }
+    if (type == wxS("error")) {
+        lastErrorCode_ = JsonStringField(line, wxS("code"));
+        lastErrorMessage_ = JsonStringField(line, wxS("message"));
+        return;
+    }
     if (type != wxS("event") || !events) return;
 
     CodeBlocksHostEvent event;
@@ -286,6 +294,9 @@ void CodeBlocksAdapterClient::ProcessProtocolLine(const wxString& line,
     event.command = JsonStringField(line, wxS("command"));
     event.message = JsonStringField(line, wxS("message"));
     event.filePath = JsonStringField(line, wxS("filePath"));
+    event.compilerId = JsonStringField(line, wxS("compilerId"));
+    event.outputPath = JsonStringField(line, wxS("outputPath"));
+    event.workingDirectory = JsonStringField(line, wxS("workingDirectory"));
     event.line = JsonIntField(line, wxS("line"));
     event.column = JsonIntField(line, wxS("column"));
     event.exitCode = JsonIntField(line, wxS("exitCode"));

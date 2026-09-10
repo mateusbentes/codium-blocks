@@ -26,6 +26,12 @@ function handle(line) {
       type: 'event', event: 'projectOpened',
       projectPath: request.projectFile, message: 'Project opened by fake adapter'
     });
+    emit({
+      type: 'event', event: 'projectTarget',
+      projectPath: request.projectFile, target: 'app', compilerId: 'gcc',
+      outputPath: 'bin/app', workingDirectory: 'bin',
+      message: 'Project target enumerated by fake adapter'
+    });
   } else if (request.type === 'build') {
     emit({
       type: 'event', event: 'buildStarted',

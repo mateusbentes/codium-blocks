@@ -17,22 +17,6 @@ bool WaitForReady(codium::CodeBlocksAdapterClient& adapter)
     return false;
 }
 
-bool WaitForEvent(codium::CodeBlocksAdapterClient& adapter,
-                  codium::CodeBlocksEventKind kind,
-                  codium::CodeBlocksHostEvent* result = nullptr)
-{
-    for (int i = 0; i < 200 && adapter.IsRunning(); ++i) {
-        wxMilliSleep(10);
-        for (const auto& event : adapter.PollEvents()) {
-            if (event.kind == kind) {
-                if (result) *result = event;
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
 bool WaitForBuildEvents(codium::CodeBlocksAdapterClient& adapter,
                         codium::CodeBlocksHostEvent* diagnostic)
 {
@@ -89,9 +73,26 @@ int main(int argc, char** argv)
         return 3;
     }
     codium::CodeBlocksHostEvent opened;
-    if (!WaitForEvent(adapter, codium::CodeBlocksEventKind::ProjectOpened, &opened) ||
-        opened.projectPath != configuration.projectFile) {
-        std::cerr << "codeblocks-adapter-smoke: projectOpened event failed\n";
+    codium::CodeBlocksHostEvent target;
+    bool openedSeen = false;
+    bool targetSeen = false;
+    for (int i = 0; i < 200 && adapter.IsRunning() && (!openedSeen || !targetSeen); ++i) {
+        wxMilliSleep(10);
+        for (const auto& event : adapter.PollEvents()) {
+            if (event.kind == codium::CodeBlocksEventKind::ProjectOpened) {
+                opened = event;
+                openedSeen = true;
+            }
+            if (event.kind == codium::CodeBlocksEventKind::ProjectTarget) {
+                target = event;
+                targetSeen = true;
+            }
+        }
+    }
+    if (!openedSeen || opened.projectPath != configuration.projectFile ||
+        !targetSeen || target.target != wxS("app") || target.compilerId != wxS("gcc") ||
+        target.outputPath != wxS("bin/app") || target.workingDirectory != wxS("bin")) {
+        std::cerr << "codeblocks-adapter-smoke: project target events failed\n";
         return 4;
     }
 

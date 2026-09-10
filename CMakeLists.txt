@@ -3,6 +3,9 @@ project(CodiumBlocks VERSION 1.0.1 LANGUAGES CXX)
 
 option(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_SDK "Expose an optional Code::Blocks SDK include root to the native target" OFF)
 set(CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT "" CACHE PATH "Code::Blocks SDK installation or source root")
+option(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER "Build the isolated Code::Blocks SDK host adapter when a usable SDK is found" ON)
+set(CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR "" CACHE PATH "Code::Blocks data directory containing resources.zip")
+set(CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR "" CACHE PATH "Code::Blocks plugin directory containing the matched Compiler plugin")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,12 +19,131 @@ function(codium_blocks_enable_warnings target)
     endif()
 endfunction()
 
-find_package(wxWidgets REQUIRED COMPONENTS core base richtext net xml)
+find_package(wxWidgets REQUIRED COMPONENTS core base richtext net xml xrc)
 include(${wxWidgets_USE_FILE})
 find_package(OpenSSL QUIET)
 if(OpenSSL_FOUND)
     add_compile_definitions(CODIUM_BLOCKS_HAVE_OPENSSL=1)
     set(CODIUM_BLOCKS_CRYPTO_LIB OpenSSL::Crypto)
+endif()
+
+set(CODIUM_BLOCKS_CODEBLOCKS_ADAPTER_AVAILABLE OFF)
+set(CODIUM_BLOCKS_CODEBLOCKS_LINK_TARGET "")
+set(CODIUM_BLOCKS_CODEBLOCKS_INCLUDE_DIRS "")
+set(CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR_DETECTED "")
+set(CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN "")
+
+if(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(CODEBLOCKS QUIET codeblocks)
+    endif()
+
+    if(CODEBLOCKS_FOUND)
+        find_library(CODIUM_BLOCKS_CODEBLOCKS_LIBRARY NAMES codeblocks
+            HINTS ${CODEBLOCKS_LIBRARY_DIRS})
+        if(CODIUM_BLOCKS_CODEBLOCKS_LIBRARY)
+            set(CODIUM_BLOCKS_CODEBLOCKS_LINK_TARGET ${CODIUM_BLOCKS_CODEBLOCKS_LIBRARY})
+        endif()
+        foreach(codeblocks_include_dir IN LISTS CODEBLOCKS_INCLUDE_DIRS)
+            if(EXISTS "${codeblocks_include_dir}")
+                list(APPEND CODIUM_BLOCKS_CODEBLOCKS_INCLUDE_DIRS "${codeblocks_include_dir}")
+            endif()
+        endforeach()
+        if(NOT CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR)
+            execute_process(
+                COMMAND ${PKG_CONFIG_EXECUTABLE} --variable=datarootdir codeblocks
+                OUTPUT_VARIABLE CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR_DETECTED
+                OUTPUT_STRIP_TRAILING_WHITESPACE)
+            if(CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR_DETECTED)
+                set(CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR_DETECTED
+                    "${CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR_DETECTED}/codeblocks")
+            endif()
+        endif()
+        if(NOT CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR)
+            execute_process(
+                COMMAND ${PKG_CONFIG_EXECUTABLE} --variable=plugindir codeblocks
+                OUTPUT_VARIABLE CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR
+                OUTPUT_STRIP_TRAILING_WHITESPACE)
+            if(NOT EXISTS "${CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR}")
+                execute_process(
+                    COMMAND ${PKG_CONFIG_EXECUTABLE} --variable=libdir codeblocks
+                    OUTPUT_VARIABLE codeblocks_libdir
+                    OUTPUT_STRIP_TRAILING_WHITESPACE)
+                set(CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR
+                    "${codeblocks_libdir}/codeblocks/plugins")
+            endif()
+        endif()
+    elseif(CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT)
+        find_path(CODIUM_BLOCKS_CODEBLOCKS_INCLUDE_DIR cbplugin.h
+            HINTS
+                "${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}/include/codeblocks"
+                "${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}/include"
+                "${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}/src/include"
+            NO_DEFAULT_PATH)
+        find_library(CODIUM_BLOCKS_CODEBLOCKS_LIBRARY NAMES codeblocks
+            HINTS
+                "${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}/lib"
+                "${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}/lib64"
+                "${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}/build/sdk"
+            NO_DEFAULT_PATH)
+        if(CODIUM_BLOCKS_CODEBLOCKS_INCLUDE_DIR AND CODIUM_BLOCKS_CODEBLOCKS_LIBRARY)
+            set(CODIUM_BLOCKS_CODEBLOCKS_LINK_TARGET ${CODIUM_BLOCKS_CODEBLOCKS_LIBRARY})
+            set(CODIUM_BLOCKS_CODEBLOCKS_INCLUDE_DIRS ${CODIUM_BLOCKS_CODEBLOCKS_INCLUDE_DIR})
+        endif()
+        if(NOT CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR)
+            foreach(candidate
+                    "${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}/share/codeblocks"
+                    "${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}/data"
+                    "${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}")
+                if(EXISTS "${candidate}/resources.zip")
+                    set(CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR_DETECTED "${candidate}")
+                    break()
+                endif()
+            endforeach()
+        endif()
+        if(NOT CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR)
+            foreach(candidate
+                    "${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}/lib/codeblocks/plugins"
+                    "${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}/plugins"
+                    "${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}/bin/plugins")
+                if(EXISTS "${candidate}")
+                    set(CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR "${candidate}")
+                    break()
+                endif()
+            endforeach()
+        endif()
+    endif()
+
+    if(NOT CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR AND CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR_DETECTED)
+        set(CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR
+            "${CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR_DETECTED}" CACHE PATH
+            "Code::Blocks data directory containing resources.zip" FORCE)
+    endif()
+    if(CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR AND EXISTS "${CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR}/resources.zip")
+        foreach(plugin_candidate
+                "${CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR}/libcompiler.so"
+                "${CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR}/libcompiler.dylib"
+                "${CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR}/compiler.dll"
+                "${CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR}/compiler.exe"
+                "${CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR}/../lib/codeblocks/plugins/libcompiler.so"
+                "${CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR}/plugins/libcompiler.so")
+            if(EXISTS "${plugin_candidate}")
+                set(CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN "${plugin_candidate}")
+                break()
+            endif()
+        endforeach()
+    endif()
+
+    if(CODIUM_BLOCKS_CODEBLOCKS_LINK_TARGET AND CODIUM_BLOCKS_CODEBLOCKS_INCLUDE_DIRS)
+        set(CODIUM_BLOCKS_CODEBLOCKS_ADAPTER_AVAILABLE ON)
+        message(STATUS "Code::Blocks SDK adapter build enabled")
+        message(STATUS "  SDK includes: ${CODIUM_BLOCKS_CODEBLOCKS_INCLUDE_DIRS}")
+        message(STATUS "  SDK data: ${CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR}")
+        message(STATUS "  Compiler plugin: ${CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN}")
+    else()
+        message(STATUS "Code::Blocks SDK adapter unavailable; building the portable core only")
+    endif()
 endif()
 
 add_executable(codium-blocks
@@ -70,6 +192,18 @@ if(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_SDK AND CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT)
     message(STATUS "Optional Code::Blocks SDK include integration enabled: ${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}")
 else()
     message(STATUS "Code::Blocks SDK include integration is optional and disabled")
+endif()
+
+if(CODIUM_BLOCKS_CODEBLOCKS_ADAPTER_AVAILABLE)
+    add_executable(codium-blocks-codeblocks-adapter
+        native/src/codeblocks_adapter_main.cpp
+        native/src/codeblocks_sdk_bootstrap.cpp
+    )
+    target_include_directories(codium-blocks-codeblocks-adapter PRIVATE
+        native/include ${CODIUM_BLOCKS_CODEBLOCKS_INCLUDE_DIRS})
+    codium_blocks_enable_warnings(codium-blocks-codeblocks-adapter)
+    target_link_libraries(codium-blocks-codeblocks-adapter PRIVATE
+        ${wxWidgets_LIBRARIES} ${CODIUM_BLOCKS_CODEBLOCKS_LINK_TARGET})
 endif()
 
 add_executable(codium-blocks-document-smoke
@@ -201,7 +335,21 @@ target_include_directories(codium-blocks-codeblocks-adapter-smoke PRIVATE native
 codium_blocks_enable_warnings(codium-blocks-codeblocks-adapter-smoke)
 target_link_libraries(codium-blocks-codeblocks-adapter-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
+if(CODIUM_BLOCKS_CODEBLOCKS_ADAPTER_AVAILABLE AND UNIX AND NOT APPLE)
+    add_executable(codium-blocks-codeblocks-real-adapter-smoke
+        native/src/codeblocks_host.cpp
+        native/src/codeblocks_adapter_client.cpp
+        tests/codeblocks-real-adapter-smoke.cpp
+    )
+    target_include_directories(codium-blocks-codeblocks-real-adapter-smoke PRIVATE native/include)
+    codium_blocks_enable_warnings(codium-blocks-codeblocks-real-adapter-smoke)
+    target_link_libraries(codium-blocks-codeblocks-real-adapter-smoke PRIVATE ${wxWidgets_LIBRARIES})
+endif()
+
 install(TARGETS codium-blocks RUNTIME DESTINATION bin)
+if(TARGET codium-blocks-codeblocks-adapter)
+    install(TARGETS codium-blocks-codeblocks-adapter RUNTIME DESTINATION bin)
+endif()
 install(DIRECTORY extension-host DESTINATION share/codium-blocks)
 install(DIRECTORY extensions DESTINATION share/codium-blocks)
 install(DIRECTORY assets/icons DESTINATION share/codium-blocks)
@@ -231,6 +379,27 @@ if(BUILD_TESTING)
     add_test(NAME codeblocks-bridge-smoke COMMAND codium-blocks-codeblocks-bridge-smoke)
     add_test(NAME codeblocks-host-smoke COMMAND codium-blocks-codeblocks-host-smoke)
     add_test(NAME codeblocks-adapter-smoke COMMAND codium-blocks-codeblocks-adapter-smoke ${CMAKE_SOURCE_DIR})
+
+    if(TARGET codium-blocks-codeblocks-real-adapter-smoke)
+        find_program(CODIUM_BLOCKS_XVFB_RUN xvfb-run)
+        if(CODIUM_BLOCKS_XVFB_RUN AND CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR AND CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN)
+            file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/codeblocks-adapter-home/config")
+            add_test(
+                NAME codeblocks-real-adapter-smoke
+                COMMAND ${CMAKE_COMMAND} -E env
+                    HOME=${CMAKE_CURRENT_BINARY_DIR}/codeblocks-adapter-home
+                    XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/codeblocks-adapter-home/config
+                    ${CODIUM_BLOCKS_XVFB_RUN} -a
+                    $<TARGET_FILE:codium-blocks-codeblocks-real-adapter-smoke>
+                    $<TARGET_FILE:codium-blocks-codeblocks-adapter>
+                    ${CMAKE_SOURCE_DIR}/tests/fixtures/codium-blocks-adapter.cbp
+                    ${CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR}
+                    ${CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN}
+            )
+        else()
+            message(STATUS "Code::Blocks real integration test unavailable: xvfb-run or SDK runtime files missing")
+        endif()
+    endif()
 endif()
 
 message(STATUS "Codium::Blocks ${PROJECT_VERSION}: native wxWidgets core + optional Node.js extension host")

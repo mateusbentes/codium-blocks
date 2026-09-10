@@ -17,6 +17,7 @@ struct CodeBlocksHostContract final {
 
 enum class CodeBlocksEventKind {
     ProjectOpened,
+    ProjectTarget,
     ProjectClosed,
     BuildStarted,
     BuildFinished,
@@ -34,6 +35,9 @@ struct CodeBlocksHostEvent final {
     wxString command;
     wxString message;
     wxString filePath;
+    wxString compilerId;
+    wxString outputPath;
+    wxString workingDirectory;
     int line = 0;
     int column = 0;
     int exitCode = 0;
