@@ -80,6 +80,8 @@ The interface must be keyboard-first without requiring the user to memorize hidd
 | Go to file | Search workspace-relative files and open the selected result |
 | Go to symbol | Search symbols supplied by the language server or project index |
 | Go to line | Move to a line and column in the active document |
+| Find and replace | Search, replace one occurrence, or replace all occurrences in the active document (`Ctrl+F`, `Ctrl+H`) |
+| Find next/previous | Move through matches and wrap at either end of the active document (`F3`, `Shift+F3`) |
 | Next problem | Move to the next visible filtered problem across the workspace (`F8`, wrapping at the end) |
 | Previous problem | Move to the previous visible filtered problem (`Shift+F8`, wrapping at the beginning) |
 | Toggle problem panel | Focus or collapse the Problems view |
@@ -88,6 +90,8 @@ The interface must be keyboard-first without requiring the user to memorize hidd
 | Focus terminal | Move focus to the active terminal without opening a new process |
 
 Mouse interaction must remain direct. Double-clicking a problem opens its source location. Clicking a file path in Build or Terminal output opens the file. Clicking a warning or error marker opens the detail without changing the document text.
+
+The first Phase G editor increment implements the Find, Find next, Find previous, Replace, Replace all, and Go to Line actions through native wxWidgets controls. The search model also has case-sensitive and case-insensitive operations for future search-option controls. Syntax highlighting, go-to-file, go-to-symbol, and richer replacement options remain planned.
 
 ## Extension and native contribution boundaries
 

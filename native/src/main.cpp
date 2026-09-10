@@ -1,4 +1,5 @@
 #include "codium/document.hpp"
+#include "codium/editor_actions.hpp"
 #include "codium/extension_host_client.hpp"
 #include "codium/project_config.hpp"
 #include "codium/build_session.hpp"
@@ -73,6 +74,12 @@ enum : int {
     ID_RERUN_BUILD,
     ID_NEXT_PROBLEM,
     ID_PREVIOUS_PROBLEM,
+    ID_FIND_EDITOR,
+    ID_REPLACE_EDITOR,
+    ID_REPLACE_ALL_EDITOR,
+    ID_FIND_NEXT,
+    ID_FIND_PREVIOUS,
+    ID_GOTO_LINE,
     ID_TASK_PROCESS = wxID_HIGHEST + 500,
     ID_START_TERMINAL,
     ID_SEND_TERMINAL,
@@ -735,6 +742,16 @@ private:
         fileMenu->Append(wxID_EXIT, wxS("Exit\tCtrl+Q"));
         menuBar->Append(fileMenu, wxS("&File"));
 
+        auto* editMenu = new wxMenu();
+        editMenu->Append(ID_FIND_EDITOR, wxS("Find\tCtrl+F"));
+        editMenu->Append(ID_FIND_NEXT, wxS("Find next\tF3"));
+        editMenu->Append(ID_FIND_PREVIOUS, wxS("Find previous\tShift+F3"));
+        editMenu->Append(ID_REPLACE_EDITOR, wxS("Replace\tCtrl+H"));
+        editMenu->Append(ID_REPLACE_ALL_EDITOR, wxS("Replace all"));
+        editMenu->AppendSeparator();
+        editMenu->Append(ID_GOTO_LINE, wxS("Go to Line\tCtrl+G"));
+        menuBar->Append(editMenu, wxS("&Edit"));
+
         auto* languageMenu = new wxMenu();
         languageMenu->Append(ID_START_CLANGD, wxS("Start clangd"));
         languageMenu->Append(ID_INITIALIZE_LSP, wxS("Initialize language server"));
@@ -786,6 +803,12 @@ private:
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { OpenWorkspace(); }, ID_OPEN_WORKSPACE);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { SaveFile(); }, wxID_SAVE);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { Close(true); }, wxID_EXIT);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { FindInEditor(false); }, ID_FIND_EDITOR);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { FindNextInEditor(false); }, ID_FIND_NEXT);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { FindNextInEditor(true); }, ID_FIND_PREVIOUS);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { ReplaceInEditor(); }, ID_REPLACE_EDITOR);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { ReplaceAllInEditor(); }, ID_REPLACE_ALL_EDITOR);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { GoToLine(); }, ID_GOTO_LINE);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StartLanguageServer(); }, ID_START_CLANGD);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { InitializeLanguageServer(); }, ID_INITIALIZE_LSP);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { RequestHover(); }, ID_HOVER);
@@ -815,6 +838,16 @@ private:
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { DiscoverCodeBlocks(); }, ID_DISCOVER_CODEBLOCKS);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StartCodeBlocksAdapter(); }, ID_START_CODEBLOCKS_ADAPTER);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StopCodeBlocksAdapter(); }, ID_STOP_CODEBLOCKS_ADAPTER);
+
+        wxAcceleratorEntry accelerators[] = {
+            wxAcceleratorEntry(wxACCEL_CTRL, wxKeyCode('F'), ID_FIND_EDITOR),
+            wxAcceleratorEntry(wxACCEL_CTRL, wxKeyCode('H'), ID_REPLACE_EDITOR),
+            wxAcceleratorEntry(wxACCEL_CTRL, wxKeyCode('G'), ID_GOTO_LINE),
+            wxAcceleratorEntry(wxACCEL_NORMAL, WXK_F3, ID_FIND_NEXT),
+            wxAcceleratorEntry(wxACCEL_SHIFT, WXK_F3, ID_FIND_PREVIOUS),
+        };
+        SetAcceleratorTable(wxAcceleratorTable(
+            static_cast<int>(sizeof(accelerators) / sizeof(accelerators[0])), accelerators));
     }
 
     template <typename Handler>
@@ -2192,6 +2225,138 @@ private:
         AppendLog(wxString::Format(wxS("Debug adapter finished with exit code %d."), event.GetExitCode()));
     }
 
+    bool EnsureEditorAvailable()
+    {
+        if (editor_) return true;
+        AppendLog(wxS("Open an editor before using this command."));
+        return false;
+    }
+
+    void SelectEditorMatch(const codium::EditorMatch& match)
+    {
+        if (!editor_ || !match.Found()) return;
+        editor_->SetSelection(match.start, match.start + match.length);
+        editor_->ShowPosition(match.start);
+        editor_->SetFocus();
+        UpdateTitle();
+    }
+
+    void FindInEditor(bool backwards)
+    {
+        if (!EnsureEditorAvailable()) return;
+        wxString initial = lastSearchQuery_;
+        long selectionFrom = 0;
+        long selectionTo = 0;
+        editor_->GetSelection(&selectionFrom, &selectionTo);
+        if (selectionFrom != selectionTo) {
+            initial = editor_->GetStringSelection();
+        }
+        wxTextEntryDialog dialog(this, wxS("Find text"), wxS("Find"), initial);
+        if (dialog.ShowModal() != wxID_OK || dialog.GetValue().empty()) return;
+        lastSearchQuery_ = dialog.GetValue();
+        FindNextInEditor(backwards);
+    }
+
+    void FindNextInEditor(bool backwards)
+    {
+        if (!EnsureEditorAvailable()) return;
+        if (lastSearchQuery_.empty()) {
+            FindInEditor(backwards);
+            return;
+        }
+        const wxString text = editor_->GetValue();
+        long selectionFrom = 0;
+        long selectionTo = 0;
+        editor_->GetSelection(&selectionFrom, &selectionTo);
+        const long start = backwards
+            ? std::max(0L, selectionFrom - 1) : selectionTo;
+        codium::EditorMatch match = codium::EditorActions::Find(
+            text, lastSearchQuery_, start, backwards, lastSearchMatchCase_);
+        if (!match.Found()) {
+            match = codium::EditorActions::Find(
+                text, lastSearchQuery_, backwards ? text.length() : 0, backwards, lastSearchMatchCase_);
+        }
+        if (!match.Found()) {
+            AppendLog(wxS("Search text was not found: ") + lastSearchQuery_);
+            return;
+        }
+        SelectEditorMatch(match);
+    }
+
+    void ReplaceInEditor()
+    {
+        if (!EnsureEditorAvailable()) return;
+        wxTextEntryDialog findDialog(this, wxS("Find text"), wxS("Replace"), lastSearchQuery_);
+        if (findDialog.ShowModal() != wxID_OK || findDialog.GetValue().empty()) return;
+        lastSearchQuery_ = findDialog.GetValue();
+        wxTextEntryDialog replacementDialog(this, wxS("Replace with"), wxS("Replace"), lastReplacement_);
+        if (replacementDialog.ShowModal() != wxID_OK) return;
+        lastReplacement_ = replacementDialog.GetValue();
+
+        const wxString text = editor_->GetValue();
+        long selectionFrom = 0;
+        long selectionTo = 0;
+        editor_->GetSelection(&selectionFrom, &selectionTo);
+        const long start = selectionFrom != selectionTo ? selectionFrom : editor_->GetInsertionPoint();
+        auto match = codium::EditorActions::Find(text, lastSearchQuery_, start, false, lastSearchMatchCase_);
+        if (!match.Found()) match = codium::EditorActions::Find(text, lastSearchQuery_, 0, false, lastSearchMatchCase_);
+        if (!match.Found()) {
+            AppendLog(wxS("Search text was not found: ") + lastSearchQuery_);
+            return;
+        }
+        editor_->Replace(match.start, match.start + match.length, lastReplacement_);
+        editor_->SetSelection(match.start, match.start + lastReplacement_.length());
+        editor_->ShowPosition(match.start);
+        editor_->SetFocus();
+        AppendLog(wxString::Format(wxS("Replaced one occurrence of '%s'."), lastSearchQuery_));
+        UpdateTitle();
+    }
+
+    void ReplaceAllInEditor()
+    {
+        if (!EnsureEditorAvailable()) return;
+        wxTextEntryDialog findDialog(this, wxS("Find text"), wxS("Replace all"), lastSearchQuery_);
+        if (findDialog.ShowModal() != wxID_OK || findDialog.GetValue().empty()) return;
+        lastSearchQuery_ = findDialog.GetValue();
+        wxTextEntryDialog replacementDialog(this, wxS("Replace with"), wxS("Replace all"), lastReplacement_);
+        if (replacementDialog.ShowModal() != wxID_OK) return;
+        lastReplacement_ = replacementDialog.GetValue();
+
+        int replacements = 0;
+        const wxString replaced = codium::EditorActions::ReplaceAll(
+            editor_->GetValue(), lastSearchQuery_, lastReplacement_, lastSearchMatchCase_, &replacements);
+        if (replacements == 0) {
+            AppendLog(wxS("Search text was not found: ") + lastSearchQuery_);
+            return;
+        }
+        editor_->SetValue(replaced);
+        editor_->SetInsertionPointEnd();
+        editor_->SetFocus();
+        AppendLog(wxString::Format(wxS("Replaced %d occurrence(s) of '%s'."), replacements, lastSearchQuery_));
+        UpdateTitle();
+    }
+
+    void GoToLine()
+    {
+        if (!EnsureEditorAvailable()) return;
+        const int currentLine = codium::EditorActions::LineColumnForPosition(
+            editor_->GetValue(), editor_->GetInsertionPoint()).line + 1;
+        wxTextEntryDialog dialog(this, wxS("Line number"), wxS("Go to Line"),
+                                 wxString::Format(wxS("%d"), currentLine));
+        if (dialog.ShowModal() != wxID_OK) return;
+        long line = 0;
+        if (!dialog.GetValue().ToLong(&line) || line < 1) {
+            AppendLog(wxS("Go to Line requires a positive line number."));
+            return;
+        }
+        const long position = codium::EditorActions::PositionForLineColumn(
+            editor_->GetValue(), static_cast<int>(line - 1), 0);
+        editor_->SetInsertionPoint(position);
+        editor_->ShowPosition(position);
+        editor_->SetFocus();
+        UpdateTitle();
+    }
+
     void ShowCommandPalette()
     {
         const wxArrayString commands = {
@@ -2208,7 +2373,9 @@ private:
             wxS("Start Code::Blocks adapter"), wxS("Stop Code::Blocks adapter"),
             wxS("Previous problem"), wxS("Next problem"),
             wxS("Start Code::Blocks debug"), wxS("Continue Code::Blocks debug"),
-            wxS("Pause Code::Blocks debug"), wxS("Stop Code::Blocks debug"), wxS("Build and Run selected target")
+            wxS("Pause Code::Blocks debug"), wxS("Stop Code::Blocks debug"), wxS("Build and Run selected target"),
+            wxS("Find"), wxS("Find next"), wxS("Find previous"), wxS("Replace"),
+            wxS("Replace all"), wxS("Go to Line")
         };
         wxSingleChoiceDialog dialog(this, wxS("Select a command"), wxS("Command Palette"), commands);
         if (dialog.ShowModal() != wxID_OK) return;
@@ -2250,6 +2417,12 @@ private:
         case 34: PauseCodeBlocksDebug(); break;
         case 35: StopCodeBlocksDebug(); break;
         case 36: RunSelectedTarget(); break;
+        case 37: FindInEditor(false); break;
+        case 38: FindNextInEditor(false); break;
+        case 39: FindNextInEditor(true); break;
+        case 40: ReplaceInEditor(); break;
+        case 41: ReplaceAllInEditor(); break;
+        case 42: GoToLine(); break;
         default: break;
         }
     }
@@ -3279,6 +3452,9 @@ private:
     wxTextCtrl* hover_ = nullptr;
     wxListBox* completion_ = nullptr;
     wxTextCtrl* log_ = nullptr;
+    wxString lastSearchQuery_;
+    wxString lastReplacement_;
+    bool lastSearchMatchCase_ = true;
     wxTimer timer_;
     bool loadingDocument_ = false;
     int documentVersion_ = 1;
