@@ -36,7 +36,8 @@ public:
     bool ContinueDebug();
     bool PauseDebug();
     bool StopDebug();
-    bool RequestDebugSnapshot(const wxString& dataKind = wxS("state"));
+    bool RequestDebugSnapshot(const wxString& dataKind = wxS("state"),
+                              const wxString& expression = wxString());
 
     wxArrayString Poll();
     std::vector<CodeBlocksHostEvent> PollEvents();
@@ -47,6 +48,9 @@ public:
     int SdkMinor() const { return sdkMinor_; }
     int SdkRelease() const { return sdkRelease_; }
     const wxArrayString& Capabilities() const { return capabilities_; }
+    const wxString& DebuggerProviderIdentity() const { return debuggerProviderIdentity_; }
+    const wxString& DebuggerProviderSourceRevision() const { return debuggerProviderSourceRevision_; }
+    const wxString& DebuggerProviderAbiIdentity() const { return debuggerProviderAbiIdentity_; }
     const wxString& LastErrorCode() const { return lastErrorCode_; }
     const wxString& LastErrorMessage() const { return lastErrorMessage_; }
 
@@ -66,6 +70,9 @@ private:
     int sdkMinor_ = 0;
     int sdkRelease_ = 0;
     wxArrayString capabilities_;
+    wxString debuggerProviderIdentity_;
+    wxString debuggerProviderSourceRevision_;
+    wxString debuggerProviderAbiIdentity_;
     wxString lastErrorCode_;
     wxString lastErrorMessage_;
 };

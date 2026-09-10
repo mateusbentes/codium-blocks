@@ -15,11 +15,11 @@ function handle(line) {
     emit({
       type: 'ready',
       contractMajor: incompatible ? 2 : 1,
-      contractMinor: 0,
-      sdkMajor: request.sdkMajor || 1,
-      sdkMinor: request.sdkMinor || 36,
+      contractMinor: 3,
+      sdkMajor: request.sdkMajor || 2,
+      sdkMinor: request.sdkMinor || 23,
       sdkRelease: request.sdkRelease || 0,
-      capabilities: ['sdkEventSink', 'projectEvents', 'projectTargets', 'compilerEvents', 'buildEvents', 'compilerDiagnostics', 'debuggerPluginMatched', 'debuggerEvents', 'debuggerControl', 'debuggerSnapshot', 'debuggerPublicState', 'debuggerDataUnavailable']
+      capabilities: ['sdkEventSink', 'projectEvents', 'projectTargets', 'compilerEvents', 'buildEvents', 'compilerDiagnostics', 'debuggerPluginMatched', 'debuggerEvents', 'debuggerControl', 'debuggerSnapshot', 'debuggerPublicState', 'debuggerDataUnavailable', 'debuggerPrivateProvider', 'debuggerStackFrames', 'debuggerThreads', 'debuggerBreakpoints', 'debuggerWatches', 'debuggerVariables']
     });
   } else if (request.type === 'openProject') {
     emit({
@@ -69,9 +69,24 @@ function handle(line) {
     emit({ type: 'event', event: 'debugSessionStopped', plugin: 'Debugger', exitCode: 0, message: 'Debug session stopped' });
   } else if (request.type === 'requestDebugSnapshot') {
     const dataKind = request.dataKind || 'state';
-    if (dataKind !== 'state') {
+    if (dataKind === 'frames') {
+      emit({ type: 'event', event: 'debugSnapshot', plugin: 'DebuggerGDBProvider', dataKind,
+        snapshotJson: JSON.stringify({ dataKind, activeFrame: 0, items: [{ number: 0, function: 'main', file: 'src/main.cpp', lineText: '12', valid: true }] }),
+        message: 'Fake DebuggerGDB frame snapshot' });
+    } else if (dataKind === 'threads') {
+      emit({ type: 'event', event: 'debugSnapshot', plugin: 'DebuggerGDBProvider', dataKind,
+        snapshotJson: JSON.stringify({ dataKind, items: [{ active: true, number: 1, info: 'main thread' }] }),
+        message: 'Fake DebuggerGDB thread snapshot' });
+    } else if (dataKind === 'breakpoints') {
+      emit({ type: 'event', event: 'debugSnapshot', plugin: 'DebuggerGDBProvider', dataKind,
+        snapshotJson: JSON.stringify({ dataKind, items: [] }), message: 'Fake DebuggerGDB breakpoint snapshot' });
+    } else if (dataKind === 'watches' || dataKind === 'variables') {
+      emit({ type: 'event', event: 'debugSnapshot', plugin: 'DebuggerGDBProvider', dataKind,
+        snapshotJson: JSON.stringify({ dataKind, expression: request.expression || '', item: { symbol: request.expression || '', value: '42', type: 'int', children: [] } }),
+        message: 'Fake DebuggerGDB watch snapshot' });
+    } else if (dataKind !== 'state') {
       emit({ type: 'error', code: 'debugDataUnavailable', dataKind,
-        capability: 'debuggerPublicState',
+        capability: 'debuggerPrivateProvider',
         message: `The fake adapter does not expose ${dataKind} model data.` });
     } else {
       emit({ type: 'event', event: 'debugSnapshot', plugin: 'Debugger', dataKind,

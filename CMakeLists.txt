@@ -8,6 +8,20 @@ set(CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR "" CACHE PATH "Code::Blocks data directory
 set(CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR "" CACHE PATH "Code::Blocks plugin directory containing matched native plugins")
 set(CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN "" CACHE FILEPATH "Explicit Code::Blocks Compiler plugin path")
 set(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGER_PLUGIN "" CACHE FILEPATH "Optional explicit Code::Blocks Debugger plugin path")
+option(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_DEBUGGERGDB_PROVIDER
+    "Build the separately compiled private DebuggerGDB data provider" OFF)
+set(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_DIR "" CACHE PATH
+    "Code::Blocks plugins/debuggergdb source directory matching the installed SDK")
+set(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_REVISION "" CACHE STRING
+    "Exact Code::Blocks source revision used to build the DebuggerGDB provider")
+set(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_ABI_TAG "" CACHE STRING
+    "Explicit ABI/build tag shared by the Code::Blocks SDK and DebuggerGDB provider")
+set(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SDK_MAJOR 2 CACHE STRING
+    "Code::Blocks SDK major version used by the private provider")
+set(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SDK_MINOR 23 CACHE STRING
+    "Code::Blocks SDK minor version used by the private provider")
+set(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SDK_RELEASE 0 CACHE STRING
+    "Code::Blocks SDK release version used by the private provider")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -33,6 +47,40 @@ set(CODIUM_BLOCKS_CODEBLOCKS_ADAPTER_AVAILABLE OFF)
 set(CODIUM_BLOCKS_CODEBLOCKS_LINK_TARGET "")
 set(CODIUM_BLOCKS_CODEBLOCKS_INCLUDE_DIRS "")
 set(CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR_DETECTED "")
+set(CODIUM_BLOCKS_DEBUGGERGDB_PROVIDER_AVAILABLE OFF)
+set(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_INCLUDE_DIRS "")
+set(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_ABI_IDENTITY "unspecified")
+
+if(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_DEBUGGERGDB_PROVIDER)
+    if(NOT CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_DIR AND CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT)
+        set(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_DIR
+            "${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}/src/plugins/debuggergdb"
+            CACHE PATH "Code::Blocks plugins/debuggergdb source directory matching the installed SDK" FORCE)
+    endif()
+    find_path(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_HEADER_DIR debuggergdb.h
+        HINTS "${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_DIR}" NO_DEFAULT_PATH)
+    if(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_HEADER_DIR AND
+       CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_REVISION AND
+       CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_ABI_TAG)
+        set(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_INCLUDE_DIRS
+            "${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_HEADER_DIR}")
+        if(CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT)
+            list(APPEND CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_INCLUDE_DIRS
+                "${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}/src/include"
+                "${CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT}/src/sdk")
+        endif()
+        string(TOLOWER "${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}-cxx${CMAKE_CXX_STANDARD}" CODIUM_BLOCKS_CODEBLOCKS_COMPILER_IDENTITY)
+        set(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_ABI_IDENTITY
+            "${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_REVISION}|${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_ABI_TAG}|${CODIUM_BLOCKS_CODEBLOCKS_COMPILER_IDENTITY}")
+        set(CODIUM_BLOCKS_DEBUGGERGDB_PROVIDER_AVAILABLE ON)
+        message(STATUS "Code::Blocks private DebuggerGDB provider build enabled")
+        message(STATUS "  DebuggerGDB source: ${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_DIR}")
+        message(STATUS "  Source revision: ${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_REVISION}")
+        message(STATUS "  ABI identity: ${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_ABI_IDENTITY}")
+    else()
+        message(WARNING "DebuggerGDB provider requested but private source, exact revision, or ABI tag is missing; provider disabled")
+    endif()
+endif()
 
 if(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER)
     find_package(PkgConfig QUIET)
@@ -166,6 +214,19 @@ if(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER)
     endif()
 endif()
 
+if(CODIUM_BLOCKS_DEBUGGERGDB_PROVIDER_AVAILABLE AND (WIN32 OR APPLE))
+    set(CODIUM_BLOCKS_DEBUGGERGDB_PROVIDER_AVAILABLE OFF)
+    message(WARNING "DebuggerGDB provider is currently validated only on Linux; provider disabled on this platform")
+endif()
+
+if(CODIUM_BLOCKS_DEBUGGERGDB_PROVIDER_AVAILABLE AND
+   (NOT CODIUM_BLOCKS_CODEBLOCKS_ADAPTER_AVAILABLE OR
+    NOT CODIUM_BLOCKS_CODEBLOCKS_DEBUGGER_PLUGIN OR
+    NOT EXISTS "${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGER_PLUGIN}"))
+    set(CODIUM_BLOCKS_DEBUGGERGDB_PROVIDER_AVAILABLE OFF)
+    message(WARNING "DebuggerGDB provider disabled because the matched Code::Blocks Debugger plugin is unavailable")
+endif()
+
 add_executable(codium-blocks
     native/src/document.cpp
     native/src/main.cpp
@@ -226,6 +287,39 @@ if(CODIUM_BLOCKS_CODEBLOCKS_ADAPTER_AVAILABLE)
     codium_blocks_enable_warnings(codium-blocks-codeblocks-adapter)
     target_link_libraries(codium-blocks-codeblocks-adapter PRIVATE
         ${wxWidgets_LIBRARIES} ${CODIUM_BLOCKS_CODEBLOCKS_LINK_TARGET})
+    if(CODIUM_BLOCKS_DEBUGGERGDB_PROVIDER_AVAILABLE)
+        target_compile_definitions(codium-blocks-codeblocks-adapter PRIVATE
+            CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_REVISION="${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_REVISION}"
+            CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_ABI_IDENTITY="${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_ABI_IDENTITY}"
+            CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SDK_MAJOR=${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SDK_MAJOR}
+            CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SDK_MINOR=${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SDK_MINOR}
+            CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SDK_RELEASE=${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SDK_RELEASE}
+            CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_PRIVATE_PROVIDER_ENABLED=1)
+    endif()
+endif()
+
+if(CODIUM_BLOCKS_DEBUGGERGDB_PROVIDER_AVAILABLE AND CODIUM_BLOCKS_CODEBLOCKS_ADAPTER_AVAILABLE AND
+   UNIX AND NOT APPLE AND
+   CODIUM_BLOCKS_CODEBLOCKS_DEBUGGER_PLUGIN AND EXISTS "${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGER_PLUGIN}")
+    add_library(codium-blocks-codeblocks-debuggergdb-provider SHARED
+        native/src/codeblocks_debugger_provider.cpp)
+    target_include_directories(codium-blocks-codeblocks-debuggergdb-provider PRIVATE
+        native/include ${CODIUM_BLOCKS_CODEBLOCKS_INCLUDE_DIRS}
+        ${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_INCLUDE_DIRS})
+    target_compile_definitions(codium-blocks-codeblocks-debuggergdb-provider PRIVATE
+        CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_PROVIDER_BUILD=1
+        CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_REVISION="${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_REVISION}"
+        CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_ABI_IDENTITY="${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_ABI_IDENTITY}"
+        CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_PROVIDER_IDENTITY="codium-blocks-debuggergdb/${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_REVISION}"
+        CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SDK_MAJOR=${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SDK_MAJOR}
+        CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SDK_MINOR=${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SDK_MINOR}
+        CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SDK_RELEASE=${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SDK_RELEASE})
+    codium_blocks_enable_warnings(codium-blocks-codeblocks-debuggergdb-provider)
+    target_link_libraries(codium-blocks-codeblocks-debuggergdb-provider PRIVATE
+        ${wxWidgets_LIBRARIES} ${CODIUM_BLOCKS_CODEBLOCKS_LINK_TARGET}
+        ${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGER_PLUGIN})
+    set_target_properties(codium-blocks-codeblocks-debuggergdb-provider PROPERTIES
+        OUTPUT_NAME codium-blocks-codeblocks-debuggergdb-provider)
 endif()
 
 add_executable(codium-blocks-document-smoke
@@ -384,6 +478,10 @@ install(TARGETS codium-blocks RUNTIME DESTINATION bin)
 if(TARGET codium-blocks-codeblocks-adapter)
     install(TARGETS codium-blocks-codeblocks-adapter RUNTIME DESTINATION bin)
 endif()
+if(TARGET codium-blocks-codeblocks-debuggergdb-provider)
+    install(TARGETS codium-blocks-codeblocks-debuggergdb-provider
+        RUNTIME DESTINATION bin LIBRARY DESTINATION bin)
+endif()
 install(DIRECTORY extension-host DESTINATION share/codium-blocks)
 install(DIRECTORY extensions DESTINATION share/codium-blocks)
 install(DIRECTORY assets/icons DESTINATION share/codium-blocks)
@@ -425,6 +523,10 @@ if(BUILD_TESTING)
                 ${CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN})
             if(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGER_PLUGIN)
                 list(APPEND CODIUM_BLOCKS_REAL_ADAPTER_ARGS ${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGER_PLUGIN})
+            endif()
+            if(TARGET codium-blocks-codeblocks-debuggergdb-provider)
+                list(APPEND CODIUM_BLOCKS_REAL_ADAPTER_ARGS
+                    $<TARGET_FILE:codium-blocks-codeblocks-debuggergdb-provider>)
             endif()
             add_test(
                 NAME codeblocks-real-adapter-smoke

@@ -1,7 +1,9 @@
 #pragma once
 
 #include "codium/codeblocks_host.hpp"
+#include "codium/codeblocks_debugger_provider.hpp"
 
+#include <wx/dynlib.h>
 #include <wx/string.h>
 
 #include <memory>
@@ -49,6 +51,11 @@ struct CodeBlocksSdkReport final {
     bool debuggerSnapshotAvailable = false;
     bool debuggerPublicStateAvailable = false;
     bool debuggerPrivateDataAvailable = false;
+    bool debuggerPrivateProviderLoaded = false;
+    bool debuggerPrivateProviderAttached = false;
+    wxString debuggerProviderIdentity;
+    wxString debuggerProviderSourceRevision;
+    wxString debuggerProviderAbiIdentity;
     bool workspaceTrusted = false;
 };
 
@@ -73,6 +80,7 @@ public:
                const wxString& compilerPlugin,
                wxString* error = nullptr,
                const wxString& debuggerPlugin = wxString(),
+               const wxString& debuggerProvider = wxString(),
                const wxString& pluginDirectory = wxString(),
                bool workspaceTrusted = true);
     cbProject* LoadProject(const wxString& projectFile, wxString* error = nullptr);
@@ -88,7 +96,9 @@ public:
     bool ContinueDebug(wxString* error = nullptr);
     bool PauseDebug(wxString* error = nullptr);
     bool StopDebug(wxString* error = nullptr);
-    bool RequestDebugSnapshot(const wxString& dataKind, wxString* error = nullptr);
+    bool RequestDebugSnapshot(const wxString& dataKind,
+                              const wxString& expression = wxString(),
+                              wxString* error = nullptr);
     std::vector<CodeBlocksHostEvent> DrainEvents();
     void Shutdown();
 
@@ -108,12 +118,16 @@ private:
     void BindCompilerOutput();
     void UnbindCompilerOutput();
     void RemovePluginStaging();
+    bool LoadDebuggerProvider(const wxString& providerPath, wxString* error);
+    void UnloadDebuggerProvider();
     void PublishSdkEvent(CodeBlocksHostEvent event);
 
     wxFrame* appFrame_ = nullptr;
     cbProject* project_ = nullptr;
     cbCompilerPlugin* compilerPlugin_ = nullptr;
     cbDebuggerPlugin* debuggerPlugin_ = nullptr;
+    std::unique_ptr<wxDynamicLibrary> debuggerProviderLibrary_;
+    const CodeBlocksDebuggerProviderApi* debuggerProviderApi_ = nullptr;
     wxString pluginStagingDirectory_;
     std::unique_ptr<CodeBlocksCompilerOutputFilter> compilerOutputFilter_;
     CodeBlocksSdkReport report_;

@@ -61,7 +61,7 @@ int main(int argc, char** argv)
     wxString error;
 
     if (!adapter.Start(wxS("node"), arguments, root, configuration, &error) ||
-        !WaitForReady(adapter) || adapter.ContractMajor() != 1 || adapter.ContractMinor() != 0 ||
+        !WaitForReady(adapter) || adapter.ContractMajor() != 1 || adapter.ContractMinor() != 3 ||
         adapter.SdkMajor() != 1 || adapter.SdkMinor() != 36 ||
         adapter.Capabilities().Index(wxS("sdkEventSink")) == wxNOT_FOUND ||
         adapter.Capabilities().Index(wxS("compilerEvents")) == wxNOT_FOUND ||
@@ -69,7 +69,11 @@ int main(int argc, char** argv)
         adapter.Capabilities().Index(wxS("debuggerEvents")) == wxNOT_FOUND ||
         adapter.Capabilities().Index(wxS("debuggerControl")) == wxNOT_FOUND ||
         adapter.Capabilities().Index(wxS("debuggerSnapshot")) == wxNOT_FOUND ||
-        adapter.Capabilities().Index(wxS("debuggerDataUnavailable")) == wxNOT_FOUND) {
+        adapter.Capabilities().Index(wxS("debuggerDataUnavailable")) == wxNOT_FOUND ||
+        adapter.Capabilities().Index(wxS("debuggerPrivateProvider")) == wxNOT_FOUND ||
+        adapter.Capabilities().Index(wxS("debuggerStackFrames")) == wxNOT_FOUND ||
+        adapter.Capabilities().Index(wxS("debuggerThreads")) == wxNOT_FOUND ||
+        adapter.Capabilities().Index(wxS("debuggerWatches")) == wxNOT_FOUND) {
         std::cerr << "codeblocks-adapter-smoke: handshake failed: " << error.ToStdString() << "\n";
         return 2;
     }
@@ -151,9 +155,49 @@ int main(int argc, char** argv)
         return 10;
     }
 
-    if (!adapter.RequestDebugSnapshot(wxS("frames"))) {
-        std::cerr << "codeblocks-adapter-smoke: private data request could not be sent\n";
-        return 11;
+    const wxString privateKinds[] = {wxS("frames"), wxS("threads"), wxS("breakpoints")};
+    for (const auto& dataKind : privateKinds) {
+        if (!adapter.RequestDebugSnapshot(dataKind)) {
+            std::cerr << "codeblocks-adapter-smoke: private snapshot request failed\n";
+            return 11;
+        }
+        bool privateSnapshotSeen = false;
+        for (int i = 0; i < 200 && adapter.IsRunning() && !privateSnapshotSeen; ++i) {
+            wxMilliSleep(10);
+            for (const auto& event : adapter.PollEvents()) {
+                if (event.kind == codium::CodeBlocksEventKind::DebugSnapshot &&
+                    event.dataKind == dataKind && event.payload.Find(wxS("dataKind")) != wxNOT_FOUND) {
+                    privateSnapshotSeen = true;
+                }
+            }
+        }
+        if (!privateSnapshotSeen) {
+            std::cerr << "codeblocks-adapter-smoke: private snapshot event failed\n";
+            return 12;
+        }
+    }
+    if (!adapter.RequestDebugSnapshot(wxS("watches"), wxS("counter"))) {
+        std::cerr << "codeblocks-adapter-smoke: watch snapshot request failed\n";
+        return 13;
+    }
+    bool watchSnapshotSeen = false;
+    for (int i = 0; i < 200 && adapter.IsRunning() && !watchSnapshotSeen; ++i) {
+        wxMilliSleep(10);
+        for (const auto& event : adapter.PollEvents()) {
+            if (event.kind == codium::CodeBlocksEventKind::DebugSnapshot &&
+                event.dataKind == wxS("watches") && event.payload.Find(wxS("counter")) != wxNOT_FOUND) {
+                watchSnapshotSeen = true;
+            }
+        }
+    }
+    if (!watchSnapshotSeen) {
+        std::cerr << "codeblocks-adapter-smoke: watch snapshot event failed\n";
+        return 14;
+    }
+
+    if (!adapter.RequestDebugSnapshot(wxS("registers"))) {
+        std::cerr << "codeblocks-adapter-smoke: unsupported data request could not be sent\n";
+        return 15;
     }
     for (int i = 0; i < 200 && adapter.IsRunning() && adapter.LastErrorCode().empty(); ++i) {
         wxMilliSleep(10);
@@ -161,7 +205,7 @@ int main(int argc, char** argv)
     }
     if (adapter.LastErrorCode() != wxS("debugDataUnavailable")) {
         std::cerr << "codeblocks-adapter-smoke: unsupported debugger data was not reported\n";
-        return 12;
+        return 16;
     }
 
     adapter.Stop();
@@ -171,7 +215,7 @@ int main(int argc, char** argv)
     incompatibleArguments.Add(wxS("--incompatible"));
     if (!incompatibleAdapter.Start(wxS("node"), incompatibleArguments, root, configuration, &error)) {
         std::cerr << "codeblocks-adapter-smoke: incompatible adapter could not start\n";
-        return 13;
+        return 17;
     }
     for (int i = 0; i < 200 && incompatibleAdapter.IsRunning() && !incompatibleAdapter.HandshakeReceived(); ++i) {
         wxMilliSleep(10);
@@ -179,7 +223,7 @@ int main(int argc, char** argv)
     }
     if (!incompatibleAdapter.HandshakeReceived() || incompatibleAdapter.IsReady()) {
         std::cerr << "codeblocks-adapter-smoke: incompatible contract was accepted\n";
-        return 14;
+        return 18;
     }
     incompatibleAdapter.Stop();
     std::cout << "codeblocks-adapter-smoke: ok — JSON Lines handshake, capabilities, project, build, and diagnostics\n";

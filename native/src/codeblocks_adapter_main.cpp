@@ -36,6 +36,7 @@ struct AdapterOptions final {
     wxString dataDirectory;
     wxString compilerPlugin;
     wxString debuggerPlugin;
+    wxString debuggerProvider;
     bool workspaceTrusted = true;
 };
 
@@ -201,10 +202,12 @@ bool ParseOptions(int argc, char** argv, AdapterOptions* options, wxString* erro
             options->compilerPlugin = valueAfter("--compiler-plugin");
         } else if (argument.rfind("--debugger-plugin=", 0) == 0) {
             options->debuggerPlugin = valueAfter("--debugger-plugin");
+        } else if (argument.rfind("--debugger-provider=", 0) == 0) {
+            options->debuggerProvider = valueAfter("--debugger-provider");
         } else if (argument == "--workspace-untrusted") {
             options->workspaceTrusted = false;
         } else if (argument == "--help") {
-            std::cout << "codium-blocks-codeblocks-adapter --data-dir=DIR --compiler-plugin=FILE [--debugger-plugin=FILE] [--workspace-untrusted]\n";
+            std::cout << "codium-blocks-codeblocks-adapter --data-dir=DIR --compiler-plugin=FILE [--debugger-plugin=FILE] [--debugger-provider=FILE] [--workspace-untrusted]\n";
             return false;
         } else {
             if (error) *error = wxString::Format(wxS("Unknown adapter option: %s"),
@@ -263,7 +266,8 @@ public:
         } else if (type == wxS("stopDebug")) {
             HandleDebugControl(wxS("stop"));
         } else if (type == wxS("requestDebugSnapshot")) {
-            HandleDebugSnapshot(JsonStringField(line, "dataKind"));
+            HandleDebugSnapshot(JsonStringField(line, "dataKind"),
+                                JsonStringField(line, "expression"));
         } else if (!type.empty()) {
             EmitError(wxS("unknownRequest"), wxString::Format(wxS("Unknown request type: %s"), type));
         }
@@ -313,7 +317,8 @@ private:
 
         wxString error;
         if (!bootstrap_->Start(options_.dataDirectory, options_.compilerPlugin, &error,
-                               options_.debuggerPlugin, wxEmptyString, options_.workspaceTrusted)) {
+                               options_.debuggerPlugin, options_.debuggerProvider,
+                               wxEmptyString, options_.workspaceTrusted)) {
             EmitError(wxS("bootstrapFailed"), error);
             stopRequested.store(true);
             if (wxTheApp) wxTheApp->ExitMainLoop();
@@ -325,12 +330,21 @@ private:
         if (bootstrap_->Report().debuggerPluginAttached) {
             capabilities += wxS(",\"debuggerPluginMatched\",\"debuggerEvents\",\"debuggerControl\",\"debuggerSnapshot\",\"debuggerPublicState\",\"debuggerDataUnavailable\"");
         }
+        if (bootstrap_->Report().debuggerPrivateProviderAttached) {
+            capabilities += wxS(",\"debuggerPrivateProvider\",\"debuggerStackFrames\",\"debuggerThreads\",\"debuggerBreakpoints\",\"debuggerWatches\",\"debuggerVariables\"");
+        }
         const int negotiatedMinor = std::min(requestedMinor, codium::CodeBlocksHostContract::kMinor);
         Emit(wxString::Format(
             wxS("{\"type\":\"ready\",\"contractMajor\":1,\"contractMinor\":%d,\"sdkMajor\":%d,\"sdkMinor\":%d,\"sdkRelease\":%d,\"sdkIdentity\":\""),
             negotiatedMinor,
             PLUGIN_SDK_VERSION_MAJOR, PLUGIN_SDK_VERSION_MINOR, PLUGIN_SDK_VERSION_RELEASE) +
              JsonEscape(bootstrap_->Report().sdkIdentity) +
+             wxS("\",\"debuggerProviderIdentity\":\"") +
+             JsonEscape(bootstrap_->Report().debuggerProviderIdentity) +
+             wxS("\",\"debuggerProviderSourceRevision\":\"") +
+             JsonEscape(bootstrap_->Report().debuggerProviderSourceRevision) +
+             wxS("\",\"debuggerProviderAbiIdentity\":\"") +
+             JsonEscape(bootstrap_->Report().debuggerProviderAbiIdentity) +
              wxS("\",\"capabilities\":[") + capabilities + wxS("]}"));
     }
 
@@ -408,7 +422,7 @@ private:
         eventTimer_.Start(25);
     }
 
-    void HandleDebugSnapshot(const wxString& dataKind)
+    void HandleDebugSnapshot(const wxString& dataKind, const wxString& expression)
     {
         if (!ready_) {
             EmitError(wxS("notReady"), wxS("The Code::Blocks SDK adapter is not ready."));
@@ -416,7 +430,7 @@ private:
         }
         const wxString requested = dataKind.empty() ? wxS("state") : dataKind;
         wxString error;
-        if (!bootstrap_->RequestDebugSnapshot(requested, &error)) {
+        if (!bootstrap_->RequestDebugSnapshot(requested, expression, &error)) {
             if (requested != wxS("state")) EmitDataUnavailable(requested, error);
             else EmitError(wxS("debugSnapshotFailed"), error);
             return;

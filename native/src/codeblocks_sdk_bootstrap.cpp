@@ -116,6 +116,12 @@ wxString DebuggerEventPlugin(CodeBlocksEvent& event, cbDebuggerPlugin* debugger)
     return event.GetPlugin() == debugger ? wxString(wxS("Debugger")) : wxString(wxS("Code::Blocks"));
 }
 
+wxString ProviderError(const char* message)
+{
+    return message ? wxString::FromUTF8(message)
+                   : wxString(wxS("The DebuggerGDB provider returned no diagnostic."));
+}
+
 } // namespace
 
 class CodeBlocksCompilerOutputFilter final : public wxEventFilter
@@ -250,6 +256,94 @@ void CodeBlocksSdkBootstrap::RemovePluginStaging()
     pluginStagingDirectory_.clear();
 }
 
+bool CodeBlocksSdkBootstrap::LoadDebuggerProvider(const wxString& providerPath, wxString* error)
+{
+    if (providerPath.empty()) return true;
+    if (!wxFileExists(providerPath)) {
+        Fail(wxString::Format(wxS("The DebuggerGDB provider does not exist: %s"), providerPath), error);
+        return false;
+    }
+
+    debuggerProviderLibrary_ = std::make_unique<wxDynamicLibrary>();
+    if (!debuggerProviderLibrary_->Load(providerPath, wxDL_VERBATIM)) {
+        Fail(wxString::Format(wxS("The DebuggerGDB provider could not be loaded: %s"), providerPath), error);
+        debuggerProviderLibrary_.reset();
+        return false;
+    }
+
+    bool symbolFound = false;
+    auto getApi = reinterpret_cast<CodeBlocksDebuggerProviderGetApi>(
+        debuggerProviderLibrary_->GetSymbol(wxS("codium_blocks_debugger_provider_get_api"), &symbolFound));
+    if (!symbolFound || !getApi) {
+        Fail(wxS("The DebuggerGDB provider does not export its C ABI entry point."), error);
+        debuggerProviderLibrary_.reset();
+        return false;
+    }
+    const CodeBlocksDebuggerProviderApi* api = getApi();
+    if (!api || api->apiMajor != 1 || api->apiMinor != 0 || !api->attach || !api->detach ||
+        !api->snapshot || !api->freeString) {
+        Fail(wxS("The DebuggerGDB provider exposes an unsupported or incomplete ABI."), error);
+        debuggerProviderLibrary_.reset();
+        return false;
+    }
+    if (api->sdkMajor != kSdkMajor || api->sdkMinor != kSdkMinor || api->sdkRelease != kSdkRelease) {
+        Fail(wxS("The DebuggerGDB provider SDK tuple does not match the adapter."), error);
+        debuggerProviderLibrary_.reset();
+        return false;
+    }
+    if (!api->sourceRevision || wxString::FromUTF8(api->sourceRevision) !=
+            wxString(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_REVISION)) {
+        Fail(wxS("The DebuggerGDB provider source revision does not match the adapter."), error);
+        debuggerProviderLibrary_.reset();
+        return false;
+    }
+    if (!api->abiIdentity || wxString::FromUTF8(api->abiIdentity) !=
+            wxString(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_ABI_IDENTITY)) {
+        Fail(wxS("The DebuggerGDB provider ABI identity does not match the adapter."), error);
+        debuggerProviderLibrary_.reset();
+        return false;
+    }
+
+    char* attachError = nullptr;
+    if (!api->attach(static_cast<void*>(debuggerPlugin_),
+                     static_cast<std::uint32_t>(kSdkMajor),
+                     static_cast<std::uint32_t>(kSdkMinor),
+                     static_cast<std::uint32_t>(kSdkRelease),
+                     CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_REVISION,
+                     CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_ABI_IDENTITY,
+                     &attachError)) {
+        const wxString message = ProviderError(attachError);
+        api->freeString(attachError);
+        Fail(message, error);
+        debuggerProviderLibrary_.reset();
+        return false;
+    }
+
+    debuggerProviderApi_ = api;
+    report_.debuggerPrivateProviderLoaded = true;
+    report_.debuggerPrivateProviderAttached = true;
+    report_.debuggerPrivateDataAvailable = true;
+    report_.debuggerProviderIdentity = api->providerIdentity ? wxString::FromUTF8(api->providerIdentity) : wxString();
+    report_.debuggerProviderSourceRevision = wxString::FromUTF8(api->sourceRevision);
+    report_.debuggerProviderAbiIdentity = wxString::FromUTF8(api->abiIdentity);
+    return true;
+}
+
+void CodeBlocksSdkBootstrap::UnloadDebuggerProvider()
+{
+    if (debuggerProviderApi_) {
+        debuggerProviderApi_->detach();
+        debuggerProviderApi_ = nullptr;
+    }
+    debuggerProviderLibrary_.reset();
+    report_.debuggerPrivateProviderLoaded = false;
+    report_.debuggerPrivateProviderAttached = false;
+    report_.debuggerPrivateDataAvailable = false;
+    report_.debuggerProviderIdentity.clear();
+    report_.debuggerProviderSourceRevision.clear();
+    report_.debuggerProviderAbiIdentity.clear();
+}
+
 void CodeBlocksSdkBootstrap::PublishSdkEvent(CodeBlocksHostEvent event)
 {
     events_.push_back(std::move(event));
@@ -373,6 +467,7 @@ bool CodeBlocksSdkBootstrap::Start(const wxString& dataDirectory,
                                    const wxString& compilerPlugin,
                                    wxString* error,
                                    const wxString& debuggerPlugin,
+                                   const wxString& debuggerProvider,
                                    const wxString& pluginDirectory,
                                    bool workspaceTrusted)
 {
@@ -393,6 +488,14 @@ bool CodeBlocksSdkBootstrap::Start(const wxString& dataDirectory,
     if (!debuggerPlugin.empty() && !wxFileExists(debuggerPlugin)) {
         Fail(wxString::Format(wxS("The allowlisted Code::Blocks Debugger plugin does not exist: %s"),
                               debuggerPlugin), error);
+        return false;
+    }
+    if (!debuggerProvider.empty() && debuggerPlugin.empty()) {
+        Fail(wxS("A DebuggerGDB provider requires an explicitly selected Debugger plugin."), error);
+        return false;
+    }
+    if (!debuggerProvider.empty() && !wxFileExists(debuggerProvider)) {
+        Fail(wxString::Format(wxS("The DebuggerGDB provider does not exist: %s"), debuggerProvider), error);
         return false;
     }
     if (!workspaceTrusted && !debuggerPlugin.empty()) {
@@ -591,6 +694,17 @@ bool CodeBlocksSdkBootstrap::Start(const wxString& dataDirectory,
         report_.debuggerSnapshotAvailable = true;
         report_.debuggerPublicStateAvailable = true;
         report_.debuggerPrivateDataAvailable = false;
+        if (!debuggerProvider.empty() && !LoadDebuggerProvider(debuggerProvider, error)) {
+            UnregisterEventSinks();
+            Manager::SetAppShuttingDown(true);
+            plugins->UnloadPlugin(debuggerPlugin_);
+            debuggerPlugin_ = nullptr;
+            if (compilerPlugin_) plugins->UnloadPlugin(compilerPlugin_);
+            compilerPlugin_ = nullptr;
+            Manager::Free();
+            RemovePluginStaging();
+            return false;
+        }
     }
     started_ = true;
     return true;
@@ -789,7 +903,9 @@ void CodeBlocksSdkBootstrap::PublishDebugSnapshot(const wxString& dataKind)
     PublishSdkEvent(std::move(event));
 }
 
-bool CodeBlocksSdkBootstrap::RequestDebugSnapshot(const wxString& dataKind, wxString* error)
+bool CodeBlocksSdkBootstrap::RequestDebugSnapshot(const wxString& dataKind,
+                                                  const wxString& expression,
+                                                  wxString* error)
 {
     if (!started_ || !debuggerPlugin_) {
         Fail(wxS("The Code::Blocks Debugger plugin is not available."), error);
@@ -797,14 +913,38 @@ bool CodeBlocksSdkBootstrap::RequestDebugSnapshot(const wxString& dataKind, wxSt
     }
 
     const wxString requested = dataKind.empty() ? wxS("state") : dataKind;
-    if (requested != wxS("state")) {
+    if (requested == wxS("state")) {
+        PublishDebugSnapshot(requested);
+        return true;
+    }
+    if (!debuggerProviderApi_) {
         Fail(wxString::Format(
                  wxS("The matched Code::Blocks SDK does not expose value-owned %s data through its public ABI."),
                  requested),
              error);
         return false;
     }
-    PublishDebugSnapshot(requested);
+
+    char* json = nullptr;
+    char* providerError = nullptr;
+    const wxScopedCharBuffer kindUtf8 = requested.utf8_str();
+    const wxScopedCharBuffer expressionUtf8 = expression.utf8_str();
+    if (!debuggerProviderApi_->snapshot(kindUtf8.data(), expressionUtf8.data(), &json, &providerError)) {
+        const wxString message = ProviderError(providerError);
+        debuggerProviderApi_->freeString(providerError);
+        Fail(message, error);
+        return false;
+    }
+    CodeBlocksHostEvent event;
+    event.kind = CodeBlocksEventKind::DebugSnapshot;
+    event.projectPath = project_ ? project_->GetFilename() : wxString();
+    event.plugin = wxS("DebuggerGDBProvider");
+    event.dataKind = requested;
+    event.snapshotJson = wxString::FromUTF8(json ? json : "{}");
+    event.payload = event.snapshotJson;
+    event.message = wxS("Private DebuggerGDB provider snapshot");
+    debuggerProviderApi_->freeString(json);
+    PublishSdkEvent(std::move(event));
     return true;
 }
 
@@ -841,6 +981,7 @@ void CodeBlocksSdkBootstrap::Shutdown()
     UnbindCompilerOutput();
     UnregisterEventSinks();
     Manager::SetAppShuttingDown(true);
+    UnloadDebuggerProvider();
     if (debuggerPlugin_) {
         PluginManager* plugins = Manager::Get()->GetPluginManager();
         if (plugins) plugins->UnloadPlugin(debuggerPlugin_);

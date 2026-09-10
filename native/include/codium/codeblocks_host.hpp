@@ -9,7 +9,7 @@ namespace codium {
 
 struct CodeBlocksHostContract final {
     static constexpr int kMajor = 1;
-    static constexpr int kMinor = 2;
+    static constexpr int kMinor = 3;
 
     static wxString Version();
     static bool Supports(int major, int minor);
@@ -57,7 +57,7 @@ struct CodeBlocksHostEvent final {
     bool isError = false;
     wxString payload;
     wxString oldFilePath;
-    // Additive Phase E.1 fields. Existing 1.0/1.1 aggregate initializers
+    // Additive debugger snapshot fields. Existing 1.0/1.1 aggregate initializers
     // remain source-compatible because these fields are trailing and optional.
     wxString dataKind;
     wxString snapshotJson;

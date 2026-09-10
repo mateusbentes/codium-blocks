@@ -25,9 +25,10 @@ The adapter owns an explicit bootstrap object with the following lifecycle:
 7. It activates the matched `cbCompilerPlugin`, accepts a real target build, and drains normalized compiler lifecycle and PipedProcess output events asynchronously.
 8. When requested, it creates a private staging directory containing only the matched Compiler and Debugger files from one plugin directory. It uses the SDK `ScanForPlugins()` path for that staging directory instead of loading two foreign modules through unrelated direct calls.
 9. It installs no-op debugger window and menu factories inside the adapter, attaches the matched `cbDebuggerPlugin`, and exposes only debug launch, continue, break, stop, and official lifecycle events.
-10. It explicitly unloads the matched Debugger and Compiler plugins before freeing the Code::Blocks manager; this follows the SDK ownership order and avoids leaving plugin destruction to a partially torn-down manager.
+10. When configured, it loads a separately compiled DebuggerGDB data provider whose source revision, SDK tuple, compiler identity, language standard, build flags, and explicit ABI tag are checked before use.
+11. It explicitly unloads the matched Debugger and Compiler plugins before freeing the Code::Blocks manager; this follows the SDK ownership order and avoids leaving plugin destruction to a partially torn-down manager.
 
-The first real capabilities are intentionally narrow and observable. Opening a `.cbp` emits `projectOpened` followed by one `projectTarget` event per real target. Each target event includes its title, compiler identifier, output path, and working directory. A build request now invokes the matched Code::Blocks Compiler plugin, emits official `buildStarted` and `buildFinished` events, forwards compiler stdout/stderr as `compilerOutput`, and preserves the SDK exit status. If a matched Debugger plugin is explicitly supplied, the adapter also starts the real debugger session for the selected target and forwards official debugger lifecycle events. Phase E.1 adds a value-owned public debugger state snapshot. Stack, thread, breakpoint, watch, variable, and expression models remain capability-gated because their concrete SDK types are private to DebuggerGDB.
+The first real capabilities are intentionally narrow and observable. Opening a `.cbp` emits `projectOpened` followed by one `projectTarget` event per real target. Each target event includes its title, compiler identifier, output path, and working directory. A build request now invokes the matched Code::Blocks Compiler plugin, emits official `buildStarted` and `buildFinished` events, forwards compiler stdout/stderr as `compilerOutput`, and preserves the SDK exit status. If a matched Debugger plugin is explicitly supplied, the adapter also starts the real debugger session for the selected target and forwards official debugger lifecycle events. Phase E.1 adds a value-owned public debugger state snapshot. Phase E.2 adds an optional, separately compiled DebuggerGDB provider that serializes stack frames, threads, breakpoints, watches, and expression-backed variables into value-owned protocol data. The provider is unavailable unless its exact source and ABI identity are supplied; the generic adapter continues to reject private model data explicitly.
 
 ### Phase B event normalization
 
@@ -52,7 +53,7 @@ The current adapter therefore follows these rules:
 | Resource check | Require the configured data directory to contain the official `resources.zip`. |
 | Third-party plugins | Do not load arbitrary discovered plugins. Only the explicit Compiler and optional Debugger paths are eligible, and a debugger request requires workspace trust. |
 | Build behavior | Invoke only the matched Compiler plugin; preserve asynchronous output and completion status, and never emit fake success. |
-| Debugger behavior | Attach only the matched Debugger plugin from the same installation. Provide headless SDK interfaces and normalize session lifecycle; expose only value-owned public state in Phase E.1, and return `debugDataUnavailable` for private model categories. |
+| Debugger behavior | Attach only the matched Debugger plugin from the same installation. Provide headless SDK interfaces and normalize session lifecycle. Expose public state in the generic adapter. Load private DebuggerGDB data only through the separately compiled E.2 provider after exact identity checks. |
 
 The process boundary limits a plugin crash to the adapter process, but it does not make arbitrary native plugins trustworthy. Workspace trust, installation provenance, and a future explicit allowlist remain required before any broader plugin policy is considered.
 
@@ -89,11 +90,24 @@ cmake -S . -B build \
 
 The explicit `COMPILER_PLUGIN` path is required when the installation uses a non-standard module name. The `DEBUGGER_PLUGIN` path is optional. If it is omitted, the adapter remains a real compiler/project host and does not claim debugger capabilities.
 
+The private DebuggerGDB provider is an opt-in Linux-oriented integration. It must be compiled from the same Code::Blocks source revision and with the same SDK and compiler ABI as the installed Debugger plugin. The following configuration enables the provider after the matching source tree has been prepared:
+
+```bash
+cmake -S . -B build-provider \
+  -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_DEBUGGERGDB_PROVIDER=ON \
+  -DCODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_DIR=/path/to/src/plugins/debuggergdb \
+  -DCODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_REVISION=r13046 \
+  -DCODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_ABI_TAG=distribution-source-compiler-wx-build-id
+cmake --build build-provider
+```
+
+`SOURCE_REVISION` and `ABI_TAG` are required evidence fields, not guesses. The tag should identify the distribution, compiler version, wxWidgets build, architecture, language standard, and relevant build flags. If any private source or identity field is missing, CMake disables the provider and still builds the portable adapter. The provider is never enabled merely because a file named `libdebugger.so` exists.
+
 The older `CODIUM_BLOCKS_ENABLE_CODEBLOCKS_SDK` option still exposes optional SDK include roots to the portable native target. It does not link the core application against `libcodeblocks` and does not enable plugin loading.
 
 ## Protocol and capability reporting
 
-The native client and adapter use the versioned JSON Lines contract in [`CODEBLOCKS_ADAPTER_PROTOCOL.md`](CODEBLOCKS_ADAPTER_PROTOCOL.md). The contract is now `1.2`; clients that speak `1.0` or `1.1` remain compatible because debugger snapshot requests and events are additive. A `ready` response reports the compiled SDK version, a human-readable SDK identity, and capabilities such as `sdkBootstrap`, `projectEvents`, `projectTargets`, `compilerEvents`, `compilerBuild`, `compilerOutput`, `compilerPluginMatched`, `debuggerPluginMatched`, `debuggerEvents`, `debuggerControl`, `debuggerSnapshot`, `debuggerPublicState`, and `debuggerDataUnavailable`.
+The native client and adapter use the versioned JSON Lines contract in [`CODEBLOCKS_ADAPTER_PROTOCOL.md`](CODEBLOCKS_ADAPTER_PROTOCOL.md). The contract is now `1.3`; clients that speak `1.0`, `1.1`, or `1.2` remain compatible because provider metadata and debugger data requests are additive. A `ready` response reports the compiled SDK version, a human-readable SDK identity, and capabilities such as `sdkBootstrap`, `projectEvents`, `projectTargets`, `compilerEvents`, `compilerBuild`, `compilerOutput`, `compilerPluginMatched`, `debuggerPluginMatched`, `debuggerEvents`, `debuggerControl`, `debuggerSnapshot`, `debuggerPublicState`, and `debuggerDataUnavailable`. A provider-enabled response additionally reports `debuggerPrivateProvider`, `debuggerStackFrames`, `debuggerThreads`, `debuggerBreakpoints`, and `debuggerWatches`, together with provider identity fields.
 
 A handshake with SDK version `0.0.0` requests capability discovery without imposing a version. A non-zero requested SDK tuple must match exactly. A contract major mismatch or unsupported minor version is rejected before project operations begin.
 
@@ -106,8 +120,9 @@ The production adapter is deliberately being developed in stages:
 | A | Implemented | Matched `wxApp`/resource bootstrap, one allowlisted Compiler plugin, real `.cbp` loading, target enumeration, capability reporting, and graceful errors. |
 | B | Implemented | Register official SDK event sinks and normalize project/compiler lifecycle events without loading additional plugins. |
 | C | Implemented | Invoke the matched Compiler plugin for real target builds, forward compiler output, normalize completion status, and validate the result with a compilable fixture. |
-| D | Implemented increment | Attach a matched Debugger plugin only through a private allowlisted staging directory, provide headless SDK UI interfaces, launch/control the real debugger, normalize official debugger lifecycle events, and validate the result with an optional Linux smoke test. Stack/data serialization and broader plugin policy remain future work. |
-| E.1 | Implemented safe boundary | Emit a value-owned public debugger state snapshot with running/stopped/busy state, exit code, active frame, current source location, breakpoint count, and feature flags. Reject private frames, threads, breakpoints, watches, and variable data with `debugDataUnavailable`; do not guess incomplete SDK model layouts. |
+| D | Implemented increment | Attach a matched Debugger plugin only through a private allowlisted staging directory, provide headless SDK UI interfaces, launch/control the real debugger, normalize official debugger lifecycle events, and validate the result with an optional Linux smoke test. Private model serialization is deferred to the explicit E.1/E.2 boundaries. |
+| E.1 | Implemented safe boundary | Emit a value-owned public debugger state snapshot with running/stopped/busy state, exit code, active frame, current source location, breakpoint count, and feature flags. Without a validated private provider, reject private frames, threads, breakpoints, watches, and variable data with `debugDataUnavailable`; do not guess incomplete SDK model layouts. |
+| E.2 | Implemented opt-in provider boundary | Build a separate DebuggerGDB provider from an exact private source revision and ABI tuple. Validate its exported identity, serialize frames, threads, breakpoints, watches, and expression-backed variables as value-owned JSON, and keep the generic adapter path safe when the provider is absent. |
 
 This sequencing avoids claiming full Code::Blocks compatibility before the lifecycle, event mapping, compiler behavior, debugger ownership, and plugin policy have each been tested against matched SDK builds.
 

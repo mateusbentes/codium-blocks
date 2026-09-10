@@ -179,6 +179,9 @@ bool CodeBlocksAdapterClient::Start(const wxString& executable,
     sdkMinor_ = 0;
     sdkRelease_ = 0;
     capabilities_.Clear();
+    debuggerProviderIdentity_.clear();
+    debuggerProviderSourceRevision_.clear();
+    debuggerProviderAbiIdentity_.clear();
     lastErrorCode_.clear();
     lastErrorMessage_.clear();
     if (!StartHandshake(configuration)) {
@@ -270,11 +273,11 @@ bool CodeBlocksAdapterClient::StopDebug()
     return ready_ && SendRaw(wxS("{\"type\":\"stopDebug\"}"));
 }
 
-bool CodeBlocksAdapterClient::RequestDebugSnapshot(const wxString& dataKind)
+bool CodeBlocksAdapterClient::RequestDebugSnapshot(const wxString& dataKind, const wxString& expression)
 {
     return ready_ && SendRaw(wxString::Format(
-        wxS("{\"type\":\"requestDebugSnapshot\",\"dataKind\":\"%s\"}"),
-        JsonEscape(dataKind.empty() ? wxS("state") : dataKind)));
+        wxS("{\"type\":\"requestDebugSnapshot\",\"dataKind\":\"%s\",\"expression\":\"%s\"}"),
+        JsonEscape(dataKind.empty() ? wxS("state") : dataKind), JsonEscape(expression)));
 }
 
 wxArrayString CodeBlocksAdapterClient::Poll()
@@ -321,6 +324,9 @@ void CodeBlocksAdapterClient::ProcessProtocolLine(const wxString& line,
         sdkMinor_ = JsonIntField(line, wxS("sdkMinor"));
         sdkRelease_ = JsonIntField(line, wxS("sdkRelease"));
         capabilities_ = JsonStringArrayField(line, wxS("capabilities"));
+        debuggerProviderIdentity_ = JsonStringField(line, wxS("debuggerProviderIdentity"));
+        debuggerProviderSourceRevision_ = JsonStringField(line, wxS("debuggerProviderSourceRevision"));
+        debuggerProviderAbiIdentity_ = JsonStringField(line, wxS("debuggerProviderAbiIdentity"));
         ready_ = CodeBlocksHostContract::Supports(contractMajor_, contractMinor_);
         return;
     }

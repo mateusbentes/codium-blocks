@@ -4,10 +4,11 @@
 
 int main()
 {
-    if (codium::CodeBlocksHostContract::Version() != wxS("1.2") ||
+    if (codium::CodeBlocksHostContract::Version() != wxS("1.3") ||
         !codium::CodeBlocksHostContract::Supports(1, 0) ||
         !codium::CodeBlocksHostContract::Supports(1, 1) ||
         !codium::CodeBlocksHostContract::Supports(1, 2) ||
+        !codium::CodeBlocksHostContract::Supports(1, 3) ||
         codium::CodeBlocksHostContract::Supports(2, 0) ||
         codium::CodeBlocksHostContract::Supports(1, -1)) {
         std::cerr << "codeblocks-host-smoke: contract compatibility failed\n";

@@ -139,6 +139,25 @@ wxString FindCodeBlocksDebuggerPlugin(const codium::CodeBlocksBridge& bridge)
     return wxEmptyString;
 }
 
+wxString FindCodeBlocksDebuggerProvider(const wxString& adapterExecutable)
+{
+    wxString configured;
+    wxGetEnv(wxS("CODIUM_BLOCKS_CODEBLOCKS_DEBUGGER_PROVIDER"), &configured);
+    if (!configured.empty() && wxFileExists(configured)) return wxFileName(configured).GetFullPath();
+
+    const wxString directory = wxFileName(adapterExecutable).GetPath();
+    const wxString names[] = {
+        wxS("codium-blocks-codeblocks-debuggergdb-provider.so"),
+        wxS("codium-blocks-codeblocks-debuggergdb-provider.dylib"),
+        wxS("codium-blocks-codeblocks-debuggergdb-provider.dll")
+    };
+    for (const auto& name : names) {
+        const wxString candidate = directory + wxFILE_SEP_PATH + name;
+        if (wxFileExists(candidate)) return wxFileName(candidate).GetFullPath();
+    }
+    return wxEmptyString;
+}
+
 wxString DetectProjectRoot()
 {
     const wxString executable = wxStandardPaths::Get().GetExecutablePath();
@@ -2336,6 +2355,7 @@ private:
         const wxString dataDirectory = FindCodeBlocksDataDirectory(codeBlocksBridge_);
         const wxString compilerPlugin = FindCodeBlocksCompilerPlugin(codeBlocksBridge_);
         const wxString debuggerPlugin = FindCodeBlocksDebuggerPlugin(codeBlocksBridge_);
+        const wxString debuggerProvider = FindCodeBlocksDebuggerProvider(executable);
         if (dataDirectory.empty() || compilerPlugin.empty()) {
             AppendLog(wxS("Code::Blocks adapter requires resources.zip and a matching Compiler plugin; discovery found neither complete runtime path."));
             return;
@@ -2343,6 +2363,7 @@ private:
         arguments.Add(wxS("--data-dir=") + dataDirectory);
         arguments.Add(wxS("--compiler-plugin=") + compilerPlugin);
         if (!debuggerPlugin.empty()) arguments.Add(wxS("--debugger-plugin=") + debuggerPlugin);
+        if (!debuggerProvider.empty()) arguments.Add(wxS("--debugger-provider=") + debuggerProvider);
         if (!codeBlocksAdapter_.Start(executable, arguments, workspace_.RootPath(), configuration, &error)) {
             AppendLog(wxS("Code::Blocks adapter error: ") + error);
             return;
