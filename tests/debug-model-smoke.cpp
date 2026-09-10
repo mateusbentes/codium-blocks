@@ -97,6 +97,57 @@ int main()
         return 9;
     }
 
-    std::cout << "debug-model-smoke: ok — source mapping, persistent watches, and Code::Blocks snapshots\n";
+    codium::DapDebugSessionModel session;
+    session.MarkStarted();
+    if (session.State() != codium::DapRunState::Initializing ||
+        codium::DapDebugSessionModel::StateName(session.State()) != wxS("initializing")) {
+        std::cerr << "debug-model-smoke: DAP start state failed\n";
+        return 10;
+    }
+    wxArrayInt requestedLines;
+    requestedLines.Add(12);
+    requestedLines.Add(24);
+    session.SetRequestedBreakpoints(wxS("demo.cpp"), requestedLines);
+    const wxString breakpointResponse =
+        wxS("{\"type\":\"response\",\"command\":\"setBreakpoints\",\"success\":true,"
+            "\"body\":{\"breakpoints\":[{\"id\":3,\"verified\":true,\"line\":12},"
+            "{\"id\":4,\"verified\":false,\"line\":24,\"message\":\"pending source\"}]}}\n");
+    wxString breakpointError;
+    if (!session.ApplyBreakpointResponse(wxS("demo.cpp"), breakpointResponse, &breakpointError) ||
+        session.Breakpoints(wxS("demo.cpp")).size() != 2 ||
+        session.Breakpoints(wxS("demo.cpp"))[0].state != codium::DapBreakpointState::Verified ||
+        session.Breakpoints(wxS("demo.cpp"))[0].id != 3 ||
+        session.Breakpoints(wxS("demo.cpp"))[1].state != codium::DapBreakpointState::Rejected ||
+        session.Breakpoints(wxS("demo.cpp"))[1].message != wxS("pending source")) {
+        std::cerr << "debug-model-smoke: DAP breakpoint response failed\n";
+        return 11;
+    }
+    if (session.ToggleRequestedBreakpoint(wxS("demo.cpp"), 24) ||
+        session.RequestedBreakpointLines(wxS("demo.cpp")).size() != 1) {
+        std::cerr << "debug-model-smoke: DAP breakpoint toggle failed\n";
+        return 12;
+    }
+    codium::DapRefreshPlan stopped = session.ObserveMessage(
+        wxS("{\"type\":\"event\",\"event\":\"stopped\",\"threadId\":7,"
+            "\"reason\":\"breakpoint\"}"));
+    if (session.State() != codium::DapRunState::Paused || !stopped.stateChanged ||
+        !stopped.refreshThreads || stopped.threadId != 7 || stopped.reason != wxS("breakpoint")) {
+        std::cerr << "debug-model-smoke: DAP stopped refresh plan failed\n";
+        return 13;
+    }
+    const codium::DapRefreshPlan continued = session.ObserveMessage(
+        wxS("{\"type\":\"event\",\"event\":\"continued\",\"threadId\":7}"));
+    if (session.State() != codium::DapRunState::Running || !continued.clearTransientViews) {
+        std::cerr << "debug-model-smoke: DAP continued refresh plan failed\n";
+        return 14;
+    }
+    const codium::DapRefreshPlan terminated = session.ObserveMessage(
+        wxS("{\"type\":\"event\",\"event\":\"terminated\"}"));
+    if (session.State() != codium::DapRunState::Stopped || !terminated.clearTransientViews) {
+        std::cerr << "debug-model-smoke: DAP terminated refresh plan failed\n";
+        return 15;
+    }
+
+    std::cout << "debug-model-smoke: ok — source mapping, persistent watches, Code::Blocks snapshots, and DAP session state\n";
     return 0;
 }

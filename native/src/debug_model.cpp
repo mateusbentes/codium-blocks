@@ -436,6 +436,236 @@ bool WatchStore::Save(const wxString& workspaceRoot, const wxArrayString& expres
     return true;
 }
 
+void DapDebugSessionModel::Reset()
+{
+    state_ = DapRunState::Disconnected;
+    breakpoints_.clear();
+}
+
+void DapDebugSessionModel::MarkStarted()
+{
+    state_ = DapRunState::Initializing;
+    for (auto& [path, items] : breakpoints_) {
+        (void)path;
+        for (auto& breakpoint : items) {
+            breakpoint.state = DapBreakpointState::Pending;
+            breakpoint.message.clear();
+        }
+    }
+}
+
+void DapDebugSessionModel::MarkInitializing()
+{
+    state_ = DapRunState::Initializing;
+}
+
+void DapDebugSessionModel::MarkDisconnected()
+{
+    state_ = DapRunState::Disconnected;
+}
+
+void DapDebugSessionModel::MarkStopped()
+{
+    state_ = DapRunState::Stopped;
+}
+
+void DapDebugSessionModel::SetState(DapRunState state, DapRefreshPlan* plan)
+{
+    if (state_ == state) return;
+    state_ = state;
+    if (plan) plan->stateChanged = true;
+}
+
+DapRefreshPlan DapDebugSessionModel::ObserveMessage(const wxString& json)
+{
+    DapRefreshPlan plan;
+    plan.state = state_;
+    const wxScopedCharBuffer utf8 = json.utf8_str();
+    JsonValue root;
+    std::string parseError;
+    JsonParser parser(utf8 ? std::string(utf8.data()) : std::string());
+    if (!parser.Parse(&root, &parseError) || root.kind != JsonValue::Kind::Object) return plan;
+
+    const wxString type = StringField(root, "type");
+    const wxString event = StringField(root, "event");
+    const wxString command = StringField(root, "command");
+    plan.threadId = IntField(root, "threadId");
+    plan.reason = StringField(root, "reason");
+    const JsonValue* body = Field(root, "body");
+    if (body && body->kind == JsonValue::Kind::Object) {
+        plan.threadId = IntField(*body, "threadId", plan.threadId);
+        plan.reason = StringField(*body, "reason").empty() ? plan.reason : StringField(*body, "reason");
+    }
+    if (type == wxS("event")) {
+        if (event == wxS("initialized")) {
+            SetState(DapRunState::Initialized, &plan);
+        } else if (event == wxS("stopped")) {
+            SetState(DapRunState::Paused, &plan);
+            plan.refreshThreads = true;
+        } else if (event == wxS("continued")) {
+            SetState(DapRunState::Running, &plan);
+            plan.clearTransientViews = true;
+        } else if (event == wxS("terminated") || event == wxS("exited")) {
+            SetState(DapRunState::Stopped, &plan);
+            plan.clearTransientViews = true;
+        }
+    } else if (type == wxS("response")) {
+        const JsonValue* success = Field(root, "success");
+        const bool succeeded = !success || success->kind != JsonValue::Kind::Boolean || success->boolean;
+        if (succeeded && command == wxS("initialize")) {
+            SetState(DapRunState::Initialized, &plan);
+        } else if (succeeded && (command == wxS("launch") || command == wxS("attach"))) {
+            SetState(DapRunState::Running, &plan);
+        } else if (command == wxS("disconnect")) {
+            SetState(DapRunState::Stopped, &plan);
+            plan.clearTransientViews = true;
+        }
+    }
+    plan.state = state_;
+    return plan;
+}
+
+void DapDebugSessionModel::SetRequestedBreakpoints(const wxString& sourcePath, const wxArrayInt& lines)
+{
+    std::vector<DapBreakpoint> requested;
+    for (const int line : lines) {
+        if (line <= 0) continue;
+        DapBreakpoint breakpoint;
+        breakpoint.sourcePath = sourcePath;
+        breakpoint.requestedLine = line;
+        breakpoint.actualLine = line;
+        breakpoint.state = DapBreakpointState::Pending;
+        requested.push_back(std::move(breakpoint));
+    }
+    breakpoints_[sourcePath] = std::move(requested);
+}
+
+bool DapDebugSessionModel::ToggleRequestedBreakpoint(const wxString& sourcePath, int line)
+{
+    if (line <= 0) return false;
+    auto& breakpoints = breakpoints_[sourcePath];
+    const auto found = std::find_if(breakpoints.begin(), breakpoints.end(),
+                                    [line](const DapBreakpoint& breakpoint) {
+                                        return breakpoint.requestedLine == line;
+                                    });
+    if (found != breakpoints.end()) {
+        breakpoints.erase(found);
+        return false;
+    }
+    DapBreakpoint breakpoint;
+    breakpoint.sourcePath = sourcePath;
+    breakpoint.requestedLine = line;
+    breakpoint.actualLine = line;
+    breakpoint.state = DapBreakpointState::Pending;
+    breakpoints.push_back(std::move(breakpoint));
+    std::sort(breakpoints.begin(), breakpoints.end(), [](const DapBreakpoint& left, const DapBreakpoint& right) {
+        return left.requestedLine < right.requestedLine;
+    });
+    return true;
+}
+
+wxArrayInt DapDebugSessionModel::RequestedBreakpointLines(const wxString& sourcePath) const
+{
+    wxArrayInt lines;
+    const auto found = breakpoints_.find(sourcePath);
+    if (found == breakpoints_.end()) return lines;
+    for (const auto& breakpoint : found->second) lines.Add(breakpoint.requestedLine);
+    return lines;
+}
+
+bool DapDebugSessionModel::ApplyBreakpointResponse(const wxString& sourcePath, const wxString& json,
+                                                   wxString* error)
+{
+    const wxScopedCharBuffer utf8 = json.utf8_str();
+    JsonValue root;
+    std::string parseError;
+    JsonParser parser(utf8 ? std::string(utf8.data()) : std::string());
+    if (!parser.Parse(&root, &parseError) || root.kind != JsonValue::Kind::Object) {
+        if (error) *error = wxString::FromUTF8(parseError.empty() ? "invalid DAP breakpoint response" : parseError);
+        return false;
+    }
+    const JsonValue* success = Field(root, "success");
+    const bool succeeded = !success || success->kind != JsonValue::Kind::Boolean || success->boolean;
+    auto& requested = breakpoints_[sourcePath];
+    if (!succeeded) {
+        const wxString message = StringField(root, "message");
+        for (auto& breakpoint : requested) {
+            breakpoint.state = DapBreakpointState::Rejected;
+            breakpoint.message = message.empty() ? wxS("The debug adapter rejected this breakpoint.") : message;
+        }
+        if (error) *error = message;
+        return true;
+    }
+
+    const JsonValue* body = Field(root, "body");
+    const JsonValue* values = body ? Field(*body, "breakpoints") : nullptr;
+    if (!values || values->kind != JsonValue::Kind::Array) {
+        if (error) *error = wxS("DAP breakpoint response has no breakpoints array.");
+        return false;
+    }
+    for (auto& breakpoint : requested) {
+        breakpoint.state = DapBreakpointState::Rejected;
+        breakpoint.message = wxS("The debug adapter did not confirm this breakpoint.");
+    }
+    for (size_t index = 0; index < values->array.size(); ++index) {
+        const JsonValue& value = values->array[index];
+        if (value.kind != JsonValue::Kind::Object) continue;
+        const int actualLine = IntField(value, "line");
+        const int requestedLine = index < requested.size() ? requested[index].requestedLine : actualLine;
+        auto found = std::find_if(requested.begin(), requested.end(),
+                                  [requestedLine](const DapBreakpoint& breakpoint) {
+                                      return breakpoint.requestedLine == requestedLine;
+                                  });
+        if (found == requested.end()) {
+            DapBreakpoint extra;
+            extra.sourcePath = sourcePath;
+            extra.requestedLine = requestedLine;
+            extra.actualLine = actualLine > 0 ? actualLine : requestedLine;
+            extra.id = IntField(value, "id");
+            extra.message = StringField(value, "message");
+            extra.state = BoolField(value, "verified") ? DapBreakpointState::Verified : DapBreakpointState::Rejected;
+            requested.push_back(std::move(extra));
+            continue;
+        }
+        found->actualLine = actualLine > 0 ? actualLine : found->requestedLine;
+        found->id = IntField(value, "id");
+        found->message = StringField(value, "message");
+        found->state = BoolField(value, "verified") ? DapBreakpointState::Verified : DapBreakpointState::Rejected;
+    }
+    return true;
+}
+
+const std::vector<DapBreakpoint>& DapDebugSessionModel::Breakpoints(const wxString& sourcePath) const
+{
+    static const std::vector<DapBreakpoint> empty;
+    const auto found = breakpoints_.find(sourcePath);
+    return found == breakpoints_.end() ? empty : found->second;
+}
+
+wxString DapDebugSessionModel::StateName(DapRunState state)
+{
+    switch (state) {
+    case DapRunState::Disconnected: return wxS("disconnected");
+    case DapRunState::Initializing: return wxS("initializing");
+    case DapRunState::Initialized: return wxS("initialized");
+    case DapRunState::Running: return wxS("running");
+    case DapRunState::Paused: return wxS("paused");
+    case DapRunState::Stopped: return wxS("stopped");
+    }
+    return wxS("unknown");
+}
+
+wxString DapDebugSessionModel::BreakpointStateName(DapBreakpointState state)
+{
+    switch (state) {
+    case DapBreakpointState::Pending: return wxS("pending");
+    case DapBreakpointState::Verified: return wxS("verified");
+    case DapBreakpointState::Rejected: return wxS("rejected");
+    case DapBreakpointState::Disabled: return wxS("disabled");
+    }
+    return wxS("unknown");
+}
+
 bool CodeBlocksDebugSnapshot::Parse(const wxString& json, CodeBlocksDebugSnapshot* snapshot, wxString* error)
 {
     if (!snapshot) {

@@ -67,9 +67,9 @@ The terminal panel should provide filters for errors, warnings, command output, 
 
 ## Debugging workflow
 
-The Debug panel should use the same visual language as Problems and Build. Breakpoints appear in the editor gutter and in a compact breakpoint list. The call stack is selectable, and selecting a frame opens the mapped source file at the reported line and column. Variables, watches, threads, scopes, and the debug console remain dockable in the bottom workbench.
+The Debug panel should use the same visual language as Problems and Build. Breakpoints appear in the editor gutter and in a compact breakpoint list. The current native implementation distinguishes pending, verified, and rejected breakpoint states; a disabled state is reserved for a future adapter capability and correlates adapter responses with the requested source file. The call stack is selectable, and selecting a frame opens the mapped source file at the reported line and column. Variables, watches, threads, scopes, and the debug console remain dockable in the bottom workbench.
 
-The active debug state must be visible in the toolbar and status bar. Unsupported adapter capabilities must be shown as disabled actions with an explanation instead of causing a silent failure.
+The active debug state must be visible in the Debug panel and status bar. The DAP session model reports initializing, initialized, running, paused, stopped, and disconnected states. A stopped event refreshes threads, stack frames, scopes, variables, and persistent watches; continued and terminated events clear transient views so stale data is not presented as current. Unsupported adapter capabilities must be shown as disabled actions with an explanation instead of causing a silent failure.
 
 ## Navigation and keyboard workflow
 

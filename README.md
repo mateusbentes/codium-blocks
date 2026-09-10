@@ -84,6 +84,9 @@ The current `1.0.1` development increment builds on the completed `0.9.0` baseli
 - double-click word selection and triple-click line selection;
 - safe DCS/APC graphics policy that consumes Sixel/Kitty payloads without corrupting the screen.
 - native DAP breakpoint toggling and `setBreakpoints` requests;
+- value-owned DAP session state with `initializing`, `initialized`, `running`, `paused`, `stopped`, and `disconnected` transitions;
+- automatic DAP refresh of threads, stack frames, scopes, variables, and persistent watches after stopped events, with transient debug views cleared after continued or terminated events;
+- breakpoint status tracking for pending, verified, and rejected states; a disabled state remains reserved for a future adapter capability, including colored gutter markers and source-correlated adapter responses;
 - native threads, call-stack, scopes, variables, and evaluate panels;
 - problem-list navigation from diagnostics to editor locations;
 - SHA-256 verification for VSIX artifacts;

@@ -25,6 +25,7 @@ public:
     bool Stop();
     void HandleProcessExit(long pid, int exitCode);
     bool IsRunning() const { return process_ != nullptr && pid_ != 0; }
+    int LastRequestSequence() const { return lastRequestSequence_; }
 
     wxArrayString Poll();
     int NextSequence() const { return nextSequence_; }
@@ -38,6 +39,7 @@ private:
     wxProcess* process_ = nullptr;
     long pid_ = 0;
     int nextSequence_ = 1;
+    int lastRequestSequence_ = 0;
     std::string inputBuffer_;
 };
 

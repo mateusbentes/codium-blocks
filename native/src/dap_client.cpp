@@ -67,6 +67,7 @@ bool DapClient::Start(const wxString& program, const wxArrayString& arguments,
     }
     inputBuffer_.clear();
     nextSequence_ = 1;
+    lastRequestSequence_ = 0;
     return true;
 }
 
@@ -87,6 +88,7 @@ bool DapClient::WriteMessage(const wxString& json)
 bool DapClient::SendRequest(const wxString& command, const wxString& argumentsJson)
 {
     const int sequence = nextSequence_++;
+    lastRequestSequence_ = sequence;
     return WriteMessage(wxString::Format(
         wxS("{\"seq\":%d,\"type\":\"request\",\"command\":\"%s\",\"arguments\":%s}"),
         sequence, JsonEscape(command), argumentsJson));
@@ -146,6 +148,7 @@ bool DapClient::Stop()
     process_ = nullptr;
     pid_ = 0;
     inputBuffer_.clear();
+    lastRequestSequence_ = 0;
     return true;
 }
 

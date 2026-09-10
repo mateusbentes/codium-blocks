@@ -99,7 +99,9 @@ int main(int argc, char** argv)
         !dap.SendRequest(wxS("threads")) ||
         !WaitForDap(dap, wxS("\"name\":\"main\"")) ||
         !dap.SendRequest(wxS("continue"), wxS("{\"threadId\":1}")) ||
-        !WaitForDap(dap, wxS("\"allThreadsContinued\":true"))) {
+        !WaitForDap(dap, wxS("\"event\":\"continued\"")) ||
+        !dap.SendRequest(wxS("pause"), wxS("{\"threadId\":1}")) ||
+        !WaitForDap(dap, wxS("\"event\":\"stopped\""))) {
         std::cerr << "transport-smoke: DAP failed: " << error.ToStdString() << "\n";
         return 1;
     }

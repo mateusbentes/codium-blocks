@@ -36,9 +36,14 @@ function handle(request) {
     send({ type: 'response', request_seq: request.seq, success: true, command: request.command,
       body: { result: '42', type: 'int', variablesReference: 0 } });
   } else if (request.command === 'continue') {
+    send({ type: 'event', event: 'continued', body: { threadId: 1, allThreadsContinued: true } });
     send({ type: 'response', request_seq: request.seq, success: true, command: request.command,
       body: { allThreadsContinued: true } });
+  } else if (request.command === 'pause') {
+    send({ type: 'event', event: 'stopped', body: { reason: 'pause', threadId: 1, allThreadsStopped: true } });
+    send({ type: 'response', request_seq: request.seq, success: true, command: request.command });
   } else if (request.command === 'disconnect') {
+    send({ type: 'event', event: 'terminated', body: {} });
     send({ type: 'response', request_seq: request.seq, success: true, command: request.command });
     process.exit(0);
   } else {
