@@ -57,6 +57,55 @@ wxString WatchFilePath(const wxString& workspaceRoot)
     return directory + wxFILE_SEP_PATH + wxString::FromUTF8(suffix.str()) + wxS(".txt");
 }
 
+wxString BreakpointFilePath(const wxString& workspaceRoot)
+{
+    wxString dataRoot;
+    if (!wxGetEnv(wxS("CODIUM_BLOCKS_DATA"), &dataRoot) || dataRoot.empty()) {
+        dataRoot = wxStandardPaths::Get().GetUserConfigDir() + wxFILE_SEP_PATH + wxS("CodiumBlocks");
+    }
+    const std::string keyInput = workspaceRoot.utf8_str().data();
+    const size_t key = std::hash<std::string>{}(keyInput);
+    std::ostringstream suffix;
+    suffix << std::hex << key;
+    const wxString directory = dataRoot + wxFILE_SEP_PATH + wxS("breakpoints");
+    wxFileName::Mkdir(directory, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+    return directory + wxFILE_SEP_PATH + wxString::FromUTF8(suffix.str()) + wxS(".tsv");
+}
+
+wxString EscapeTsv(const wxString& value)
+{
+    wxString escaped;
+    for (const auto character : value) {
+        if (character == wxChar('\\')) escaped += wxS("\\\\");
+        else if (character == wxChar('\t')) escaped += wxS("\\t");
+        else if (character == wxChar('\n')) escaped += wxS("\\n");
+        else if (character == wxChar('\r')) escaped += wxS("\\r");
+        else escaped += character;
+    }
+    return escaped;
+}
+
+wxString UnescapeTsv(wxString value)
+{
+    wxString unescaped;
+    bool escaped = false;
+    for (const auto character : value) {
+        if (escaped) {
+            if (character == wxChar('t')) unescaped += wxChar('\t');
+            else if (character == wxChar('n')) unescaped += wxChar('\n');
+            else if (character == wxChar('r')) unescaped += wxChar('\r');
+            else unescaped += character;
+            escaped = false;
+        } else if (character == wxChar('\\')) {
+            escaped = true;
+        } else {
+            unescaped += character;
+        }
+    }
+    if (escaped) unescaped += wxChar('\\');
+    return unescaped;
+}
+
 struct JsonValue final {
     enum class Kind { Null, Boolean, Number, String, Array, Object };
 
@@ -436,6 +485,65 @@ bool WatchStore::Save(const wxString& workspaceRoot, const wxArrayString& expres
     return true;
 }
 
+std::vector<DapBreakpoint> DapBreakpointStore::Load(const wxString& workspaceRoot)
+{
+    std::vector<DapBreakpoint> breakpoints;
+    const wxString path = BreakpointFilePath(workspaceRoot);
+    if (!wxFileExists(path)) return breakpoints;
+    wxFile file;
+    if (!file.Open(path, wxFile::read)) return breakpoints;
+    wxString text;
+    if (!file.ReadAll(&text)) return breakpoints;
+    wxStringTokenizer lines(text, wxS("\n"), wxTOKEN_STRTOK);
+    while (lines.HasMoreTokens()) {
+        wxString line = lines.GetNextToken();
+        if (line.EndsWith(wxS("\r"))) line.RemoveLast();
+        wxStringTokenizer fields(line, wxS("\t"), wxTOKEN_RET_EMPTY);
+        wxArrayString values;
+        while (fields.HasMoreTokens()) values.Add(UnescapeTsv(fields.GetNextToken()));
+        if (values.size() < 2) continue;
+        long requestedLine = 0;
+        if (!values[1].ToLong(&requestedLine) || requestedLine <= 0 || values[0].empty()) continue;
+        DapBreakpoint breakpoint;
+        breakpoint.sourcePath = values[0];
+        breakpoint.requestedLine = static_cast<int>(requestedLine);
+        breakpoint.actualLine = breakpoint.requestedLine;
+        if (values.size() > 2) breakpoint.condition = values[2];
+        if (values.size() > 3) breakpoint.hitCondition = values[3];
+        if (values.size() > 4) breakpoint.logMessage = values[4];
+        breakpoints.push_back(std::move(breakpoint));
+    }
+    return breakpoints;
+}
+
+bool DapBreakpointStore::Save(const wxString& workspaceRoot, const std::vector<DapBreakpoint>& breakpoints,
+                               wxString* error)
+{
+    const wxString path = BreakpointFilePath(workspaceRoot);
+    const wxString temporary = path + wxS(".tmp");
+    wxFile file;
+    if (!file.Open(temporary, wxFile::write)) {
+        if (error) *error = wxString::Format(wxS("Could not write breakpoints: %s."), temporary);
+        return false;
+    }
+    wxString text;
+    for (const auto& breakpoint : breakpoints) {
+        if (breakpoint.sourcePath.empty() || breakpoint.requestedLine <= 0) continue;
+        text += EscapeTsv(breakpoint.sourcePath) + wxS("\t") +
+                wxString::Format(wxS("%d"), breakpoint.requestedLine) + wxS("\t") +
+                EscapeTsv(breakpoint.condition) + wxS("\t") +
+                EscapeTsv(breakpoint.hitCondition) + wxS("\t") +
+                EscapeTsv(breakpoint.logMessage) + wxS("\n");
+    }
+    const wxScopedCharBuffer bytes = text.utf8_str();
+    if (file.Write(bytes.data(), bytes.length()) != bytes.length() || !file.Close() || !wxRenameFile(temporary, path, true)) {
+        wxRemoveFile(temporary);
+        if (error) *error = wxString::Format(wxS("Could not commit breakpoints: %s."), path);
+        return false;
+    }
+    return true;
+}
+
 void DapDebugSessionModel::Reset()
 {
     state_ = DapRunState::Disconnected;
@@ -564,6 +672,25 @@ bool DapDebugSessionModel::ToggleRequestedBreakpoint(const wxString& sourcePath,
     return true;
 }
 
+bool DapDebugSessionModel::UpdateBreakpointOptions(const wxString& sourcePath, int line,
+                                                   const wxString& condition, const wxString& hitCondition,
+                                                   const wxString& logMessage)
+{
+    const auto foundPath = breakpoints_.find(sourcePath);
+    if (foundPath == breakpoints_.end()) return false;
+    const auto found = std::find_if(foundPath->second.begin(), foundPath->second.end(),
+                                    [line](const DapBreakpoint& breakpoint) {
+                                        return breakpoint.requestedLine == line;
+                                    });
+    if (found == foundPath->second.end()) return false;
+    found->condition = condition;
+    found->hitCondition = hitCondition;
+    found->logMessage = logMessage;
+    found->state = DapBreakpointState::Pending;
+    found->message.clear();
+    return true;
+}
+
 wxArrayInt DapDebugSessionModel::RequestedBreakpointLines(const wxString& sourcePath) const
 {
     wxArrayInt lines;
@@ -571,6 +698,41 @@ wxArrayInt DapDebugSessionModel::RequestedBreakpointLines(const wxString& source
     if (found == breakpoints_.end()) return lines;
     for (const auto& breakpoint : found->second) lines.Add(breakpoint.requestedLine);
     return lines;
+}
+
+std::vector<DapBreakpoint> DapDebugSessionModel::RequestedBreakpoints(const wxString& sourcePath) const
+{
+    const auto found = breakpoints_.find(sourcePath);
+    return found == breakpoints_.end() ? std::vector<DapBreakpoint>() : found->second;
+}
+
+std::vector<DapBreakpoint> DapDebugSessionModel::AllRequestedBreakpoints() const
+{
+    std::vector<DapBreakpoint> result;
+    for (const auto& [path, items] : breakpoints_) {
+        (void)path;
+        result.insert(result.end(), items.begin(), items.end());
+    }
+    return result;
+}
+
+void DapDebugSessionModel::ReplaceBreakpoints(const std::vector<DapBreakpoint>& breakpoints)
+{
+    breakpoints_.clear();
+    for (const auto& breakpoint : breakpoints) {
+        if (breakpoint.sourcePath.empty() || breakpoint.requestedLine <= 0) continue;
+        DapBreakpoint copy = breakpoint;
+        copy.actualLine = copy.requestedLine;
+        copy.state = DapBreakpointState::Pending;
+        copy.message.clear();
+        breakpoints_[copy.sourcePath].push_back(std::move(copy));
+    }
+    for (auto& [path, items] : breakpoints_) {
+        (void)path;
+        std::sort(items.begin(), items.end(), [](const DapBreakpoint& left, const DapBreakpoint& right) {
+            return left.requestedLine < right.requestedLine;
+        });
+    }
 }
 
 bool DapDebugSessionModel::ApplyBreakpointResponse(const wxString& sourcePath, const wxString& json,

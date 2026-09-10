@@ -76,6 +76,9 @@ struct DapBreakpoint final {
     int requestedLine = 0;
     int actualLine = 0;
     int id = 0;
+    wxString condition;
+    wxString hitCondition;
+    wxString logMessage;
     wxString message;
     DapBreakpointState state = DapBreakpointState::Pending;
 };
@@ -100,7 +103,13 @@ public:
 
     void SetRequestedBreakpoints(const wxString& sourcePath, const wxArrayInt& lines);
     bool ToggleRequestedBreakpoint(const wxString& sourcePath, int line);
+    bool UpdateBreakpointOptions(const wxString& sourcePath, int line,
+                                 const wxString& condition, const wxString& hitCondition,
+                                 const wxString& logMessage);
     wxArrayInt RequestedBreakpointLines(const wxString& sourcePath) const;
+    std::vector<DapBreakpoint> RequestedBreakpoints(const wxString& sourcePath) const;
+    std::vector<DapBreakpoint> AllRequestedBreakpoints() const;
+    void ReplaceBreakpoints(const std::vector<DapBreakpoint>& breakpoints);
     bool ApplyBreakpointResponse(const wxString& sourcePath, const wxString& json,
                                  wxString* error = nullptr);
     const std::vector<DapBreakpoint>& Breakpoints(const wxString& sourcePath) const;
@@ -114,6 +123,13 @@ private:
 
     DapRunState state_ = DapRunState::Disconnected;
     std::map<wxString, std::vector<DapBreakpoint>> breakpoints_;
+};
+
+class DapBreakpointStore final {
+public:
+    static std::vector<DapBreakpoint> Load(const wxString& workspaceRoot);
+    static bool Save(const wxString& workspaceRoot, const std::vector<DapBreakpoint>& breakpoints,
+                     wxString* error = nullptr);
 };
 
 struct CodeBlocksDebugValue final {

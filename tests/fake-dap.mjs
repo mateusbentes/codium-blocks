@@ -21,8 +21,12 @@ function handle(request) {
     send({ type: 'response', request_seq: request.seq, success: true, command: request.command,
       body: { threads: [{ id: 1, name: 'main' }] } });
   } else if (request.command === 'setBreakpoints') {
+    const first = request.arguments?.breakpoints?.[0] ?? {};
+    // Keep the transport smoke deterministic while proving the native payload.
+    const optionsAccepted = first.condition === 'counter > 0' && first.hitCondition === '3' &&
+      first.logMessage === 'counter=%d';
     send({ type: 'response', request_seq: request.seq, success: true, command: request.command,
-      body: { breakpoints: (request.arguments?.breakpoints ?? []).map((item, index) => ({ id: index + 1, verified: true, line: item.line })) } });
+      body: { optionsAccepted, breakpoints: (request.arguments?.breakpoints ?? []).map((item, index) => ({ id: index + 1, verified: true, line: item.line })) } });
   } else if (request.command === 'stackTrace') {
     send({ type: 'response', request_seq: request.seq, success: true, command: request.command,
       body: { stackFrames: [{ id: 7, name: 'main', line: 12, column: 1, source: { path: 'demo.cpp' } }] } });

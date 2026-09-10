@@ -4,8 +4,16 @@
 #include <wx/string.h>
 
 #include <string>
+#include <vector>
 
 namespace codium {
+
+struct DapBreakpointRequest final {
+    int line = 0;
+    wxString condition;
+    wxString hitCondition;
+    wxString logMessage;
+};
 
 class DapClient final {
 public:
@@ -16,6 +24,7 @@ public:
                const wxString& workingDirectory, wxString* error = nullptr);
     bool SendRequest(const wxString& command, const wxString& argumentsJson = wxS("{}"));
     bool SetBreakpoints(const wxString& sourcePath, const wxArrayInt& lines);
+    bool SetBreakpoints(const wxString& sourcePath, const std::vector<DapBreakpointRequest>& breakpoints);
     bool ConfigurationDone();
     bool RequestThreads();
     bool RequestStackTrace(int threadId = 1);

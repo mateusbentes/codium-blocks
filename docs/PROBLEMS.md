@@ -62,7 +62,7 @@ The parser must understand workspace-relative paths, absolute paths, Windows dri
 
 When a build finishes, the Problems view displays the result associated with that build session. Starting a new build marks the previous build diagnostics stale until the new result replaces them. Language-server diagnostics remain independently versioned.
 
-The Phase F parser also recognizes CMake `Error at` locations, Ninja and Make fatal lines, linker and `collect2` failures, and ANSI-prefixed variants of these messages. A `Problem` carries the originating `buildSessionId` when it came from a Build or Code::Blocks compiler session. This allows the Build panel to show diagnostics beside the exact target, configuration, toolchain, elapsed time, exit status, and raw output that produced them, without merging unrelated invocations.
+The build parser also recognizes CMake `Error at` locations, Ninja and Make fatal lines, linker and `collect2` failures, and ANSI-prefixed variants of these messages. A `Problem` carries the originating `buildSessionId` when it came from a Build or Code::Blocks compiler session. This allows the Build panel to show diagnostics beside the exact target, configuration, toolchain, elapsed time, exit status, and raw output that produced them, without merging unrelated invocations.
 
 ## Terminal behavior
 

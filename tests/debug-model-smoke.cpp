@@ -108,6 +108,13 @@ int main()
     requestedLines.Add(12);
     requestedLines.Add(24);
     session.SetRequestedBreakpoints(wxS("demo.cpp"), requestedLines);
+    if (!session.UpdateBreakpointOptions(wxS("demo.cpp"), 12, wxS("counter > 0"), wxS("3"), wxS("counter=%d")) ||
+        session.RequestedBreakpoints(wxS("demo.cpp"))[0].condition != wxS("counter > 0") ||
+        session.RequestedBreakpoints(wxS("demo.cpp"))[0].hitCondition != wxS("3") ||
+        session.RequestedBreakpoints(wxS("demo.cpp"))[0].logMessage != wxS("counter=%d")) {
+        std::cerr << "debug-model-smoke: breakpoint options failed\n";
+        return 16;
+    }
     const wxString breakpointResponse =
         wxS("{\"type\":\"response\",\"command\":\"setBreakpoints\",\"success\":true,"
             "\"body\":{\"breakpoints\":[{\"id\":3,\"verified\":true,\"line\":12},"
@@ -147,6 +154,20 @@ int main()
         std::cerr << "debug-model-smoke: DAP terminated refresh plan failed\n";
         return 15;
     }
+
+    std::vector<codium::DapBreakpoint> persistent = session.AllRequestedBreakpoints();
+    if (!codium::DapBreakpointStore::Save(root, persistent, &error)) {
+        std::cerr << "debug-model-smoke: breakpoint save failed: " << error.ToStdString() << "\n";
+        return 17;
+    }
+    const auto restored = codium::DapBreakpointStore::Load(root);
+    if (restored.size() != 1 || restored[0].sourcePath != wxS("demo.cpp") ||
+        restored[0].condition != wxS("counter > 0") || restored[0].hitCondition != wxS("3") ||
+        restored[0].logMessage != wxS("counter=%d")) {
+        std::cerr << "debug-model-smoke: breakpoint persistence failed\n";
+        return 18;
+    }
+    std::filesystem::remove_all(root.ToStdString());
 
     std::cout << "debug-model-smoke: ok — source mapping, persistent watches, Code::Blocks snapshots, and DAP session state\n";
     return 0;

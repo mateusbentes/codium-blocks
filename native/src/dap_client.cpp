@@ -96,10 +96,33 @@ bool DapClient::SendRequest(const wxString& command, const wxString& argumentsJs
 
 bool DapClient::SetBreakpoints(const wxString& sourcePath, const wxArrayInt& lines)
 {
+    std::vector<DapBreakpointRequest> requests;
+    requests.reserve(lines.size());
+    for (const int line : lines) {
+        DapBreakpointRequest request;
+        request.line = line;
+        requests.push_back(request);
+    }
+    return SetBreakpoints(sourcePath, requests);
+}
+
+bool DapClient::SetBreakpoints(const wxString& sourcePath, const std::vector<DapBreakpointRequest>& breakpoints)
+{
     wxString json = wxS("{\"source\":{\"path\":\"") + JsonEscape(sourcePath) + wxS("\"},\"breakpoints\":[");
-    for (size_t index = 0; index < lines.size(); ++index) {
+    for (size_t index = 0; index < breakpoints.size(); ++index) {
         if (index != 0) json += wxS(",");
-        json += wxString::Format(wxS("{\"line\":%d}"), lines[index]);
+        const auto& breakpoint = breakpoints[index];
+        json += wxString::Format(wxS("{\"line\":%d"), breakpoint.line);
+        if (!breakpoint.condition.empty()) {
+            json += wxS(",\"condition\":\"") + JsonEscape(breakpoint.condition) + wxS("\"");
+        }
+        if (!breakpoint.hitCondition.empty()) {
+            json += wxS(",\"hitCondition\":\"") + JsonEscape(breakpoint.hitCondition) + wxS("\"");
+        }
+        if (!breakpoint.logMessage.empty()) {
+            json += wxS(",\"logMessage\":\"") + JsonEscape(breakpoint.logMessage) + wxS("\"");
+        }
+        json += wxS("}");
     }
     json += wxS("]}");
     return SendRequest(wxS("setBreakpoints"), json);

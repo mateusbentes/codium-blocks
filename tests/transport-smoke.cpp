@@ -5,6 +5,7 @@
 #include <wx/string.h>
 
 #include <iostream>
+#include <vector>
 
 namespace {
 
@@ -105,9 +106,10 @@ int main(int argc, char** argv)
         std::cerr << "transport-smoke: DAP failed: " << error.ToStdString() << "\n";
         return 1;
     }
-    wxArrayInt breakpoints;
-    breakpoints.Add(12);
-    if (!dap.SetBreakpoints(wxS("demo.cpp"), breakpoints) || !WaitForDap(dap, wxS("\"verified\":true")) ||
+    std::vector<codium::DapBreakpointRequest> breakpoints;
+    breakpoints.push_back(codium::DapBreakpointRequest{12, wxS("counter > 0"), wxS("3"), wxS("counter=%d")});
+    if (!dap.SetBreakpoints(wxS("demo.cpp"), breakpoints) ||
+        !WaitForDap(dap, wxS("\"optionsAccepted\":true,\"breakpoints\"")) ||
         !dap.RequestStackTrace(1) || !WaitForDap(dap, wxS("\"stackFrames\"")) ||
         !dap.RequestScopes(7) || !WaitForDap(dap, wxS("\"variablesReference\":42")) ||
         !dap.RequestVariables(42) || !WaitForDap(dap, wxS("\"answer\"")) ||

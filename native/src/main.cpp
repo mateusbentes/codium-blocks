@@ -684,6 +684,7 @@ public:
         AddButton(debugControls, wxS("Initialize"), [this](wxCommandEvent&) { InitializeDebug(); }, debugPage);
         AddButton(debugControls, wxS("Launch"), [this](wxCommandEvent&) { LaunchDebug(); }, debugPage);
         AddButton(debugControls, wxS("Breakpoint"), [this](wxCommandEvent&) { ToggleBreakpoint(); }, debugPage);
+        AddButton(debugControls, wxS("Breakpoint options"), [this](wxCommandEvent&) { ConfigureBreakpoint(); }, debugPage);
         AddButton(debugControls, wxS("Continue"), [this](wxCommandEvent&) { ContinueDebug(); }, debugPage);
         AddButton(debugControls, wxS("Pause"), [this](wxCommandEvent&) { PauseDebug(); }, debugPage);
         AddButton(debugControls, wxS("Stop"), [this](wxCommandEvent&) { StopDebug(); }, debugPage);
@@ -699,6 +700,7 @@ public:
         auto* debugColumns = new wxBoxSizer(wxHORIZONTAL);
         auto* debugLeft = new wxBoxSizer(wxVERTICAL);
         breakpoints_ = new wxListBox(debugPage, wxID_ANY);
+        breakpoints_->Bind(wxEVT_LISTBOX_DCLICK, [this](wxCommandEvent&) { ConfigureBreakpoint(); });
         debugLeft->Add(new wxStaticText(debugPage, wxID_ANY, wxS("Breakpoints")), 0, wxBOTTOM, 2);
         debugLeft->Add(breakpoints_, 1, wxEXPAND);
         debugThreads_ = new wxListBox(debugPage, wxID_ANY);
@@ -1410,6 +1412,8 @@ private:
         }
         watchExpressions_ = codium::WatchStore::Load(workspace_.RootPath());
         RefreshWatchView();
+        dapSession_.ReplaceBreakpoints(codium::DapBreakpointStore::Load(workspace_.RootPath()));
+        RefreshBreakpointView();
         PopulateFileTree();
         RefreshNativeContributions();
         LoadProjectConfig();
@@ -2286,7 +2290,10 @@ private:
         wxString error;
         if (dap_.Start(dialog.GetValue(), arguments, WorkspaceDirectory(), &error)) {
             dapSession_.MarkStarted();
+            ClearDapTransientViews();
             UpdateDapStatus();
+            RefreshBreakpointView();
+            RefreshGutters();
             AppendLog(wxS("Debug adapter started."));
         } else {
             AppendLog(wxS("Debug adapter error: ") + error);
@@ -2327,12 +2334,7 @@ private:
                                                     JsonEscape(program), JsonEscape(WorkspaceDirectory()), SourceMapArguments());
         if (dap_.SendRequest(wxS("launch"), launchArguments)) {
             AppendLog(wxS("DAP launch request sent."));
-            if (!document_.IsUntitled()) {
-                const wxArrayInt lines = dapSession_.RequestedBreakpointLines(document_.Path());
-                if (dap_.SetBreakpoints(document_.Path(), lines)) {
-                    dapBreakpointRequests_[dap_.LastRequestSequence()] = document_.Path();
-                }
-            }
+            SendAllBreakpoints();
         }
     }
 
@@ -2346,8 +2348,43 @@ private:
             wxString label = wxString::Format(wxS("%s:%d [%s]"), document_.Path(), line,
                                               codium::DapDebugSessionModel::BreakpointStateName(breakpoint.state));
             if (!breakpoint.message.empty()) label += wxS(" — ") + breakpoint.message;
+            if (!breakpoint.condition.empty()) label += wxS(" · if ") + breakpoint.condition;
+            if (!breakpoint.hitCondition.empty()) label += wxS(" · hit ") + breakpoint.hitCondition;
+            if (!breakpoint.logMessage.empty()) label += wxS(" · log ") + breakpoint.logMessage;
             breakpoints_->Append(label);
         }
+    }
+
+    void PersistBreakpoints()
+    {
+        if (!workspace_.IsOpen()) return;
+        wxString error;
+        if (!codium::DapBreakpointStore::Save(workspace_.RootPath(), dapSession_.AllRequestedBreakpoints(), &error)) {
+            AppendLog(wxS("Could not persist breakpoints: ") + error);
+        }
+    }
+
+    bool SendBreakpointsForSource(const wxString& sourcePath)
+    {
+        if (!dap_.IsRunning() || sourcePath.empty()) return false;
+        const auto requested = dapSession_.RequestedBreakpoints(sourcePath);
+        std::vector<codium::DapBreakpointRequest> requests;
+        requests.reserve(requested.size());
+        for (const auto& breakpoint : requested) {
+            requests.push_back(codium::DapBreakpointRequest{
+                breakpoint.requestedLine, breakpoint.condition, breakpoint.hitCondition, breakpoint.logMessage});
+        }
+        if (!dap_.SetBreakpoints(sourcePath, requests)) return false;
+        dapBreakpointRequests_[dap_.LastRequestSequence()] = sourcePath;
+        AppendLog(wxS("DAP setBreakpoints request sent; breakpoints are pending confirmation."));
+        return true;
+    }
+
+    void SendAllBreakpoints()
+    {
+        std::set<wxString> paths;
+        for (const auto& breakpoint : dapSession_.AllRequestedBreakpoints()) paths.insert(breakpoint.sourcePath);
+        for (const auto& path : paths) SendBreakpointsForSource(path);
     }
 
     void ToggleBreakpoint()
@@ -2363,15 +2400,46 @@ private:
         }
         if (line <= 0) return;
         dapSession_.ToggleRequestedBreakpoint(document_.Path(), line);
+        PersistBreakpoints();
         RefreshBreakpointView();
         RefreshGutters();
-        if (dap_.IsRunning()) {
-            const wxArrayInt lines = dapSession_.RequestedBreakpointLines(document_.Path());
-            if (dap_.SetBreakpoints(document_.Path(), lines)) {
-                dapBreakpointRequests_[dap_.LastRequestSequence()] = document_.Path();
-                AppendLog(wxS("DAP setBreakpoints request sent; breakpoints are pending confirmation."));
-            }
+        SendBreakpointsForSource(document_.Path());
+    }
+
+    void ConfigureBreakpoint()
+    {
+        if (document_.IsUntitled()) {
+            AppendLog(wxS("Open a source file before configuring a breakpoint."));
+            return;
         }
+        int line = CurrentEditorLine() + 1;
+        const auto requested = dapSession_.RequestedBreakpoints(document_.Path());
+        auto found = std::find_if(requested.begin(), requested.end(), [line](const codium::DapBreakpoint& breakpoint) {
+            return breakpoint.requestedLine == line;
+        });
+        if (found == requested.end() && breakpoints_ && breakpoints_->GetSelection() != wxNOT_FOUND &&
+            breakpoints_->GetSelection() < static_cast<int>(requested.size())) {
+            line = requested[static_cast<size_t>(breakpoints_->GetSelection())].requestedLine;
+            found = std::find_if(requested.begin(), requested.end(), [line](const codium::DapBreakpoint& breakpoint) {
+                return breakpoint.requestedLine == line;
+            });
+        }
+        if (found == requested.end()) {
+            AppendLog(wxS("Toggle a breakpoint before configuring its options."));
+            return;
+        }
+        wxTextEntryDialog condition(this, wxS("Conditional expression (optional)"), wxS("Breakpoint condition"), found->condition);
+        if (condition.ShowModal() != wxID_OK) return;
+        wxTextEntryDialog hitCondition(this, wxS("Hit count expression (optional)"), wxS("Breakpoint hit condition"), found->hitCondition);
+        if (hitCondition.ShowModal() != wxID_OK) return;
+        wxTextEntryDialog logMessage(this, wxS("Log message (optional; leave empty for a stopping breakpoint)"), wxS("Breakpoint logpoint"), found->logMessage);
+        if (logMessage.ShowModal() != wxID_OK) return;
+        dapSession_.UpdateBreakpointOptions(document_.Path(), line, condition.GetValue(),
+                                             hitCondition.GetValue(), logMessage.GetValue());
+        PersistBreakpoints();
+        RefreshBreakpointView();
+        RefreshGutters();
+        SendBreakpointsForSource(document_.Path());
     }
 
     void RequestDebugThreads()
@@ -3598,13 +3666,20 @@ private:
     void UpdateDapStatus()
     {
         const wxString state = codium::DapDebugSessionModel::StateName(dapSession_.State());
-        if (debugStatus_) debugStatus_->SetLabel(wxS("DAP: ") + state);
-        if (GetStatusBar()) SetStatusText(wxS("Debug ") + state, 1);
+        wxString label = wxS("DAP: ") + state;
+        if (activeDebugFrameLine_ > 0) {
+            label += wxString::Format(wxS(" · frame %d:%d"), activeDebugFrameLine_, activeDebugFrameCharacter_);
+        }
+        if (debugStatus_) debugStatus_->SetLabel(label);
+        if (GetStatusBar()) SetStatusText(wxS("Debug ") + label, 1);
     }
 
     void ClearDapTransientViews()
     {
         debugFrameLocations_.clear();
+        activeDebugFramePath_.clear();
+        activeDebugFrameLine_ = 0;
+        activeDebugFrameCharacter_ = 0;
         debugThreadId_ = 1;
         debugFrameId_ = 1;
         debugVariablesReference_ = 0;
@@ -3683,7 +3758,9 @@ private:
                 for (const auto& name : names) callStack_->Append(name);
                 if (names.IsEmpty()) callStack_->Append(line);
             }
-            debugFrameId_ = JsonIntField(line, wxS("id"), debugFrameId_);
+            if (!debugFrameLocations_.empty()) {
+                SynchronizeActiveDebugFrame(debugFrameLocations_.front());
+            }
             RequestDebugScopes();
         } else if (command == wxS("scopes")) {
             debugVariablesReference_ = JsonIntField(line, wxS("variablesReference"), debugVariablesReference_);
@@ -3720,21 +3797,31 @@ private:
         }
     }
 
-    void GoToStackFrame(int index)
+    void SynchronizeActiveDebugFrame(const DebugFrameLocation& frame)
     {
-        if (index < 0 || index >= static_cast<int>(debugFrameLocations_.size())) return;
-        const DebugFrameLocation& frame = debugFrameLocations_[static_cast<size_t>(index)];
         debugFrameId_ = frame.id;
         const wxString mappedPath = sourceMapper_.Map(frame.path);
+        activeDebugFramePath_ = mappedPath.empty() ? frame.path : mappedPath;
+        activeDebugFrameLine_ = frame.line;
+        activeDebugFrameCharacter_ = frame.character;
         if (!mappedPath.empty() && wxFileExists(mappedPath)) OpenDocumentPath(mappedPath);
         if (editor_) {
-            const long position = editor_->XYToPosition(std::max(0, frame.character), std::max(0, frame.line - 1));
+            const long position = codium::EditorActions::PositionForLineColumn(
+                editor_->GetValue(), std::max(0, frame.line - 1), std::max(0, frame.character - 1));
             if (position != -1) {
                 editor_->SetInsertionPoint(position);
                 editor_->ShowPosition(position);
                 editor_->SetFocus();
             }
         }
+        UpdateDapStatus();
+    }
+
+    void GoToStackFrame(int index)
+    {
+        if (index < 0 || index >= static_cast<int>(debugFrameLocations_.size())) return;
+        const DebugFrameLocation& frame = debugFrameLocations_[static_cast<size_t>(index)];
+        SynchronizeActiveDebugFrame(frame);
         RequestDebugScopes();
     }
 
@@ -3991,6 +4078,7 @@ private:
     void OnClose(wxCloseEvent& event)
     {
         SaveTerminalProfile();
+        PersistBreakpoints();
         taskRunner_.Stop();
         terminal_.Stop();
         dap_.Stop();
@@ -4096,6 +4184,9 @@ private:
     codium::SourceMapper sourceMapper_;
     wxArrayString watchExpressions_;
     std::vector<DebugFrameLocation> debugFrameLocations_;
+    wxString activeDebugFramePath_;
+    int activeDebugFrameLine_ = 0;
+    int activeDebugFrameCharacter_ = 0;
     std::vector<size_t> problemIndices_;
     codium::ProjectTask lastBuildTask_;
     bool hasLastBuildTask_ = false;
