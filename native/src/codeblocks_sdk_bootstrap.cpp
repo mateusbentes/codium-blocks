@@ -518,6 +518,7 @@ bool CodeBlocksSdkBootstrap::Start(const wxString& dataDirectory,
         Fail(wxS("Code::Blocks Manager initialization returned null."), error);
         return false;
     }
+    managerInitialized_ = true;
     manager->GetConfigManager(wxS("app"))->Write(wxS("data_path"), dataDirectory);
     Manager::SetBatchBuild(true);
     manager = Manager::Get(appFrame_);
@@ -536,8 +537,6 @@ bool CodeBlocksSdkBootstrap::Start(const wxString& dataDirectory,
     if (!Manager::LoadResource(wxS("resources.zip"))) {
         Fail(wxString::Format(wxS("Code::Blocks resources.zip could not be loaded from %s."),
                               dataDirectory), error);
-        UnregisterEventSinks();
-        Manager::Free();
         return false;
     }
     report_.resourcesLoaded = true;
@@ -555,8 +554,6 @@ bool CodeBlocksSdkBootstrap::Start(const wxString& dataDirectory,
         if (!wxMkdir(pluginStagingDirectory_) && !wxDirExists(pluginStagingDirectory_)) {
             Fail(wxString::Format(wxS("Could not create Code::Blocks plugin staging directory: %s"),
                                   pluginStagingDirectory_), error);
-            UnregisterEventSinks();
-            Manager::Free();
             return false;
         }
         Manager::SetBatchBuild(false);
@@ -564,11 +561,7 @@ bool CodeBlocksSdkBootstrap::Start(const wxString& dataDirectory,
             !CopyAllowlistedPlugin(debuggerPlugin, pluginStagingDirectory_, &loadedDebuggerPlugin, error) ||
             plugins->ScanForPlugins(pluginStagingDirectory_) < 2) {
             if (error && error->empty()) *error = wxS("The selected Code::Blocks plugins could not be staged and scanned.");
-            wxFileName::Rmdir(pluginStagingDirectory_, wxPATH_RMDIR_RECURSIVE);
-            pluginStagingDirectory_.clear();
             Manager::SetBatchBuild(true);
-            UnregisterEventSinks();
-            Manager::Free();
             return false;
         }
         Manager::SetBatchBuild(true);
@@ -576,8 +569,6 @@ bool CodeBlocksSdkBootstrap::Start(const wxString& dataDirectory,
     if (debuggerPlugin.empty() && !plugins->LoadPlugin(loadedCompilerPlugin)) {
         Fail(wxString::Format(wxS("The Code::Blocks Compiler plugin could not be loaded: %s"),
                               compilerPlugin), error);
-        UnregisterEventSinks();
-        Manager::Free();
         return false;
     }
     if (!debuggerPlugin.empty()) {
@@ -585,9 +576,6 @@ bool CodeBlocksSdkBootstrap::Start(const wxString& dataDirectory,
         cbPlugin* stagedDebugger = plugins->FindPluginByFileName(loadedDebuggerPlugin);
         if (!stagedCompiler || !stagedDebugger) {
             Fail(wxS("The allowlisted Code::Blocks plugins could not be attached from staging."), error);
-            UnregisterEventSinks();
-            Manager::Free();
-            RemovePluginStaging();
             return false;
         }
     }
@@ -636,25 +624,15 @@ bool CodeBlocksSdkBootstrap::Start(const wxString& dataDirectory,
     cbPlugin* loadedPlugin = plugins->FindPluginByName(wxS("Compiler"));
     if (!loadedPlugin) {
         Fail(wxS("The selected native plugin did not register as Code::Blocks Compiler."), error);
-        UnregisterEventSinks();
-        Manager::Free();
-        RemovePluginStaging();
         return false;
     }
     compilerPlugin_ = dynamic_cast<cbCompilerPlugin*>(loadedPlugin);
     if (!compilerPlugin_) {
         Fail(wxS("The selected Code::Blocks plugin is not a compiler plugin."), error);
-        UnregisterEventSinks();
-        Manager::Free();
-        RemovePluginStaging();
         return false;
     }
     if (!plugins->AttachPlugin(compilerPlugin_, true)) {
         Fail(wxS("The matched Code::Blocks Compiler plugin could not be attached."), error);
-        compilerPlugin_ = nullptr;
-        UnregisterEventSinks();
-        Manager::Free();
-        RemovePluginStaging();
         return false;
     }
     report_.compilerPlugin = compilerPlugin;
@@ -668,9 +646,6 @@ bool CodeBlocksSdkBootstrap::Start(const wxString& dataDirectory,
         DebuggerManager* debuggerManager = manager->GetDebuggerManager();
         if (!debuggerManager) {
             Fail(wxS("The Code::Blocks DebuggerManager is unavailable."), error);
-            UnregisterEventSinks();
-            Manager::Free();
-            RemovePluginStaging();
             return false;
         }
         debuggerManager->SetInterfaceFactory(CreateHeadlessDebuggerInterfaceFactory());
@@ -682,9 +657,6 @@ bool CodeBlocksSdkBootstrap::Start(const wxString& dataDirectory,
         if (!debuggerPlugin_ || !plugins->AttachPlugin(debuggerPlugin_, true)) {
             Fail(wxS("The matched Code::Blocks Debugger plugin could not be attached."), error);
             debuggerPlugin_ = nullptr;
-            UnregisterEventSinks();
-            Manager::Free();
-            RemovePluginStaging();
             return false;
         }
         report_.debuggerPlugin = debuggerPlugin;
@@ -695,14 +667,6 @@ bool CodeBlocksSdkBootstrap::Start(const wxString& dataDirectory,
         report_.debuggerPublicStateAvailable = true;
         report_.debuggerPrivateDataAvailable = false;
         if (!debuggerProvider.empty() && !LoadDebuggerProvider(debuggerProvider, error)) {
-            UnregisterEventSinks();
-            Manager::SetAppShuttingDown(true);
-            plugins->UnloadPlugin(debuggerPlugin_);
-            debuggerPlugin_ = nullptr;
-            if (compilerPlugin_) plugins->UnloadPlugin(compilerPlugin_);
-            compilerPlugin_ = nullptr;
-            Manager::Free();
-            RemovePluginStaging();
             return false;
         }
     }
@@ -974,27 +938,29 @@ std::vector<CodeBlocksHostEvent> CodeBlocksSdkBootstrap::DrainEvents()
 
 void CodeBlocksSdkBootstrap::Shutdown()
 {
-    if (!started_) return;
-    if (debuggerPlugin_ && debuggerPlugin_->IsRunning()) debuggerPlugin_->Stop();
-    ProjectManager* projectManager = Manager::Get()->GetProjectManager();
-    if (projectManager) projectManager->CloseAllProjects(true);
-    UnbindCompilerOutput();
-    UnregisterEventSinks();
-    Manager::SetAppShuttingDown(true);
-    UnloadDebuggerProvider();
-    if (debuggerPlugin_) {
+    if (!started_ && !managerInitialized_ && !debuggerProviderApi_ &&
+        !debuggerProviderLibrary_ && pluginStagingDirectory_.empty()) return;
+
+    if (managerInitialized_) {
+        if (debuggerPlugin_ && debuggerPlugin_->IsRunning()) debuggerPlugin_->Stop();
+        ProjectManager* projectManager = Manager::Get()->GetProjectManager();
+        if (projectManager) projectManager->CloseAllProjects(true);
+        UnbindCompilerOutput();
+        UnregisterEventSinks();
+        Manager::SetAppShuttingDown(true);
+        UnloadDebuggerProvider();
         PluginManager* plugins = Manager::Get()->GetPluginManager();
-        if (plugins) plugins->UnloadPlugin(debuggerPlugin_);
+        if (plugins && debuggerPlugin_) plugins->UnloadPlugin(debuggerPlugin_);
         debuggerPlugin_ = nullptr;
-    }
-    if (compilerPlugin_) {
-        PluginManager* plugins = Manager::Get()->GetPluginManager();
-        if (plugins) plugins->UnloadPlugin(compilerPlugin_);
+        if (plugins && compilerPlugin_) plugins->UnloadPlugin(compilerPlugin_);
+        compilerPlugin_ = nullptr;
+        Manager::Free();
+    } else {
+        UnloadDebuggerProvider();
+        debuggerPlugin_ = nullptr;
         compilerPlugin_ = nullptr;
     }
-    Manager::Free();
     project_ = nullptr;
-    compilerPlugin_ = nullptr;
     report_.debuggerPluginAttached = false;
     report_.debuggerPluginLoaded = false;
     report_.debuggerControlAvailable = false;
@@ -1002,6 +968,7 @@ void CodeBlocksSdkBootstrap::Shutdown()
     report_.debuggerPublicStateAvailable = false;
     report_.debuggerPrivateDataAvailable = false;
     RemovePluginStaging();
+    managerInitialized_ = false;
     started_ = false;
 }
 

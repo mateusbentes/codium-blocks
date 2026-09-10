@@ -133,6 +133,7 @@ private:
     CodeBlocksSdkReport report_;
     std::vector<CodeBlocksHostEvent> events_;
     bool eventSinksRegistered_ = false;
+    bool managerInitialized_ = false;
     bool started_ = false;
 };
 

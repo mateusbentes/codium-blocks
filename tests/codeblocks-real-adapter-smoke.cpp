@@ -23,6 +23,18 @@ bool WaitForReady(codium::CodeBlocksAdapterClient& adapter)
     return false;
 }
 
+bool LooksLikeValidSnapshotObject(const wxString& json)
+{
+    wxString trimmed = json;
+    trimmed.Trim(true).Trim(false);
+    if (trimmed.empty() || trimmed.GetChar(0) != '{' ||
+        trimmed.GetChar(trimmed.length() - 1) != '}') return false;
+    // FrameJson must not put a string quote after the numeric/null line value.
+    // This catches malformed output while keeping the smoke independent of a
+    // third-party JSON library.
+    return trimmed.Find(wxS("\",\"valid\"")) == wxNOT_FOUND;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -79,7 +91,8 @@ int main(int argc, char** argv)
              adapter.Capabilities().Index(wxS("debuggerStackFrames")) == wxNOT_FOUND ||
              adapter.Capabilities().Index(wxS("debuggerThreads")) == wxNOT_FOUND ||
              adapter.Capabilities().Index(wxS("debuggerBreakpoints")) == wxNOT_FOUND ||
-             adapter.Capabilities().Index(wxS("debuggerWatches")) == wxNOT_FOUND))))) {
+             adapter.Capabilities().Index(wxS("debuggerWatches")) == wxNOT_FOUND ||
+             adapter.Capabilities().Index(wxS("debuggerVariables")) == wxNOT_FOUND))))) {
         std::cerr << "codeblocks-real-adapter-smoke: handshake failed: " << error.ToStdString()
                   << " (running=" << (adapter.IsRunning() ? "true" : "false")
                   << ", handshakeReceived=" << (adapter.HandshakeReceived() ? "true" : "false")
@@ -163,6 +176,8 @@ int main(int argc, char** argv)
         bool threadsSeen = false;
         bool breakpointsSeen = false;
         bool watchesSeen = false;
+        bool variablesSeen = false;
+        bool framesJsonValid = false;
         for (int index = 0; index < 1200 && adapter.IsRunning() && !debugStopped; ++index) {
             wxMilliSleep(25);
             for (const auto& event : adapter.PollEvents()) {
@@ -180,7 +195,10 @@ int main(int argc, char** argv)
                     snapshotSeen = true;
                 }
                 if (event.kind == codium::CodeBlocksEventKind::DebugSnapshot &&
-                    event.dataKind == wxS("frames")) framesSeen = true;
+                    event.dataKind == wxS("frames")) {
+                    framesSeen = true;
+                    framesJsonValid = LooksLikeValidSnapshotObject(event.snapshotJson);
+                }
                 if (event.kind == codium::CodeBlocksEventKind::DebugSnapshot &&
                     event.dataKind == wxS("threads")) threadsSeen = true;
                 if (event.kind == codium::CodeBlocksEventKind::DebugSnapshot &&
@@ -188,6 +206,9 @@ int main(int argc, char** argv)
                 if (event.kind == codium::CodeBlocksEventKind::DebugSnapshot &&
                     event.dataKind == wxS("watches") && event.payload.Find(wxS("fixtureValue")) != wxNOT_FOUND)
                     watchesSeen = true;
+                if (event.kind == codium::CodeBlocksEventKind::DebugSnapshot &&
+                    event.dataKind == wxS("variables") && event.payload.Find(wxS("fixtureValue")) != wxNOT_FOUND)
+                    variablesSeen = true;
             }
             if (debugObserved && !snapshotRequested) {
                 if (!adapter.RequestDebugSnapshot(wxS("state"))) {
@@ -214,17 +235,19 @@ int main(int argc, char** argv)
                 adapter.RequestDebugSnapshot(wxS("breakpoints"));
             } else if (breakpointsSeen && !watchesSeen) {
                 adapter.RequestDebugSnapshot(wxS("watches"), wxS("fixtureValue"));
+            } else if (watchesSeen && !variablesSeen) {
+                adapter.RequestDebugSnapshot(wxS("variables"), wxS("fixtureValue"));
             }
             const bool privateDataComplete = debuggerProvider.empty()
                 ? privateDataRejected
-                : framesSeen && threadsSeen && breakpointsSeen && watchesSeen;
+                : framesSeen && framesJsonValid && threadsSeen && breakpointsSeen && watchesSeen && variablesSeen;
             if (debugStarted && privateDataComplete && !stopRequested)
                 stopRequested = adapter.StopDebug();
             if (!debuggerProvider.empty() && stopRequested) break;
         }
         const bool privateDataComplete = debuggerProvider.empty()
             ? privateDataRejected
-            : framesSeen && threadsSeen && breakpointsSeen && watchesSeen;
+            : framesSeen && framesJsonValid && threadsSeen && breakpointsSeen && watchesSeen && variablesSeen;
         const bool stopObserved = debuggerProvider.empty() ? debugStopped : stopRequested;
         if (!debugStarted || !debugObserved || !snapshotSeen || !privateDataComplete || !stopObserved) {
             adapter.Stop();

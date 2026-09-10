@@ -103,7 +103,7 @@ The current `1.0.1` development increment builds on the completed `0.9.0` baseli
 - an optional, separate Code::Blocks SDK host adapter with JSON Lines handshake, SDK/resource capability discovery, explicit matched Compiler-plugin loading, real `.cbp` loading, structured target enumeration, and real target builds;
 - official Code::Blocks project, compiler, and optional Debugger lifecycle event sinks normalized across the adapter boundary, including project file changes, compiler stdout/stderr, warnings, compiler exit status, debugger launch/pause/continue/stop events, and workspace-trust checks;
 - a Phase E.1 value-owned debugger state snapshot with explicit `debugDataUnavailable` responses for private stack, thread, breakpoint, watch, variable, and expression models that are not part of the public SDK ABI;
-- an opt-in Phase E.2 DebuggerGDB provider boundary that is compiled separately from an exact private source revision and ABI identity, validates the tuple at runtime, and serializes frames, threads, breakpoints, and watches without exporting private pointers;
+- an opt-in Phase E.2 DebuggerGDB provider boundary that is compiled separately from an exact private source revision and ABI identity, validates the tuple at runtime, and serializes frames, threads, breakpoints, watches, and expression-backed variables without exporting private pointers;
 - an Extensions command and command-palette action for Code::Blocks SDK discovery;
 - a native editor gutter with line numbers and severity markers for active problems;
 - a scheme bar for Debug/Release configuration, target, and detected toolchain selection;

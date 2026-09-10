@@ -81,7 +81,7 @@ std::string FrameJson(const cbStackFrame& frame)
            "\",\"file\":\"" + Escape(frame.GetFilename()) +
            "\",\"lineText\":\"" + Escape(frame.GetLine()) +
            "\",\"line\":" + (hasLine ? std::to_string(line) : "null") +
-           "\",\"valid\":" + Boolean(frame.IsValid()) + "}";
+           ",\"valid\":" + Boolean(frame.IsValid()) + "}";
 }
 
 std::string ThreadJson(const cbThread& thread)

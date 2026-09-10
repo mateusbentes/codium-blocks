@@ -128,3 +128,43 @@ jobs:
           ctest --test-dir build-sdk
           -R "codeblocks-(real-adapter|sdk-events)-smoke"
           --output-on-failure
+
+  codeblocks-debuggergdb-provider:
+    name: Code::Blocks DebuggerGDB provider (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install matched SDK, provider source, and virtual display
+        run: |
+          for source in /etc/apt/sources.list.d/*google* /etc/apt/sources.list.d/*chrome*; do
+            if [ -f "$source" ]; then
+              sudo mv "$source" "$source.disabled"
+            fi
+          done
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y build-essential cmake pkg-config libwxgtk3.2-dev \
+            codeblocks codeblocks-dev libtinyxml-dev subversion xvfb
+          mkdir -p provider-source/src/plugins
+          svn export -q -r 13046 \
+            http://svn.code.sf.net/p/codeblocks/code/trunk/src/plugins/debuggergdb \
+            provider-source/src/plugins/debuggergdb
+
+      - name: Configure the matched DebuggerGDB provider
+        run: >-
+          cmake -S . -B build-e2 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_DEBUGGERGDB_PROVIDER=ON
+          -DCODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_DIR=$GITHUB_WORKSPACE/provider-source/src/plugins/debuggergdb
+          -DCODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_REVISION=r13046
+          -DCODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_ABI_TAG=ubuntu-24.04-codeblocks-svn13046-gcc-wx3.2-x86_64-cxx17
+
+      - name: Build the matched provider and adapter
+        run: cmake --build build-e2 --parallel 2
+
+      - name: Run the E.2 real debugger smoke tests
+        run: >-
+          ctest --test-dir build-e2
+          -R "codeblocks-(real-adapter|sdk-events)-smoke"
+          --output-on-failure
