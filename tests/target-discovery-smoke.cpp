@@ -38,8 +38,9 @@ int main()
         << "\t\tapp\tbuild\tCustom\r\n"
         << "Custom run\techo\trun-ok\t" << root.ToStdString()
         << "\t\tapp\trun\tCustom\r\n";
+    // Text-mode Windows streams can add another carriage return before LF.
     std::ofstream(root.ToStdString() + "/.codium-blocks/schemes.tsv")
-        << "User Debug\tDebug\tapp\tCMake\t\tCustom build\tCustom run\tpreset-build/app\r\n";
+        << "User Debug\tDebug\tapp\tCMake\t\tCustom build\tCustom run\tpreset-build/app\r\r\n";
     std::ofstream(root.ToStdString() + "/preset-build/app") << "artifact\n";
 
     codium::ProjectConfig config;

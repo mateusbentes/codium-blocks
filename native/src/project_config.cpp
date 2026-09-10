@@ -76,7 +76,7 @@ wxString UnescapePreference(const wxString& value)
 wxArrayString TabFields(const wxString& line)
 {
     wxString normalized = line;
-    if (normalized.EndsWith(wxS("\r"))) normalized.RemoveLast();
+    while (normalized.EndsWith(wxS("\r"))) normalized.RemoveLast();
     wxArrayString result;
     wxString field;
     for (const wxChar character : normalized) {
