@@ -17,6 +17,14 @@ enum class ProjectTargetKind {
     CodeBlocks
 };
 
+enum class ProjectTaskKind {
+    Generic,
+    Configure,
+    Build,
+    Run,
+    Test
+};
+
 struct ProjectTarget final {
     wxString id;
     wxString name;
@@ -31,6 +39,8 @@ struct ProjectTarget final {
     bool supportsBuild = true;
     bool supportsRun = false;
     bool supportsDebug = false;
+    wxString buildDirectory;
+    wxArrayString artifactCandidates;
 };
 
 struct ProjectTask final {
@@ -40,6 +50,8 @@ struct ProjectTask final {
     wxString workingDirectory;
     wxString projectFile;
     wxString targetName;
+    ProjectTaskKind kind = ProjectTaskKind::Generic;
+    wxString toolchain;
 };
 
 struct ProjectScheme final {
@@ -48,6 +60,9 @@ struct ProjectScheme final {
     wxString target;
     wxString toolchain;
     wxString projectFile;
+    wxString buildTaskName;
+    wxString runTaskName;
+    wxString artifactPath;
 };
 
 struct ProjectPreferences final {
@@ -65,6 +80,11 @@ public:
     bool SavePreferences(const wxString& workspaceRoot, const ProjectPreferences& preferences,
                          wxString* error = nullptr) const;
 
+    static wxArrayString ArtifactCandidates(const ProjectTarget& target, const wxString& configuration,
+                                            const wxString& overridePath = wxEmptyString);
+    static wxString DiscoverArtifact(const ProjectTarget& target, const wxString& configuration,
+                                     const wxString& overridePath = wxEmptyString);
+
     const wxArrayString& Toolchains() const { return toolchains_; }
     const std::vector<ProjectTarget>& Targets() const { return targets_; }
     const std::vector<ProjectTask>& Tasks() const { return tasks_; }
@@ -74,7 +94,9 @@ private:
     void AddBuiltInTasks(const wxString& workspaceRoot);
     void AddBuiltInSchemes();
     void LoadCustomTasks(const wxString& workspaceRoot);
-    void LoadCMakeTargets(const wxString& workspaceRoot);
+    void LoadCustomSchemes(const wxString& workspaceRoot);
+    void LoadCMakeTargets(const wxString& workspaceRoot, const wxString& buildDirectory);
+    void LoadNinjaTargets(const wxString& workspaceRoot, const wxString& buildDirectory);
     void LoadMakeTargets(const wxString& workspaceRoot);
     void LoadCargoTargets(const wxString& workspaceRoot);
     void LoadNpmTargets(const wxString& workspaceRoot);

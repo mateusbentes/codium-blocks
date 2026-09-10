@@ -109,14 +109,18 @@ The current `1.0.1` development increment builds on the completed `0.9.0` baseli
 - a native editor gutter with line numbers and severity markers for active problems;
 - a scheme bar for Debug/Release configuration, target, and detected toolchain selection;
 - a unified target model for CMake, Make, Cargo, npm, and imported Code::Blocks projects, with target-specific Build/Run metadata;
+- CMake Presets and conservative Ninja target discovery in addition to the existing generator detection;
+- user-defined tasks in `.codium-blocks/tasks.tsv` and user-defined schemes in `.codium-blocks/schemes.tsv`, using direct executable argument vectors rather than implicit shell commands;
 - persistent Debug/Release, target, and toolchain preferences stored per workspace;
 - scheme-aware Build/Configure/Run/Debug selection, including target-specific CMake, Make, Cargo, npm, and Code::Blocks actions;
+- explicit Build-and-Run orchestration that builds the selected target before running a selected run task or discovered artifact;
+- generator-aware artifact discovery for CMake configurations, CMake Presets, Ninja, Cargo, Code::Blocks outputs, and user-defined scheme overrides;
 - persistent Build sessions with task, target, configuration, toolchain, elapsed time, exit status, raw output, and rerun support;
 - conservative CMake, Ninja, Make, linker, multiline Rust, GCC/Clang, MSVC, and ANSI diagnostic parsing in addition to existing LSP formats;
 - a deterministic problem-model parser test covering compiler, Rust, Windows-path, and ANSI diagnostics.
 - an original blue modular-block icon family for Windows, macOS, and Linux under [`assets/icons/`](assets/icons/), with transparent, metadata-free platform assets.
 
-This is not full VS Code or Code::Blocks compatibility yet. The implementation is deliberately layered and must still add richer completion/hover interaction, explicit user task configuration, a complete extension registry download/install workflow, deeper Tree View/SCM contribution APIs, and richer debugger interaction such as frame selection and live refresh policies. The private DebuggerGDB provider is opt-in and requires an exact matching source, SDK, compiler, wxWidgets, architecture, language-standard, and build identity; it is not built by portable CI or inferred from a plugin filename. The next build-oriented work is incremental rather than a replacement of the existing task runner: richer project generators, user-defined schemes, build-and-run orchestration, and more complete generator-specific artifact discovery. The remaining interface work includes richer source annotations, keyboard navigation, themes, and cross-platform visual verification. The remaining terminal goals — complete Unicode grapheme segmentation and width handling, plus optional Sixel/Kitty image rendering — remain separately scheduled. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/CODEBLOCKS_INTEGRATION.md`](docs/CODEBLOCKS_INTEGRATION.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), [`docs/DEBUGGING.md`](docs/DEBUGGING.md), [`docs/EXTENSIONS_SECURITY.md`](docs/EXTENSIONS_SECURITY.md), [`docs/CONTRIBUTIONS.md`](docs/CONTRIBUTIONS.md), [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md), and [`docs/PROBLEMS.md`](docs/PROBLEMS.md) for the current models.
+This is not full VS Code or Code::Blocks compatibility yet. The implementation is deliberately layered and must still add richer completion/hover interaction, a complete extension registry download/install workflow, deeper Tree View/SCM contribution APIs, and richer debugger interaction such as frame selection and live refresh policies. The private DebuggerGDB provider is opt-in and requires an exact matching source, SDK, compiler, wxWidgets, architecture, language-standard, and build identity; it is not built by portable CI or inferred from a plugin filename. The build-oriented workflow now has explicit user tasks/schemes, generator-aware discovery, artifact selection, and Build-and-Run orchestration, while more complete generator semantics and variable expansion remain future work. The remaining interface work includes richer source annotations, keyboard navigation, themes, and cross-platform visual verification. The remaining terminal goals — complete Unicode grapheme segmentation and width handling, plus optional Sixel/Kitty image rendering — remain separately scheduled. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/CODEBLOCKS_INTEGRATION.md`](docs/CODEBLOCKS_INTEGRATION.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), [`docs/DEBUGGING.md`](docs/DEBUGGING.md), [`docs/EXTENSIONS_SECURITY.md`](docs/EXTENSIONS_SECURITY.md), [`docs/CONTRIBUTIONS.md`](docs/CONTRIBUTIONS.md), [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md), and [`docs/PROBLEMS.md`](docs/PROBLEMS.md) for the current models.
 
 The icon family and platform placement are documented in [`docs/ICONS.md`](docs/ICONS.md).
 
@@ -125,7 +129,7 @@ The icon family and platform placement are documented in [`docs/ICONS.md`](docs/
 ```text
 wxWidgets / C++
   ├── native window
-  ├── editor and project model (next stages)
+  ├── editor and project model
   ├── Code::Blocks SDK bridge (safe discovery and .cbp import)
   ├── optional external Code::Blocks host adapter (separate native process)
   ├── VsixManager

@@ -368,6 +368,14 @@ target_include_directories(codium-blocks-task-smoke PRIVATE native/include)
 codium_blocks_enable_warnings(codium-blocks-task-smoke)
 target_link_libraries(codium-blocks-task-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
+add_executable(codium-blocks-target-discovery-smoke
+    native/src/project_config.cpp
+    tests/target-discovery-smoke.cpp
+)
+target_include_directories(codium-blocks-target-discovery-smoke PRIVATE native/include)
+codium_blocks_enable_warnings(codium-blocks-target-discovery-smoke)
+target_link_libraries(codium-blocks-target-discovery-smoke PRIVATE ${wxWidgets_LIBRARIES})
+
 add_executable(codium-blocks-build-session-smoke
     native/src/build_session.cpp
     tests/build-session-smoke.cpp
@@ -510,6 +518,7 @@ if(BUILD_TESTING)
     add_test(NAME security-smoke COMMAND codium-blocks-security-smoke)
     add_test(NAME workspace-smoke COMMAND codium-blocks-workspace-smoke)
     add_test(NAME task-smoke COMMAND codium-blocks-task-smoke)
+    add_test(NAME target-discovery-smoke COMMAND codium-blocks-target-discovery-smoke)
     add_test(NAME build-session-smoke COMMAND codium-blocks-build-session-smoke)
     add_test(NAME transport-smoke COMMAND codium-blocks-transport-smoke ${CMAKE_SOURCE_DIR})
     add_test(NAME terminal-screen-smoke COMMAND codium-blocks-terminal-screen-smoke)

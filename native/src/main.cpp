@@ -483,7 +483,7 @@ public:
         AddButton(commandBar, wxS("Open file"), [this](wxCommandEvent&) { OpenFile(); }, centerPanel);
         AddButton(commandBar, wxS("Save"), [this](wxCommandEvent&) { SaveFile(); }, centerPanel);
         AddButton(commandBar, wxS("Build"), [this](wxCommandEvent&) { BuildProject(); }, centerPanel);
-        AddButton(commandBar, wxS("Run target"), [this](wxCommandEvent&) { RunSelectedTarget(); }, centerPanel);
+        AddButton(commandBar, wxS("Build and Run"), [this](wxCommandEvent&) { RunSelectedTarget(); }, centerPanel);
         AddButton(commandBar, wxS("Run task"), [this](wxCommandEvent&) { RunSelectedTask(); }, centerPanel);
         AddButton(commandBar, wxS("Palette"), [this](wxCommandEvent&) { ShowCommandPalette(); }, centerPanel);
         centerRoot->Add(commandBar, 0, wxBOTTOM | wxEXPAND, 6);
@@ -1353,10 +1353,17 @@ private:
         }
     }
 
+    bool IsBuildLikeTask(const codium::ProjectTask& task) const
+    {
+        return task.kind == codium::ProjectTaskKind::Build ||
+               task.kind == codium::ProjectTaskKind::Configure ||
+               task.name.Contains(wxS("Build")) || task.name.Contains(wxS("Configure"));
+    }
+
     void BeginBuildSession(const codium::ProjectTask& task, const codium::ProjectScheme* selected,
                            const wxString& selectedTarget, const wxString& selectedToolchain)
     {
-        if (!task.name.Contains(wxS("Build")) && !task.name.Contains(wxS("Configure"))) return;
+        if (!IsBuildLikeTask(task)) return;
         codium::BuildSessionSpec specification;
         specification.taskName = task.name;
         specification.target = selectedTarget.empty() ? task.targetName : selectedTarget;
@@ -1400,7 +1407,8 @@ private:
         const wxString selectedTarget = targetChoice_ && targetChoice_->GetSelection() != wxNOT_FOUND
             ? targetChoice_->GetStringSelection() : selected ? selected->target : wxString(wxEmptyString);
         if (applySelectedScheme && selected && selectedToolchain == wxS("CMake")) {
-            if (effectiveTask.name.Contains(wxS("Configure"))) {
+            const bool usesPreset = effectiveTask.arguments.Index(wxS("--preset")) != wxNOT_FOUND;
+            if (effectiveTask.name.Contains(wxS("Configure")) && !usesPreset) {
                 effectiveTask.arguments.Add(wxString::Format(wxS("-DCMAKE_BUILD_TYPE=%s"), selected->configuration));
             } else if (effectiveTask.name.Contains(wxS("Build"))) {
                 effectiveTask.arguments.Add(wxS("--config"));
@@ -1423,12 +1431,12 @@ private:
                 effectiveTask.arguments.Add(selectedTarget);
             }
         }
-        if (effectiveTask.name.Contains(wxS("Build")) || effectiveTask.name.Contains(wxS("Configure"))) {
+        if (IsBuildLikeTask(effectiveTask)) {
             lastBuildTask_ = effectiveTask;
             hasLastBuildTask_ = true;
         }
         BeginBuildSession(effectiveTask, selected, selectedTarget, selectedToolchain);
-        const bool isBuildTask = effectiveTask.name.Contains(wxS("Build")) || effectiveTask.name.Contains(wxS("Configure"));
+        const bool isBuildTask = IsBuildLikeTask(effectiveTask);
         if (isBuildTask && selected && !selected->projectFile.empty() && codeBlocksAdapter_.IsReady()) {
             if (codeBlocksAdapter_.BuildTarget(selected->projectFile, selectedTarget, selected->configuration)) {
                 problemStore_.Clear(wxS("Code::Blocks adapter"));
@@ -1454,6 +1462,7 @@ private:
             AppendLog(wxS("Task error: ") + error);
             if (buildOutput_) buildOutput_->AppendText(wxS("Task error: ") + error + wxS("\n"));
             FinishBuildSession(-1);
+            pendingRunAfterBuild_ = false;
         }
         RefreshProblems();
     }
@@ -1482,22 +1491,37 @@ private:
             ? targetChoice_->GetStringSelection()
             : selectedSchemeIndex_ >= 0 && selectedSchemeIndex_ < static_cast<int>(projectConfig_.Schemes().size())
                 ? projectConfig_.Schemes()[static_cast<size_t>(selectedSchemeIndex_)].target : wxString(wxEmptyString);
+        if (selectedSchemeIndex_ >= 0 && selectedSchemeIndex_ < static_cast<int>(projectConfig_.Schemes().size())) {
+            const auto& selectedScheme = projectConfig_.Schemes()[static_cast<size_t>(selectedSchemeIndex_)];
+            if (!selectedScheme.buildTaskName.empty()) {
+                for (const auto& task : projectConfig_.Tasks()) {
+                    if (task.name == selectedScheme.buildTaskName) {
+                        RunTask(task);
+                        return;
+                    }
+                }
+            }
+        }
+        const auto taskMatchesToolchain = [&preferredToolchain](const codium::ProjectTask& task) {
+            if (preferredToolchain.empty()) return true;
+            if (!task.toolchain.empty() && task.toolchain.Lower() == preferredToolchain.Lower()) return true;
+            if (task.name.StartsWith(preferredToolchain + wxS(":"))) return true;
+            return preferredToolchain.StartsWith(wxS("Code::Blocks")) && task.program == wxS("codeblocks");
+        };
         for (const auto& task : projectConfig_.Tasks()) {
-            if (task.targetName == selectedTarget && (task.name.Contains(wxS("Build")) || task.name.StartsWith(wxS("npm: Run"))) &&
-                (preferredToolchain.empty() || task.name.StartsWith(preferredToolchain + wxS(":")))) {
+            if (task.targetName == selectedTarget && IsBuildLikeTask(task) && taskMatchesToolchain(task)) {
                 RunTask(task);
                 return;
             }
         }
         for (const auto& task : projectConfig_.Tasks()) {
-            if (task.name.Contains(wxS("Build")) &&
-                (preferredToolchain.empty() || task.name.StartsWith(preferredToolchain + wxS(":")))) {
+            if (IsBuildLikeTask(task) && taskMatchesToolchain(task)) {
                 RunTask(task);
                 return;
             }
         }
         for (const auto& task : projectConfig_.Tasks()) {
-            if (task.name.Contains(wxS("Build"))) {
+            if (IsBuildLikeTask(task)) {
                 RunTask(task);
                 return;
             }
@@ -1516,6 +1540,50 @@ private:
         return nullptr;
     }
 
+    void LaunchPendingRun()
+    {
+        if (!pendingRunAfterBuild_) return;
+        const codium::ProjectTarget target = pendingRunTarget_;
+        const wxString configuration = pendingRunConfiguration_.empty() ? wxS("Debug") : pendingRunConfiguration_;
+        const wxString artifact = codium::ProjectConfig::DiscoverArtifact(target, configuration,
+                                                                            pendingRunArtifactOverride_);
+        codium::ProjectTask task;
+        task.name = wxS("Run: ") + target.name;
+        task.kind = codium::ProjectTaskKind::Run;
+        task.toolchain = target.toolchain;
+        task.workingDirectory = target.workingDirectory;
+        task.projectFile = target.projectFile;
+        task.targetName = target.name;
+
+        if (!pendingRunTaskName_.empty()) {
+            for (const auto& candidate : projectConfig_.Tasks()) {
+                if (candidate.name == pendingRunTaskName_ && candidate.kind == codium::ProjectTaskKind::Run) {
+                    task = candidate;
+                    break;
+                }
+            }
+        }
+        if (task.program.empty() && target.toolchain == wxS("npm")) {
+            task.program = wxS("npm");
+            task.arguments.Add(wxS("run"));
+            task.arguments.Add(target.name);
+        } else if (task.program.empty()) {
+            task.program = artifact.empty() ? target.runProgram : artifact;
+            task.arguments = target.runArguments;
+        }
+        pendingRunAfterBuild_ = false;
+        pendingRunTaskName_.clear();
+        pendingRunConfiguration_.clear();
+        pendingRunArtifactOverride_.clear();
+        if (task.program.empty()) {
+            AppendLog(wxS("Build succeeded, but no runnable artifact was discovered for the selected target."));
+            return;
+        }
+        AppendLog(wxS("Build succeeded; running target: ") + task.program);
+        if (bottomWorkbench_) bottomWorkbench_->SetSelection(1);
+        RunTask(task, false);
+    }
+
     void RunSelectedTarget()
     {
         if (!EnsureWorkspaceTrusted()) return;
@@ -1524,25 +1592,29 @@ private:
             AppendLog(wxS("The selected scheme does not provide a runnable target."));
             return;
         }
-        codium::ProjectTask task;
-        task.name = wxS("Run: ") + target->name;
-        task.workingDirectory = target->workingDirectory;
-        task.projectFile = target->projectFile;
-        task.targetName = target->name;
-        if (target->toolchain == wxS("npm")) {
-            task.program = wxS("npm");
-            task.arguments.Add(wxS("run"));
-            task.arguments.Add(target->name);
-        } else {
-            task.program = target->runProgram;
-            task.arguments = target->runArguments;
+        const codium::ProjectScheme* scheme = selectedSchemeIndex_ >= 0 &&
+            selectedSchemeIndex_ < static_cast<int>(projectConfig_.Schemes().size())
+                ? &projectConfig_.Schemes()[static_cast<size_t>(selectedSchemeIndex_)] : nullptr;
+        pendingRunTarget_ = *target;
+        pendingRunConfiguration_ = scheme ? scheme->configuration : wxS("Debug");
+        pendingRunArtifactOverride_ = scheme ? scheme->artifactPath : wxString(wxEmptyString);
+        pendingRunTaskName_ = scheme ? scheme->runTaskName : wxString(wxEmptyString);
+
+        const wxString buildTaskName = scheme && !scheme->buildTaskName.empty()
+            ? scheme->buildTaskName : target->buildTaskName;
+        if (target->supportsBuild && !buildTaskName.empty()) {
+            for (const auto& task : projectConfig_.Tasks()) {
+                if (task.name == buildTaskName ||
+                    (task.targetName == target->name && IsBuildLikeTask(task))) {
+                    pendingRunAfterBuild_ = true;
+                    AppendLog(wxS("Building selected target before running it: ") + target->name);
+                    RunTask(task);
+                    return;
+                }
+            }
         }
-        if (task.program.empty()) {
-            AppendLog(wxS("The selected target has no executable or script to run."));
-            return;
-        }
-        if (bottomWorkbench_) bottomWorkbench_->SetSelection(1);
-        RunTask(task, false);
+        pendingRunAfterBuild_ = true;
+        LaunchPendingRun();
     }
 
     void RunLastBuild()
@@ -1572,6 +1644,7 @@ private:
         if (taskRunner_.IsRunning()) {
             taskRunner_.Stop();
             FinishBuildSession(-1, true);
+            pendingRunAfterBuild_ = false;
             AppendLog(wxS("Task stopped."));
         }
     }
@@ -1584,6 +1657,16 @@ private:
         if (buildOutput_) buildOutput_->AppendText(wxString::Format(wxS("Finished with exit code %d.\n"), event.GetExitCode()));
         if (GetStatusBar()) SetStatusText(event.GetExitCode() == 0 ? wxS("Build succeeded") : wxS("Build failed"), 1);
         RefreshProblems();
+        if (pendingRunAfterBuild_) {
+            if (event.GetExitCode() == 0) LaunchPendingRun();
+            else {
+                pendingRunAfterBuild_ = false;
+                pendingRunTaskName_.clear();
+                pendingRunConfiguration_.clear();
+                pendingRunArtifactOverride_.clear();
+                AppendLog(wxS("Build failed; the selected target was not run."));
+            }
+        }
     }
 
     wxString WorkspaceDirectory() const
@@ -2125,7 +2208,7 @@ private:
             wxS("Start Code::Blocks adapter"), wxS("Stop Code::Blocks adapter"),
             wxS("Previous problem"), wxS("Next problem"),
             wxS("Start Code::Blocks debug"), wxS("Continue Code::Blocks debug"),
-            wxS("Pause Code::Blocks debug"), wxS("Stop Code::Blocks debug"), wxS("Run selected target")
+            wxS("Pause Code::Blocks debug"), wxS("Stop Code::Blocks debug"), wxS("Build and Run selected target")
         };
         wxSingleChoiceDialog dialog(this, wxS("Select a command"), wxS("Command Palette"), commands);
         if (dialog.ShowModal() != wxID_OK) return;
@@ -2793,6 +2876,16 @@ private:
             AppendBuildSessionOutput(event.message);
             FinishBuildSession(event.exitCode);
             SetStatusText(event.exitCode == 0 ? wxS("Code::Blocks build succeeded") : wxS("Code::Blocks build failed"), 1);
+            if (pendingRunAfterBuild_) {
+                if (event.exitCode == 0) LaunchPendingRun();
+                else {
+                    pendingRunAfterBuild_ = false;
+                    pendingRunTaskName_.clear();
+                    pendingRunConfiguration_.clear();
+                    pendingRunArtifactOverride_.clear();
+                    AppendLog(wxS("Code::Blocks build failed; the selected target was not run."));
+                }
+            }
             break;
         case codium::CodeBlocksEventKind::CompilerOutput: {
             if (buildOutput_) buildOutput_->AppendText(event.message + wxS("\n"));
@@ -3210,6 +3303,11 @@ private:
     codium::ProjectTask lastBuildTask_;
     bool hasLastBuildTask_ = false;
     wxString activeBuildSessionId_;
+    bool pendingRunAfterBuild_ = false;
+    codium::ProjectTarget pendingRunTarget_;
+    wxString pendingRunTaskName_;
+    wxString pendingRunConfiguration_;
+    wxString pendingRunArtifactOverride_;
 
     wxDECLARE_EVENT_TABLE();
 };

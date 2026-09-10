@@ -19,8 +19,14 @@ namespace {
 ProjectTask Task(const wxString& name, const wxString& program,
                  std::initializer_list<wxString> arguments, const wxString& workingDirectory)
 {
-    ProjectTask task{name, program, {}, workingDirectory, wxEmptyString, wxEmptyString};
+    ProjectTask task{name, program, {}, workingDirectory, wxEmptyString, wxEmptyString,
+                     ProjectTaskKind::Generic, wxEmptyString};
     for (const auto& argument : arguments) task.arguments.Add(argument);
+    task.toolchain = program;
+    if (name.Contains(wxS("Configure"))) task.kind = ProjectTaskKind::Configure;
+    else if (name.Contains(wxS("Build"))) task.kind = ProjectTaskKind::Build;
+    else if (name.Contains(wxS("Test"))) task.kind = ProjectTaskKind::Test;
+    else if (name.StartsWith(wxS("Run")) || name.Contains(wxS(": Run"))) task.kind = ProjectTaskKind::Run;
     return task;
 }
 
@@ -137,6 +143,106 @@ wxString FirstToken(const wxString& value)
     return token;
 }
 
+wxString TrimJsonString(wxString value)
+{
+    value.Trim(true).Trim(false);
+    if (value.StartsWith(wxS("\"")) && value.EndsWith(wxS("\"")) && value.length() >= 2) {
+        value = value.Mid(1, value.length() - 2);
+    }
+    value.Replace(wxS("\\\""), wxS("\""));
+    return value;
+}
+
+wxString ReplacePathTokens(wxString value, const wxString& workspaceRoot, const wxString& configuration)
+{
+    value.Replace(wxS("${sourceDir}"), workspaceRoot);
+    value.Replace(wxS("${workspaceFolder}"), workspaceRoot);
+    value.Replace(wxS("${configuration}"), configuration);
+    value.Replace(wxS("${config}"), configuration);
+    value.Replace(wxS("${presetName}"), configuration);
+    value.Replace(wxS("$<CONFIG>"), configuration);
+    return value;
+}
+
+void AddUniqueTargetPath(wxArrayString* paths, const wxString& value,
+                         const wxString& workingDirectory, const wxString& configuration)
+{
+    if (!paths || value.empty()) return;
+    wxString resolved = value;
+    resolved.Replace(wxS("${configuration}"), configuration);
+    resolved.Replace(wxS("${config}"), configuration);
+    resolved.Replace(wxS("$<CONFIG>"), configuration);
+    wxFileName path(resolved);
+    if (!path.IsAbsolute() && !workingDirectory.empty()) {
+        path = wxFileName(workingDirectory, resolved);
+    }
+    const wxString fullPath = path.GetFullPath();
+    if (paths->Index(fullPath) == wxNOT_FOUND) paths->Add(fullPath);
+#if defined(__WXMSW__)
+    if (!fullPath.EndsWith(wxS(".exe")) && wxFileExists(fullPath + wxS(".exe")) &&
+        paths->Index(fullPath + wxS(".exe")) == wxNOT_FOUND) {
+        paths->Add(fullPath + wxS(".exe"));
+    }
+#endif
+}
+
+wxString PresetBinaryDirectory(const wxString& workspaceRoot)
+{
+    for (const auto& filename : {wxString(wxS("CMakePresets.json")), wxString(wxS("CMakeUserPresets.json"))}) {
+        wxString text;
+        if (!ReadText(workspaceRoot + wxFILE_SEP_PATH + filename, &text)) continue;
+        wxRegEx binaryDirectory(wxS("\\\"binaryDir\\\"[[:space:]]*:[[:space:]]*\\\"([^\\\"]+)\\\""));
+        if (!binaryDirectory.IsValid() || !binaryDirectory.Matches(text)) continue;
+        const wxString value = TrimJsonString(binaryDirectory.GetMatch(text, 1));
+        if (!value.empty()) return ReplacePathTokens(value, workspaceRoot, wxS("Debug"));
+    }
+    return wxEmptyString;
+}
+
+wxString FirstPresetName(const wxString& workspaceRoot)
+{
+    const wxString paths[] = {
+        workspaceRoot + wxFILE_SEP_PATH + wxS("CMakePresets.json"),
+        workspaceRoot + wxFILE_SEP_PATH + wxS("CMakeUserPresets.json")
+    };
+    for (const auto& path : paths) {
+        wxString text;
+        if (!ReadText(path, &text)) continue;
+        wxRegEx nameExpression(wxS("\\\"name\\\"[[:space:]]*:[[:space:]]*\\\"([^\\\"]+)\\\""));
+        if (nameExpression.IsValid() && nameExpression.Matches(text)) {
+            return nameExpression.GetMatch(text, 1);
+        }
+    }
+    return wxEmptyString;
+}
+
+wxString ExistingGeneratorDirectory(const wxString& workspaceRoot)
+{
+    const wxString candidates[] = {
+        workspaceRoot + wxFILE_SEP_PATH + wxS("build"),
+        workspaceRoot + wxFILE_SEP_PATH + wxS("out"),
+        workspaceRoot
+    };
+    for (const auto& directory : candidates) {
+        if (wxFileExists(directory + wxFILE_SEP_PATH + wxS("build.ninja")) ||
+            wxFileExists(directory + wxFILE_SEP_PATH + wxS("Makefile")) ||
+            wxFileExists(directory + wxFILE_SEP_PATH + wxS("makefile"))) {
+            return directory;
+        }
+    }
+    return wxEmptyString;
+}
+
+ProjectTaskKind TaskKindFromValue(const wxString& value)
+{
+    const wxString lower = value.Lower();
+    if (lower == wxS("configure")) return ProjectTaskKind::Configure;
+    if (lower == wxS("build")) return ProjectTaskKind::Build;
+    if (lower == wxS("run")) return ProjectTaskKind::Run;
+    if (lower == wxS("test")) return ProjectTaskKind::Test;
+    return ProjectTaskKind::Generic;
+}
+
 } // namespace
 
 bool ProjectConfig::Load(const wxString& workspaceRoot, wxString* error)
@@ -153,6 +259,7 @@ bool ProjectConfig::Load(const wxString& workspaceRoot, wxString* error)
     AddBuiltInTasks(workspaceRoot);
     LoadCodeBlocksProjects(workspaceRoot);
     LoadCustomTasks(workspaceRoot);
+    LoadCustomSchemes(workspaceRoot);
     AddBuiltInSchemes();
     return true;
 }
@@ -161,12 +268,29 @@ void ProjectConfig::AddBuiltInTasks(const wxString& workspaceRoot)
 {
     if (wxFileExists(workspaceRoot + wxFILE_SEP_PATH + wxS("CMakeLists.txt"))) {
         AddUnique(&toolchains_, wxS("CMake"));
-        tasks_.push_back(Task(wxS("CMake: Configure"), wxS("cmake"),
-                              {wxS("-S"), workspaceRoot, wxS("-B"), workspaceRoot + wxFILE_SEP_PATH + wxS("build")},
-                              workspaceRoot));
+        const wxString preset = FirstPresetName(workspaceRoot);
+        if (!preset.empty()) {
+            tasks_.push_back(Task(wxS("CMake: Configure"), wxS("cmake"),
+                                  {wxS("--preset"), preset}, workspaceRoot));
+        } else {
+            tasks_.push_back(Task(wxS("CMake: Configure"), wxS("cmake"),
+                                  {wxS("-S"), workspaceRoot, wxS("-B"), workspaceRoot + wxFILE_SEP_PATH + wxS("build")},
+                                  workspaceRoot));
+        }
+        const wxString presetBuildDirectory = PresetBinaryDirectory(workspaceRoot);
+        const wxString buildDirectory = presetBuildDirectory.empty()
+            ? workspaceRoot + wxFILE_SEP_PATH + wxS("build") : presetBuildDirectory;
         tasks_.push_back(Task(wxS("CMake: Build"), wxS("cmake"),
-                              {wxS("--build"), workspaceRoot + wxFILE_SEP_PATH + wxS("build")}, workspaceRoot));
-        LoadCMakeTargets(workspaceRoot);
+                              {wxS("--build"), buildDirectory}, workspaceRoot));
+        LoadCMakeTargets(workspaceRoot, buildDirectory);
+    }
+
+    const wxString ninjaDirectory = ExistingGeneratorDirectory(workspaceRoot);
+    if (!ninjaDirectory.empty() && wxFileExists(ninjaDirectory + wxFILE_SEP_PATH + wxS("build.ninja"))) {
+        AddUnique(&toolchains_, wxS("Ninja"));
+        tasks_.push_back(ProjectTask{wxS("Ninja: Build"), wxS("ninja"), {}, ninjaDirectory,
+                                      wxEmptyString, wxEmptyString, ProjectTaskKind::Build, wxS("Ninja")});
+        LoadNinjaTargets(workspaceRoot, ninjaDirectory);
     }
 
     if (wxFileExists(workspaceRoot + wxFILE_SEP_PATH + wxS("Makefile")) ||
@@ -207,7 +331,12 @@ void ProjectConfig::AddSchemeForTarget(const ProjectTarget& target, const wxStri
     for (const auto& scheme : schemes_) {
         if (scheme.name == name) return;
     }
-    schemes_.push_back(ProjectScheme{name, configuration, target.name, target.toolchain, target.projectFile});
+    ProjectScheme scheme{name, configuration, target.name, target.toolchain, target.projectFile,
+                         wxEmptyString, wxEmptyString, wxEmptyString};
+    scheme.buildTaskName = target.buildTaskName;
+    scheme.runTaskName = target.supportsRun ? wxString(wxS("Run: ")) + target.name : wxString(wxEmptyString);
+    scheme.artifactPath = target.outputPath;
+    schemes_.push_back(scheme);
 }
 
 void ProjectConfig::AddBuildTaskForTarget(const ProjectTarget& target, const wxString& program,
@@ -218,11 +347,11 @@ void ProjectConfig::AddBuildTaskForTarget(const ProjectTarget& target, const wxS
         if (task.name == target.buildTaskName && task.targetName == target.name) return;
     }
     ProjectTask task{target.buildTaskName, program, arguments, target.workingDirectory,
-                     target.projectFile, target.name};
+                     target.projectFile, target.name, ProjectTaskKind::Build, target.toolchain};
     tasks_.push_back(task);
 }
 
-void ProjectConfig::LoadCMakeTargets(const wxString& workspaceRoot)
+void ProjectConfig::LoadCMakeTargets(const wxString& workspaceRoot, const wxString& buildDirectory)
 {
     wxString text;
     if (!ReadText(workspaceRoot + wxFILE_SEP_PATH + wxS("CMakeLists.txt"), &text)) return;
@@ -247,12 +376,17 @@ void ProjectConfig::LoadCMakeTargets(const wxString& workspaceRoot)
         target.kind = kind;
         target.supportsRun = kind == ProjectTargetKind::Executable;
         target.supportsDebug = target.supportsRun;
-        target.runProgram = workspaceRoot + wxFILE_SEP_PATH + wxS("build") + wxFILE_SEP_PATH + name;
+        target.buildDirectory = buildDirectory;
+        target.runProgram = buildDirectory + wxFILE_SEP_PATH + name;
         target.outputPath = target.runProgram;
+        target.artifactCandidates.Add(buildDirectory + wxFILE_SEP_PATH + wxS("Debug") + wxFILE_SEP_PATH + name);
+        target.artifactCandidates.Add(buildDirectory + wxFILE_SEP_PATH + wxS("Release") + wxFILE_SEP_PATH + name);
+        target.artifactCandidates.Add(buildDirectory + wxFILE_SEP_PATH + wxS("bin") + wxFILE_SEP_PATH + name);
+        target.artifactCandidates.Add(target.runProgram);
         AddTarget(target);
         wxArrayString arguments;
         arguments.Add(wxS("--build"));
-        arguments.Add(workspaceRoot + wxFILE_SEP_PATH + wxS("build"));
+        arguments.Add(buildDirectory);
         arguments.Add(wxS("--target"));
         arguments.Add(name);
         AddBuildTaskForTarget(target, wxS("cmake"), arguments);
@@ -260,9 +394,62 @@ void ProjectConfig::LoadCMakeTargets(const wxString& workspaceRoot)
     if (targets_.empty() || std::none_of(targets_.begin(), targets_.end(), [](const ProjectTarget& target) {
             return target.toolchain == wxS("CMake");
         })) {
-        AddTarget(ProjectTarget{wxS("CMake:all"), wxS("all"), wxS("CMake"), wxEmptyString,
-                                 workspaceRoot, wxEmptyString, wxS("CMake: Build"), wxEmptyString, {},
-                                 ProjectTargetKind::Aggregate, true, false, false});
+        ProjectTarget aggregate{wxS("CMake:all"), wxS("all"), wxS("CMake"), wxEmptyString,
+                                workspaceRoot, wxEmptyString, wxS("CMake: Build"), wxEmptyString, {},
+                                ProjectTargetKind::Aggregate, true, false, false, wxEmptyString, {}};
+        aggregate.buildDirectory = buildDirectory;
+        AddTarget(aggregate);
+    }
+}
+
+void ProjectConfig::LoadNinjaTargets(const wxString& workspaceRoot, const wxString& buildDirectory)
+{
+    wxString text;
+    if (!ReadText(buildDirectory + wxFILE_SEP_PATH + wxS("build.ninja"), &text)) return;
+    const wxString workingDirectory = workspaceRoot.empty() ? buildDirectory : workspaceRoot;
+    for (wxString line : wxSplit(text, wxChar('\n'))) {
+        line.Trim(true).Trim(false);
+        if (!line.StartsWith(wxS("build "))) continue;
+        wxString declaration = line.Mid(6);
+        const int colon = declaration.Find(wxChar(':'));
+        if (colon == wxNOT_FOUND) continue;
+        wxString name = declaration.Left(colon);
+        name.Trim(true).Trim(false);
+        if (name.empty() || name.Contains(wxS("/")) || name.StartsWith(wxS("$"))) continue;
+        const wxString rule = declaration.Mid(colon + 1).Lower();
+        if (rule.StartsWith(wxS("phony")) || name == wxS("all")) continue;
+
+        const bool executable = rule.Find(wxS("executable")) != wxNOT_FOUND ||
+                                rule.Find(wxS("linker")) != wxNOT_FOUND;
+        ProjectTarget target;
+        target.id = wxS("Ninja:") + name;
+        target.name = name;
+        target.toolchain = wxS("Ninja");
+        target.workingDirectory = workingDirectory;
+        target.buildDirectory = buildDirectory;
+        target.buildTaskName = wxS("Ninja: Build ") + name;
+        target.kind = executable ? ProjectTargetKind::Executable : ProjectTargetKind::Library;
+        target.supportsRun = executable;
+        target.supportsDebug = executable;
+        target.runProgram = buildDirectory + wxFILE_SEP_PATH + name;
+        target.outputPath = target.runProgram;
+        target.artifactCandidates.Add(target.runProgram);
+        target.artifactCandidates.Add(buildDirectory + wxFILE_SEP_PATH + wxS("bin") + wxFILE_SEP_PATH + name);
+        AddTarget(target);
+        wxArrayString arguments;
+        arguments.Add(wxS("-C"));
+        arguments.Add(buildDirectory);
+        arguments.Add(name);
+        AddBuildTaskForTarget(target, wxS("ninja"), arguments);
+    }
+    if (std::none_of(targets_.begin(), targets_.end(), [](const ProjectTarget& target) {
+            return target.toolchain == wxS("Ninja");
+        })) {
+        ProjectTarget aggregate{wxS("Ninja:all"), wxS("all"), wxS("Ninja"), wxEmptyString,
+                               buildDirectory, wxEmptyString, wxS("Ninja: Build"), wxEmptyString, {},
+                               ProjectTargetKind::Aggregate, true, false, false, wxEmptyString, {}};
+        aggregate.buildDirectory = buildDirectory;
+        AddTarget(aggregate);
     }
 }
 
@@ -300,7 +487,7 @@ void ProjectConfig::LoadMakeTargets(const wxString& workspaceRoot)
     if (!found) {
         ProjectTarget target{wxS("Make:default"), wxS("default"), wxS("Make"), wxEmptyString,
                             workspaceRoot, wxEmptyString, wxS("Make: Build"), wxEmptyString, {},
-                            ProjectTargetKind::Aggregate, true, false, false};
+                            ProjectTargetKind::Aggregate, true, false, false, wxEmptyString, {}};
         AddTarget(target);
     }
 }
@@ -324,7 +511,10 @@ void ProjectConfig::LoadCargoTargets(const wxString& workspaceRoot)
         ProjectTarget target{wxS("Cargo:") + name, name, wxS("Cargo"), wxEmptyString,
                              workspaceRoot, wxEmptyString, wxString::Format(wxS("Cargo: Build %s"), name),
                              workspaceRoot + wxFILE_SEP_PATH + wxS("target") + wxFILE_SEP_PATH + wxS("debug") + wxFILE_SEP_PATH + name,
-                             {}, ProjectTargetKind::Executable, true, true, true};
+                             {}, ProjectTargetKind::Executable, true, true, true, wxEmptyString, {}};
+        target.buildDirectory = workspaceRoot + wxFILE_SEP_PATH + wxS("target");
+        target.artifactCandidates.Add(workspaceRoot + wxFILE_SEP_PATH + wxS("target") + wxFILE_SEP_PATH + wxS("debug") + wxFILE_SEP_PATH + name);
+        target.artifactCandidates.Add(workspaceRoot + wxFILE_SEP_PATH + wxS("target") + wxFILE_SEP_PATH + wxS("release") + wxFILE_SEP_PATH + name);
         AddTarget(target);
         wxArrayString arguments;
         arguments.Add(wxS("build"));
@@ -337,7 +527,7 @@ void ProjectConfig::LoadCargoTargets(const wxString& workspaceRoot)
     if (!found) {
         AddTarget(ProjectTarget{wxS("Cargo:workspace"), wxS("workspace"), wxS("Cargo"), wxEmptyString,
                                 workspaceRoot, wxEmptyString, wxS("Cargo: Build"), wxEmptyString, {},
-                                ProjectTargetKind::Aggregate, true, false, false});
+                                ProjectTargetKind::Aggregate, true, false, false, wxEmptyString, {}});
     }
 }
 
@@ -362,7 +552,7 @@ void ProjectConfig::LoadNpmTargets(const wxString& workspaceRoot)
         if (name.empty()) continue;
         ProjectTarget target{wxS("npm:") + name, name, wxS("npm"), wxEmptyString,
                              workspaceRoot, wxEmptyString, wxString::Format(wxS("npm: Run %s"), name),
-                             wxEmptyString, {}, ProjectTargetKind::Script, true, false, false};
+                             wxEmptyString, {}, ProjectTargetKind::Script, true, false, false, wxEmptyString, {}};
         AddTarget(target);
         wxArrayString arguments;
         arguments.Add(wxS("run"));
@@ -374,7 +564,7 @@ void ProjectConfig::LoadNpmTargets(const wxString& workspaceRoot)
         })) {
         AddTarget(ProjectTarget{wxS("npm:package"), wxS("package"), wxS("npm"), wxEmptyString,
                                 workspaceRoot, wxEmptyString, wxS("npm: Build"), wxEmptyString, {},
-                                ProjectTargetKind::Script, true, false, false});
+                                ProjectTargetKind::Script, true, false, false, wxEmptyString, {}});
     }
 }
 
@@ -391,9 +581,9 @@ void ProjectConfig::AddBuiltInSchemes()
                                     toolchain == wxS("Make") ? wxS("default") :
                                     toolchain == wxS("Cargo") ? wxS("workspace") : wxS("package");
             schemes_.push_back(ProjectScheme{wxString::Format(wxS("Debug — %s"), toolchain), wxS("Debug"), target,
-                                              toolchain, wxEmptyString});
+                                              toolchain, wxEmptyString, wxEmptyString, wxEmptyString, wxEmptyString});
             schemes_.push_back(ProjectScheme{wxString::Format(wxS("Release — %s"), toolchain), wxS("Release"), target,
-                                              toolchain, wxEmptyString});
+                                              toolchain, wxEmptyString, wxEmptyString, wxEmptyString, wxEmptyString});
         }
     }
 }
@@ -452,7 +642,8 @@ bool ProjectConfig::LoadCodeBlocksProject(const wxString& projectPath, wxString*
         const wxString output = ResolveProjectPath(workingDirectory, OptionValue(targetNode, wxS("output")));
         ProjectTarget imported{projectPath + wxS(":") + title, title, targetToolchain, projectPath,
                               workingDirectory, output, wxString::Format(wxS("Code::Blocks: Build %s"), title),
-                              output, {}, ProjectTargetKind::CodeBlocks, true, !output.empty(), !output.empty()};
+                              output, {}, ProjectTargetKind::CodeBlocks, true, !output.empty(), !output.empty(), wxEmptyString, {}};
+        imported.artifactCandidates.Add(output);
         AddTarget(imported);
 
         ProjectTask task = Task(imported.buildTaskName, wxS("codeblocks"),
@@ -481,10 +672,71 @@ void ProjectConfig::LoadCustomTasks(const wxString& workspaceRoot)
         if (fields.size() < 4) continue;
         ProjectTask task{fields[0], fields[1], wxSplit(fields[2], wxChar('\x1f')), fields[3],
                          fields.size() > 4 ? fields[4] : wxString(wxEmptyString),
-                         fields.size() > 5 ? fields[5] : wxString(wxEmptyString)};
+                         fields.size() > 5 ? fields[5] : wxString(wxEmptyString),
+                         ProjectTaskKind::Generic, wxEmptyString};
+        task.kind = fields.size() > 6 ? TaskKindFromValue(fields[6]) : ProjectTaskKind::Generic;
+        task.toolchain = fields.size() > 7 && !fields[7].empty() ? fields[7] : wxS("Custom");
         tasks_.push_back(task);
         if (toolchains_.Index(wxS("Custom")) == wxNOT_FOUND) toolchains_.Add(wxS("Custom"));
     }
+}
+
+void ProjectConfig::LoadCustomSchemes(const wxString& workspaceRoot)
+{
+    const wxString path = workspaceRoot + wxFILE_SEP_PATH + wxS(".codium-blocks") + wxFILE_SEP_PATH + wxS("schemes.tsv");
+    if (!wxFileExists(path)) return;
+    wxString text;
+    if (!ReadText(path, &text)) return;
+    for (wxString line : wxSplit(text, wxChar('\n'))) {
+        if (line.empty() || line.StartsWith(wxS("#"))) continue;
+        const wxArrayString fields = TabFields(line);
+        if (fields.size() < 4 || fields[0].empty() || fields[1].empty() || fields[2].empty() || fields[3].empty()) continue;
+        ProjectScheme scheme{fields[0], fields[1], fields[2], fields[3],
+                             fields.size() > 4 ? fields[4] : wxString(wxEmptyString),
+                             wxEmptyString, wxEmptyString, wxEmptyString};
+        scheme.buildTaskName = fields.size() > 5 ? fields[5] : wxString(wxEmptyString);
+        scheme.runTaskName = fields.size() > 6 ? fields[6] : wxString(wxEmptyString);
+        scheme.artifactPath = fields.size() > 7 ? fields[7] : wxString(wxEmptyString);
+        bool duplicate = false;
+        for (const auto& existing : schemes_) {
+            if (existing.name == scheme.name) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) schemes_.push_back(scheme);
+        if (toolchains_.Index(scheme.toolchain) == wxNOT_FOUND) toolchains_.Add(scheme.toolchain);
+    }
+}
+
+wxArrayString ProjectConfig::ArtifactCandidates(const ProjectTarget& target, const wxString& configuration,
+                                                const wxString& overridePath)
+{
+    wxArrayString paths;
+    AddUniqueTargetPath(&paths, overridePath, target.workingDirectory, configuration);
+    for (const auto& candidate : target.artifactCandidates) {
+        AddUniqueTargetPath(&paths, candidate, target.workingDirectory, configuration);
+    }
+    AddUniqueTargetPath(&paths, target.outputPath, target.workingDirectory, configuration);
+    AddUniqueTargetPath(&paths, target.runProgram, target.workingDirectory, configuration);
+    if (!target.buildDirectory.empty() && !target.name.empty()) {
+        AddUniqueTargetPath(&paths, target.buildDirectory + wxFILE_SEP_PATH + configuration + wxFILE_SEP_PATH + target.name,
+                            target.workingDirectory, configuration);
+        AddUniqueTargetPath(&paths, target.buildDirectory + wxFILE_SEP_PATH + wxS("bin") + wxFILE_SEP_PATH + target.name,
+                            target.workingDirectory, configuration);
+        AddUniqueTargetPath(&paths, target.buildDirectory + wxFILE_SEP_PATH + target.name,
+                            target.workingDirectory, configuration);
+    }
+    return paths;
+}
+
+wxString ProjectConfig::DiscoverArtifact(const ProjectTarget& target, const wxString& configuration,
+                                         const wxString& overridePath)
+{
+    for (const auto& candidate : ArtifactCandidates(target, configuration, overridePath)) {
+        if (wxFileExists(candidate)) return candidate;
+    }
+    return wxEmptyString;
 }
 
 bool ProjectConfig::LoadPreferences(const wxString& workspaceRoot, ProjectPreferences* preferences,

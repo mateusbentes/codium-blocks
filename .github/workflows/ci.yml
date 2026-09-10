@@ -10,14 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  build-and-test:
-    name: ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-15, windows-2022]
-
+  build-linux:
+    name: Linux (ubuntu-24.04)
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -28,11 +23,7 @@ jobs:
           node-version: 22
 
       - name: Install Linux dependencies
-        if: runner.os == 'Linux'
         run: |
-          # The runner image may contain a rotating Chrome repository. It is
-          # unrelated to this project and can make apt fail with a transient
-          # Hash Sum mismatch while its Packages index is being published.
           for source in /etc/apt/sources.list.d/*google* /etc/apt/sources.list.d/*chrome*; do
             if [ -f "$source" ]; then
               sudo mv "$source" "$source.disabled"
@@ -41,42 +32,13 @@ jobs:
           sudo apt-get update -o Acquire::Retries=3
           sudo apt-get install -y build-essential cmake pkg-config libwxgtk3.2-dev libssl-dev
 
-      - name: Install macOS dependencies
-        if: runner.os == 'macOS'
-        run: |
-          brew update
-          brew install cmake wxwidgets
-          echo "$(brew --prefix wxwidgets)/bin" >> "$GITHUB_PATH"
-          echo "PKG_CONFIG_PATH=$(brew --prefix wxwidgets)/lib/pkgconfig" >> "$GITHUB_ENV"
-
-      - name: Install Windows dependencies
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          vcpkg install wxwidgets:x64-windows
-
-      - name: Configure Linux or macOS
-        if: runner.os != 'Windows'
+      - name: Configure Linux
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
-      - name: Configure Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: >-
-          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
-          -DVCPKG_TARGET_TRIPLET=x64-windows
-
-      - name: Build Linux or macOS
-        if: runner.os != 'Windows'
+      - name: Build Linux
         run: cmake --build build --parallel 1 --verbose
 
-      - name: Build Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: cmake --build build --config Release --parallel
-
-      - name: Run JavaScript syntax checks
+      - name: Run Linux JavaScript checks
         run: |
           node --check extension-host/src/host.mjs
           node --check extensions/hello-codium/extension.cjs
@@ -86,16 +48,97 @@ jobs:
           node --check tests/fake-codeblocks-adapter.mjs
           node --check tests/host-smoke.mjs
 
-      - name: Run CTest Linux or macOS
-        if: runner.os != 'Windows'
+      - name: Run Linux CTest
         run: ctest --test-dir build --output-on-failure
 
-      - name: Run CTest Windows
-        if: runner.os == 'Windows'
+      - name: Run Linux Extension Host smoke test
+        run: node tests/host-smoke.mjs
+
+  build-macos:
+    name: macOS (macos-15)
+    runs-on: macos-15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install macOS dependencies
+        run: |
+          brew update
+          brew install cmake wxwidgets
+          echo "$(brew --prefix wxwidgets)/bin" >> "$GITHUB_PATH"
+          echo "PKG_CONFIG_PATH=$(brew --prefix wxwidgets)/lib/pkgconfig" >> "$GITHUB_ENV"
+
+      - name: Configure macOS
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build macOS
+        run: cmake --build build --parallel 1 --verbose
+
+      - name: Run macOS JavaScript checks
+        run: |
+          node --check extension-host/src/host.mjs
+          node --check extensions/hello-codium/extension.cjs
+          node --check tests/fake-lsp.mjs
+          node --check tests/fake-terminal.mjs
+          node --check tests/fake-dap.mjs
+          node --check tests/fake-codeblocks-adapter.mjs
+          node --check tests/host-smoke.mjs
+
+      - name: Run macOS CTest
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Run macOS Extension Host smoke test
+        run: node tests/host-smoke.mjs
+
+  build-windows:
+    name: Windows (windows-2022)
+    runs-on: windows-2022
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Windows dependencies
+        shell: pwsh
+        run: vcpkg install wxwidgets:x64-windows
+
+      - name: Configure Windows
+        shell: pwsh
+        run: >-
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_TARGET_TRIPLET=x64-windows
+
+      - name: Build Windows
+        shell: pwsh
+        run: cmake --build build --config Release --parallel
+
+      - name: Run Windows JavaScript checks
+        shell: pwsh
+        run: |
+          node --check extension-host/src/host.mjs
+          node --check extensions/hello-codium/extension.cjs
+          node --check tests/fake-lsp.mjs
+          node --check tests/fake-terminal.mjs
+          node --check tests/fake-dap.mjs
+          node --check tests/fake-codeblocks-adapter.mjs
+          node --check tests/host-smoke.mjs
+
+      - name: Run Windows CTest
         shell: pwsh
         run: ctest --test-dir build -C Release --output-on-failure
 
-      - name: Run Extension Host smoke test
+      - name: Run Windows Extension Host smoke test
+        shell: pwsh
         run: node tests/host-smoke.mjs
 
   codeblocks-sdk-integration:
