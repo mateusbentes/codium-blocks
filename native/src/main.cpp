@@ -14,6 +14,7 @@
 #include "codium/codeblocks_bridge.hpp"
 #include "codium/codeblocks_adapter_client.hpp"
 #include "codium/problem_model.hpp"
+#include "codium/syntax_highlighting.hpp"
 #include "codium/vsix_manager.hpp"
 #include "codium/workspace.hpp"
 
@@ -1018,11 +1019,68 @@ private:
         return wxColour(70, 110, 180);
     }
 
-    void ApplyInlineProblems()
+    wxTextAttr SyntaxStyle(codium::SyntaxTokenKind kind) const
+    {
+        wxTextAttr style;
+        switch (kind) {
+        case codium::SyntaxTokenKind::Comment:
+            style.SetTextColour(wxColour(105, 115, 125));
+            style.SetFontStyle(wxFONTSTYLE_ITALIC);
+            break;
+        case codium::SyntaxTokenKind::String:
+            style.SetTextColour(wxColour(30, 125, 55));
+            break;
+        case codium::SyntaxTokenKind::Number:
+            style.SetTextColour(wxColour(150, 95, 25));
+            break;
+        case codium::SyntaxTokenKind::Keyword:
+            style.SetTextColour(wxColour(35, 95, 185));
+            style.SetFontWeight(wxFONTWEIGHT_BOLD);
+            break;
+        case codium::SyntaxTokenKind::Type:
+            style.SetTextColour(wxColour(115, 65, 165));
+            break;
+        case codium::SyntaxTokenKind::Function:
+            style.SetTextColour(wxColour(25, 115, 145));
+            break;
+        case codium::SyntaxTokenKind::Property:
+            style.SetTextColour(wxColour(145, 75, 25));
+            break;
+        case codium::SyntaxTokenKind::Preprocessor:
+            style.SetTextColour(wxColour(155, 55, 130));
+            break;
+        case codium::SyntaxTokenKind::Tag:
+            style.SetTextColour(wxColour(35, 125, 75));
+            break;
+        case codium::SyntaxTokenKind::Heading:
+            style.SetTextColour(wxColour(35, 95, 185));
+            style.SetFontWeight(wxFONTWEIGHT_BOLD);
+            break;
+        case codium::SyntaxTokenKind::Plain:
+            break;
+        }
+        return style;
+    }
+
+    void ApplySyntaxHighlighting()
     {
         if (!editor_) return;
         const long end = editor_->GetLastPosition();
         editor_->SetStyle(0, end, editor_->GetDefaultStyle());
+        if (end <= 0 || languageId_ == wxS("plaintext")) return;
+        const auto tokens = codium::SyntaxHighlighter::Tokenize(editor_->GetValue(), languageId_);
+        for (const auto& token : tokens) {
+            const long start = std::max(0L, token.start);
+            const long finish = std::min(end, start + std::max(0L, token.length));
+            if (finish > start) editor_->SetStyle(start, finish, SyntaxStyle(token.kind));
+        }
+    }
+
+    void ApplyInlineProblems()
+    {
+        if (!editor_) return;
+        ApplySyntaxHighlighting();
+        const long end = editor_->GetLastPosition();
         for (const auto& problem : problemStore_.Problems()) {
             if (problem.stale || problem.path.empty() || problem.path != document_.Path()) continue;
             const long start = editor_->XYToPosition(problem.column, problem.line);
@@ -2519,6 +2577,7 @@ private:
             ++documentVersion_;
             NotifyLanguageDocumentChanged();
             UpdateTitle();
+            ApplyInlineProblems();
         }
     }
 
@@ -2566,6 +2625,7 @@ private:
                 documents_[document_.Path()] = document_;
                 notebook_->SetPageText(pageIndex, wxFileName(document_.Path()).GetFullName());
             }
+            ApplySyntaxHighlighting();
         }
 
         document_.SetText(editor_->GetValue());

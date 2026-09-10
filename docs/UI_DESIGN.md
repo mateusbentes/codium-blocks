@@ -91,7 +91,7 @@ The interface must be keyboard-first without requiring the user to memorize hidd
 
 Mouse interaction must remain direct. Double-clicking a problem opens its source location. Clicking a file path in Build or Terminal output opens the file. Clicking a warning or error marker opens the detail without changing the document text.
 
-The first Phase G editor increment implements the Find, Find next, Find previous, Replace, Replace all, and Go to Line actions through native wxWidgets controls. The search model also has case-sensitive and case-insensitive operations for future search-option controls. Syntax highlighting, go-to-file, go-to-symbol, and richer replacement options remain planned.
+The first Phase G editor increments implement the Find, Find next, Find previous, Replace, Replace all, and Go to Line actions through native wxWidgets controls, together with conservative lexical syntax highlighting for common constructs in the detected language. The search model also has case-sensitive and case-insensitive operations for future search-option controls. Highlighting is intentionally value-owned and parser-light; semantic tokens from an LSP, embedded-language grammars, go-to-file, go-to-symbol, and richer replacement options remain planned.
 
 ## Extension and native contribution boundaries
 

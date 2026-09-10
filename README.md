@@ -25,6 +25,7 @@ The current `1.0.1` development increment builds on the completed `0.9.0` baseli
 - a demonstration extension that displays a message through the host.
 - a native UTF-8 document model with open, edit, dirty-state, and save operations;
 - a basic source editor surface;
+- conservative native syntax highlighting for C/C++, Python, Rust, Go, Java, JavaScript, TypeScript, JSON, HTML, CSS, Markdown, YAML, and CMake;
 - native editor productivity actions for Find, Replace, Replace All, Find next/previous, and Go to Line with visible keyboard shortcuts;
 - persistent extension configuration stored outside the repository;
 - manifest-contributed commands reflected as native UI buttons;
