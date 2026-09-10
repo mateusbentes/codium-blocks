@@ -124,6 +124,21 @@ wxString FindCodeBlocksCompilerPlugin(const codium::CodeBlocksBridge& bridge)
     return wxEmptyString;
 }
 
+wxString FindCodeBlocksDebuggerPlugin(const codium::CodeBlocksBridge& bridge)
+{
+    const wxString names[] = {
+        wxS("libdebugger.so"), wxS("libdebugger.dylib"), wxS("debugger.dylib"),
+        wxS("debugger.dll"), wxS("debugger.so")
+    };
+    for (const auto& directory : bridge.PluginDirectories()) {
+        for (const auto& name : names) {
+            const wxString candidate = directory + wxFILE_SEP_PATH + name;
+            if (wxFileExists(candidate)) return wxFileName(candidate).GetFullPath();
+        }
+    }
+    return wxEmptyString;
+}
+
 wxString DetectProjectRoot()
 {
     const wxString executable = wxStandardPaths::Get().GetExecutablePath();
@@ -2320,12 +2335,14 @@ private:
         wxArrayString arguments;
         const wxString dataDirectory = FindCodeBlocksDataDirectory(codeBlocksBridge_);
         const wxString compilerPlugin = FindCodeBlocksCompilerPlugin(codeBlocksBridge_);
+        const wxString debuggerPlugin = FindCodeBlocksDebuggerPlugin(codeBlocksBridge_);
         if (dataDirectory.empty() || compilerPlugin.empty()) {
             AppendLog(wxS("Code::Blocks adapter requires resources.zip and a matching Compiler plugin; discovery found neither complete runtime path."));
             return;
         }
         arguments.Add(wxS("--data-dir=") + dataDirectory);
         arguments.Add(wxS("--compiler-plugin=") + compilerPlugin);
+        if (!debuggerPlugin.empty()) arguments.Add(wxS("--debugger-plugin=") + debuggerPlugin);
         if (!codeBlocksAdapter_.Start(executable, arguments, workspace_.RootPath(), configuration, &error)) {
             AppendLog(wxS("Code::Blocks adapter error: ") + error);
             return;
@@ -2396,9 +2413,17 @@ private:
         case codium::CodeBlocksEventKind::ProjectFileRenamed:
         case codium::CodeBlocksEventKind::DebugSessionStarted:
         case codium::CodeBlocksEventKind::DebugSessionStopped:
+        case codium::CodeBlocksEventKind::DebugSessionPaused:
+        case codium::CodeBlocksEventKind::DebugSessionContinued:
+        case codium::CodeBlocksEventKind::DebugSessionCursorChanged:
+        case codium::CodeBlocksEventKind::DebugSessionUpdated:
         case codium::CodeBlocksEventKind::PluginCommand:
             if (debugConsole_ && (event.kind == codium::CodeBlocksEventKind::DebugSessionStarted ||
-                                  event.kind == codium::CodeBlocksEventKind::DebugSessionStopped)) {
+                                  event.kind == codium::CodeBlocksEventKind::DebugSessionStopped ||
+                                  event.kind == codium::CodeBlocksEventKind::DebugSessionPaused ||
+                                  event.kind == codium::CodeBlocksEventKind::DebugSessionContinued ||
+                                  event.kind == codium::CodeBlocksEventKind::DebugSessionCursorChanged ||
+                                  event.kind == codium::CodeBlocksEventKind::DebugSessionUpdated)) {
                 debugConsole_->AppendText(event.message + wxS("\n"));
             }
             break;

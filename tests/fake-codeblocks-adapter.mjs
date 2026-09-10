@@ -19,7 +19,7 @@ function handle(line) {
       sdkMajor: request.sdkMajor || 1,
       sdkMinor: request.sdkMinor || 36,
       sdkRelease: request.sdkRelease || 0,
-      capabilities: ['sdkEventSink', 'projectEvents', 'projectTargets', 'compilerEvents', 'buildEvents', 'compilerDiagnostics', 'debugEvents']
+      capabilities: ['sdkEventSink', 'projectEvents', 'projectTargets', 'compilerEvents', 'buildEvents', 'compilerDiagnostics', 'debuggerPluginMatched', 'debuggerEvents', 'debuggerControl']
     });
   } else if (request.type === 'openProject') {
     emit({
@@ -48,6 +48,25 @@ function handle(line) {
       projectPath: request.projectFile, target: request.target,
       exitCode: 0, message: 'Build finished'
     });
+  } else if (request.type === 'debug') {
+    emit({
+      type: 'event', event: 'debugSessionStarted',
+      projectPath: request.projectFile, target: request.target,
+      plugin: 'Debugger', message: 'Debug session started'
+    });
+    if (request.breakOnEntry) {
+      emit({
+        type: 'event', event: 'debugSessionPaused',
+        projectPath: request.projectFile, target: request.target,
+        plugin: 'Debugger', message: 'Debug session paused at entry'
+      });
+    }
+  } else if (request.type === 'continueDebug') {
+    emit({ type: 'event', event: 'debugSessionContinued', plugin: 'Debugger', message: 'Debug session continued' });
+  } else if (request.type === 'pauseDebug') {
+    emit({ type: 'event', event: 'debugSessionPaused', plugin: 'Debugger', message: 'Debug session paused' });
+  } else if (request.type === 'stopDebug') {
+    emit({ type: 'event', event: 'debugSessionStopped', plugin: 'Debugger', exitCode: 0, message: 'Debug session stopped' });
   } else if (request.type === 'shutdown') {
     process.exit(0);
   }

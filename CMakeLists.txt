@@ -5,7 +5,9 @@ option(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_SDK "Expose an optional Code::Blocks SDK 
 set(CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT "" CACHE PATH "Code::Blocks SDK installation or source root")
 option(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER "Build the isolated Code::Blocks SDK host adapter when a usable SDK is found" ON)
 set(CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR "" CACHE PATH "Code::Blocks data directory containing resources.zip")
-set(CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR "" CACHE PATH "Code::Blocks plugin directory containing the matched Compiler plugin")
+set(CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR "" CACHE PATH "Code::Blocks plugin directory containing matched native plugins")
+set(CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN "" CACHE FILEPATH "Explicit Code::Blocks Compiler plugin path")
+set(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGER_PLUGIN "" CACHE FILEPATH "Optional explicit Code::Blocks Debugger plugin path")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -31,7 +33,6 @@ set(CODIUM_BLOCKS_CODEBLOCKS_ADAPTER_AVAILABLE OFF)
 set(CODIUM_BLOCKS_CODEBLOCKS_LINK_TARGET "")
 set(CODIUM_BLOCKS_CODEBLOCKS_INCLUDE_DIRS "")
 set(CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR_DETECTED "")
-set(CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN "")
 
 if(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER)
     find_package(PkgConfig QUIET)
@@ -121,6 +122,7 @@ if(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER)
             "Code::Blocks data directory containing resources.zip" FORCE)
     endif()
     if(CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR AND EXISTS "${CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR}/resources.zip")
+        if(NOT CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN)
         foreach(plugin_candidate
                 "${CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR}/libcompiler.so"
                 "${CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR}/libcompiler.dylib"
@@ -133,14 +135,32 @@ if(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER)
                 break()
             endif()
         endforeach()
+        endif()
+        if(NOT CODIUM_BLOCKS_CODEBLOCKS_DEBUGGER_PLUGIN)
+        foreach(plugin_candidate
+                "${CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR}/libdebugger.so"
+                "${CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR}/libdebugger.dylib"
+                "${CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR}/debugger.dll"
+                "${CODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR}/debugger.so"
+                "${CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR}/../lib/codeblocks/plugins/libdebugger.so"
+                "${CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR}/plugins/libdebugger.so")
+            if(EXISTS "${plugin_candidate}")
+                set(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGER_PLUGIN "${plugin_candidate}")
+                break()
+            endif()
+        endforeach()
+        endif()
     endif()
 
-    if(CODIUM_BLOCKS_CODEBLOCKS_LINK_TARGET AND CODIUM_BLOCKS_CODEBLOCKS_INCLUDE_DIRS)
+    if(CODIUM_BLOCKS_CODEBLOCKS_LINK_TARGET AND CODIUM_BLOCKS_CODEBLOCKS_INCLUDE_DIRS AND
+       CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR AND EXISTS "${CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR}/resources.zip" AND
+       CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN AND EXISTS "${CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN}")
         set(CODIUM_BLOCKS_CODEBLOCKS_ADAPTER_AVAILABLE ON)
         message(STATUS "Code::Blocks SDK adapter build enabled")
         message(STATUS "  SDK includes: ${CODIUM_BLOCKS_CODEBLOCKS_INCLUDE_DIRS}")
         message(STATUS "  SDK data: ${CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR}")
         message(STATUS "  Compiler plugin: ${CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN}")
+        message(STATUS "  Debugger plugin: ${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGER_PLUGIN}")
     else()
         message(STATUS "Code::Blocks SDK adapter unavailable; building the portable core only")
     endif()
@@ -199,6 +219,7 @@ if(CODIUM_BLOCKS_CODEBLOCKS_ADAPTER_AVAILABLE)
         native/src/codeblocks_adapter_main.cpp
         native/src/codeblocks_host.cpp
         native/src/codeblocks_sdk_bootstrap.cpp
+        native/src/codeblocks_debugger_headless.cpp
     )
     target_include_directories(codium-blocks-codeblocks-adapter PRIVATE
         native/include ${CODIUM_BLOCKS_CODEBLOCKS_INCLUDE_DIRS})
@@ -349,6 +370,7 @@ if(CODIUM_BLOCKS_CODEBLOCKS_ADAPTER_AVAILABLE AND UNIX AND NOT APPLE)
     add_executable(codium-blocks-codeblocks-sdk-events-smoke
         native/src/codeblocks_host.cpp
         native/src/codeblocks_sdk_bootstrap.cpp
+        native/src/codeblocks_debugger_headless.cpp
         tests/codeblocks-sdk-events-smoke.cpp
     )
     target_include_directories(codium-blocks-codeblocks-sdk-events-smoke PRIVATE
@@ -396,6 +418,14 @@ if(BUILD_TESTING)
         find_program(CODIUM_BLOCKS_XVFB_RUN xvfb-run)
         if(CODIUM_BLOCKS_XVFB_RUN AND CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR AND CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN)
             file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/codeblocks-adapter-home/config")
+            set(CODIUM_BLOCKS_REAL_ADAPTER_ARGS
+                $<TARGET_FILE:codium-blocks-codeblocks-adapter>
+                ${CMAKE_SOURCE_DIR}/tests/fixtures/codium-blocks-adapter.cbp
+                ${CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR}
+                ${CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN})
+            if(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGER_PLUGIN)
+                list(APPEND CODIUM_BLOCKS_REAL_ADAPTER_ARGS ${CODIUM_BLOCKS_CODEBLOCKS_DEBUGGER_PLUGIN})
+            endif()
             add_test(
                 NAME codeblocks-real-adapter-smoke
                 COMMAND ${CMAKE_COMMAND} -E env
@@ -403,10 +433,7 @@ if(BUILD_TESTING)
                     XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/codeblocks-adapter-home/config
                     ${CODIUM_BLOCKS_XVFB_RUN} -a
                     $<TARGET_FILE:codium-blocks-codeblocks-real-adapter-smoke>
-                    $<TARGET_FILE:codium-blocks-codeblocks-adapter>
-                    ${CMAKE_SOURCE_DIR}/tests/fixtures/codium-blocks-adapter.cbp
-                    ${CODIUM_BLOCKS_CODEBLOCKS_DATA_DIR}
-                    ${CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN}
+                    ${CODIUM_BLOCKS_REAL_ADAPTER_ARGS}
             )
             add_test(
                 NAME codeblocks-sdk-events-smoke

@@ -9,7 +9,7 @@ namespace codium {
 
 struct CodeBlocksHostContract final {
     static constexpr int kMajor = 1;
-    static constexpr int kMinor = 0;
+    static constexpr int kMinor = 1;
 
     static wxString Version();
     static bool Supports(int major, int minor);
@@ -32,6 +32,10 @@ enum class CodeBlocksEventKind {
     CompilerDiagnostic,
     DebugSessionStarted,
     DebugSessionStopped,
+    DebugSessionPaused,
+    DebugSessionContinued,
+    DebugSessionCursorChanged,
+    DebugSessionUpdated,
     PluginCommand
 };
 

@@ -23,9 +23,11 @@ The adapter owns an explicit bootstrap object with the following lifecycle:
 5. It marks the SDK application state as started and exposes project enumeration.
 6. It calls `ProjectManager::LoadProject()` and enumerates real `cbProject` build targets through `GetBuildTargetsCount()` and `GetBuildTarget()`.
 7. It activates the matched `cbCompilerPlugin`, accepts a real target build, and drains normalized compiler lifecycle and PipedProcess output events asynchronously.
-8. It explicitly unloads the matched plugin before freeing the Code::Blocks manager; this follows the SDK ownership order and avoids leaving plugin destruction to a partially torn-down manager.
+8. When requested, it creates a private staging directory containing only the matched Compiler and Debugger files from one plugin directory. It uses the SDK `ScanForPlugins()` path for that staging directory instead of loading two foreign modules through unrelated direct calls.
+9. It installs no-op debugger window and menu factories inside the adapter, attaches the matched `cbDebuggerPlugin`, and exposes only debug launch, continue, break, stop, and official lifecycle events.
+10. It explicitly unloads the matched Debugger and Compiler plugins before freeing the Code::Blocks manager; this follows the SDK ownership order and avoids leaving plugin destruction to a partially torn-down manager.
 
-The first real capabilities are intentionally narrow and observable. Opening a `.cbp` emits `projectOpened` followed by one `projectTarget` event per real target. Each target event includes its title, compiler identifier, output path, and working directory. A build request now invokes the matched Code::Blocks Compiler plugin, emits official `buildStarted` and `buildFinished` events, forwards compiler stdout/stderr as `compilerOutput`, and preserves the SDK exit status. The adapter does not load debugger or arbitrary third-party plugins.
+The first real capabilities are intentionally narrow and observable. Opening a `.cbp` emits `projectOpened` followed by one `projectTarget` event per real target. Each target event includes its title, compiler identifier, output path, and working directory. A build request now invokes the matched Code::Blocks Compiler plugin, emits official `buildStarted` and `buildFinished` events, forwards compiler stdout/stderr as `compilerOutput`, and preserves the SDK exit status. If a matched Debugger plugin is explicitly supplied, the adapter also starts the real debugger session for the selected target and forwards official debugger lifecycle events. Stack, thread, breakpoint, watch, variable, and expression data are not yet serialized by this protocol.
 
 ### Phase B event normalization
 
@@ -48,8 +50,9 @@ The current adapter therefore follows these rules:
 | Plugin selection | Require an explicit compiler-plugin path. Do not scan a plugin directory. |
 | ABI check | Require the plugin's embedded SDK version to match the adapter's compiled SDK. |
 | Resource check | Require the configured data directory to contain the official `resources.zip`. |
-| Third-party plugins | Do not load arbitrary discovered plugins. Plugin attach and plugin command events remain future work. |
+| Third-party plugins | Do not load arbitrary discovered plugins. Only the explicit Compiler and optional Debugger paths are eligible, and a debugger request requires workspace trust. |
 | Build behavior | Invoke only the matched Compiler plugin; preserve asynchronous output and completion status, and never emit fake success. |
+| Debugger behavior | Attach only the matched Debugger plugin from the same installation. Provide headless SDK interfaces and normalize session lifecycle; do not expose raw SDK pointers or arbitrary plugin commands. |
 
 The process boundary limits a plugin crash to the adapter process, but it does not make arbitrary native plugins trustworthy. Workspace trust, installation provenance, and a future explicit allowlist remain required before any broader plugin policy is considered.
 
@@ -79,14 +82,18 @@ cmake -S . -B build \
   -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=ON \
   -DCODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT=/path/to/codeblocks \
   -DCODIUM_BLOCKS_CODEBLOCKS_DATA_DIR=/path/to/share/codeblocks \
-  -DCODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR=/path/to/codeblocks/plugins
+  -DCODIUM_BLOCKS_CODEBLOCKS_PLUGIN_DIR=/path/to/codeblocks/plugins \
+  -DCODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN=/path/to/codeblocks/plugins/compiler-module \
+  -DCODIUM_BLOCKS_CODEBLOCKS_DEBUGGER_PLUGIN=/path/to/codeblocks/plugins/debugger-module
 ```
+
+The explicit `COMPILER_PLUGIN` path is required when the installation uses a non-standard module name. The `DEBUGGER_PLUGIN` path is optional. If it is omitted, the adapter remains a real compiler/project host and does not claim debugger capabilities.
 
 The older `CODIUM_BLOCKS_ENABLE_CODEBLOCKS_SDK` option still exposes optional SDK include roots to the portable native target. It does not link the core application against `libcodeblocks` and does not enable plugin loading.
 
 ## Protocol and capability reporting
 
-The native client and adapter use the versioned JSON Lines contract in [`CODEBLOCKS_ADAPTER_PROTOCOL.md`](CODEBLOCKS_ADAPTER_PROTOCOL.md). The contract remains `1.0`; Phase C is an additive implementation behind the existing `build` request. A `ready` response reports the compiled SDK version, a human-readable SDK identity, and capabilities such as `sdkBootstrap`, `projectEvents`, `projectTargets`, `compilerEvents`, `compilerBuild`, `compilerOutput`, and `compilerPluginMatched`.
+The native client and adapter use the versioned JSON Lines contract in [`CODEBLOCKS_ADAPTER_PROTOCOL.md`](CODEBLOCKS_ADAPTER_PROTOCOL.md). The contract is now `1.1`; clients that speak `1.0` remain compatible because debugger requests and events are additive. A `ready` response reports the compiled SDK version, a human-readable SDK identity, and capabilities such as `sdkBootstrap`, `projectEvents`, `projectTargets`, `compilerEvents`, `compilerBuild`, `compilerOutput`, `compilerPluginMatched`, `debuggerPluginMatched`, `debuggerEvents`, and `debuggerControl`.
 
 A handshake with SDK version `0.0.0` requests capability discovery without imposing a version. A non-zero requested SDK tuple must match exactly. A contract major mismatch or unsupported minor version is rejected before project operations begin.
 
@@ -99,7 +106,7 @@ The production adapter is deliberately being developed in stages:
 | A | Implemented | Matched `wxApp`/resource bootstrap, one allowlisted Compiler plugin, real `.cbp` loading, target enumeration, capability reporting, and graceful errors. |
 | B | Implemented | Register official SDK event sinks and normalize project/compiler lifecycle events without loading additional plugins. |
 | C | Implemented | Invoke the matched Compiler plugin for real target builds, forward compiler output, normalize completion status, and validate the result with a compilable fixture. |
-| D | Planned | Add debugger and plugin-manager capabilities only behind explicit ABI, manifest, provenance, and workspace-trust policies. |
+| D | Implemented increment | Attach a matched Debugger plugin only through a private allowlisted staging directory, provide headless SDK UI interfaces, launch/control the real debugger, normalize official debugger lifecycle events, and validate the result with an optional Linux smoke test. Stack/data serialization and broader plugin policy remain future work. |
 
 This sequencing avoids claiming full Code::Blocks compatibility before the lifecycle, event mapping, compiler behavior, debugger ownership, and plugin policy have each been tested against matched SDK builds.
 

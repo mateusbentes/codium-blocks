@@ -65,7 +65,9 @@ int main(int argc, char** argv)
         adapter.SdkMajor() != 1 || adapter.SdkMinor() != 36 ||
         adapter.Capabilities().Index(wxS("sdkEventSink")) == wxNOT_FOUND ||
         adapter.Capabilities().Index(wxS("compilerEvents")) == wxNOT_FOUND ||
-        adapter.Capabilities().Index(wxS("compilerDiagnostics")) == wxNOT_FOUND) {
+        adapter.Capabilities().Index(wxS("compilerDiagnostics")) == wxNOT_FOUND ||
+        adapter.Capabilities().Index(wxS("debuggerEvents")) == wxNOT_FOUND ||
+        adapter.Capabilities().Index(wxS("debuggerControl")) == wxNOT_FOUND) {
         std::cerr << "codeblocks-adapter-smoke: handshake failed: " << error.ToStdString() << "\n";
         return 2;
     }
@@ -110,6 +112,24 @@ int main(int argc, char** argv)
         return 6;
     }
 
+    if (!adapter.DebugProject(configuration.projectFile, wxS("app"), true)) {
+        std::cerr << "codeblocks-adapter-smoke: debug request failed\n";
+        return 7;
+    }
+    bool debugStarted = false;
+    bool debugPaused = false;
+    for (int i = 0; i < 200 && adapter.IsRunning() && !debugPaused; ++i) {
+        wxMilliSleep(10);
+        for (const auto& event : adapter.PollEvents()) {
+            if (event.kind == codium::CodeBlocksEventKind::DebugSessionStarted) debugStarted = true;
+            if (event.kind == codium::CodeBlocksEventKind::DebugSessionPaused) debugPaused = true;
+        }
+    }
+    if (!debugStarted || !debugPaused || !adapter.StopDebug()) {
+        std::cerr << "codeblocks-adapter-smoke: debug event flow failed\n";
+        return 8;
+    }
+
     adapter.Stop();
     codium::CodeBlocksAdapterClient incompatibleAdapter(nullptr);
     wxArrayString incompatibleArguments;
@@ -117,7 +137,7 @@ int main(int argc, char** argv)
     incompatibleArguments.Add(wxS("--incompatible"));
     if (!incompatibleAdapter.Start(wxS("node"), incompatibleArguments, root, configuration, &error)) {
         std::cerr << "codeblocks-adapter-smoke: incompatible adapter could not start\n";
-        return 7;
+        return 9;
     }
     for (int i = 0; i < 200 && incompatibleAdapter.IsRunning() && !incompatibleAdapter.HandshakeReceived(); ++i) {
         wxMilliSleep(10);
@@ -125,7 +145,7 @@ int main(int argc, char** argv)
     }
     if (!incompatibleAdapter.HandshakeReceived() || incompatibleAdapter.IsReady()) {
         std::cerr << "codeblocks-adapter-smoke: incompatible contract was accepted\n";
-        return 8;
+        return 10;
     }
     incompatibleAdapter.Stop();
     std::cout << "codeblocks-adapter-smoke: ok — JSON Lines handshake, capabilities, project, build, and diagnostics\n";

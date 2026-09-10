@@ -45,6 +45,10 @@ wxString CodeBlocksEventKindName(CodeBlocksEventKind kind)
     case CodeBlocksEventKind::CompilerDiagnostic: return wxS("compilerDiagnostic");
     case CodeBlocksEventKind::DebugSessionStarted: return wxS("debugSessionStarted");
     case CodeBlocksEventKind::DebugSessionStopped: return wxS("debugSessionStopped");
+    case CodeBlocksEventKind::DebugSessionPaused: return wxS("debugSessionPaused");
+    case CodeBlocksEventKind::DebugSessionContinued: return wxS("debugSessionContinued");
+    case CodeBlocksEventKind::DebugSessionCursorChanged: return wxS("debugSessionCursorChanged");
+    case CodeBlocksEventKind::DebugSessionUpdated: return wxS("debugSessionUpdated");
     case CodeBlocksEventKind::PluginCommand: return wxS("pluginCommand");
     }
     return wxS("unknown");

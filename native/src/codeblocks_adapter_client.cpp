@@ -119,6 +119,10 @@ CodeBlocksEventKind EventKindFromName(const wxString& name)
     if (name == wxS("compilerDiagnostic")) return CodeBlocksEventKind::CompilerDiagnostic;
     if (name == wxS("debugSessionStarted")) return CodeBlocksEventKind::DebugSessionStarted;
     if (name == wxS("debugSessionStopped")) return CodeBlocksEventKind::DebugSessionStopped;
+    if (name == wxS("debugSessionPaused")) return CodeBlocksEventKind::DebugSessionPaused;
+    if (name == wxS("debugSessionContinued")) return CodeBlocksEventKind::DebugSessionContinued;
+    if (name == wxS("debugSessionCursorChanged")) return CodeBlocksEventKind::DebugSessionCursorChanged;
+    if (name == wxS("debugSessionUpdated")) return CodeBlocksEventKind::DebugSessionUpdated;
     return CodeBlocksEventKind::PluginCommand;
 }
 
@@ -238,6 +242,31 @@ bool CodeBlocksAdapterClient::BuildTarget(const wxString& projectFile,
     return SendRaw(wxString::Format(
         wxS("{\"type\":\"build\",\"projectFile\":\"%s\",\"target\":\"%s\",\"configuration\":\"%s\"}"),
         JsonEscape(projectFile), JsonEscape(target), JsonEscape(configuration)));
+}
+
+bool CodeBlocksAdapterClient::DebugProject(const wxString& projectFile,
+                                           const wxString& target,
+                                           bool breakOnEntry)
+{
+    if (!ready_) return false;
+    return SendRaw(wxString::Format(
+        wxS("{\"type\":\"debug\",\"projectFile\":\"%s\",\"target\":\"%s\",\"breakOnEntry\":%s}"),
+        JsonEscape(projectFile), JsonEscape(target), breakOnEntry ? wxS("true") : wxS("false")));
+}
+
+bool CodeBlocksAdapterClient::ContinueDebug()
+{
+    return ready_ && SendRaw(wxS("{\"type\":\"continueDebug\"}"));
+}
+
+bool CodeBlocksAdapterClient::PauseDebug()
+{
+    return ready_ && SendRaw(wxS("{\"type\":\"pauseDebug\"}"));
+}
+
+bool CodeBlocksAdapterClient::StopDebug()
+{
+    return ready_ && SendRaw(wxS("{\"type\":\"stopDebug\"}"));
 }
 
 wxArrayString CodeBlocksAdapterClient::Poll()

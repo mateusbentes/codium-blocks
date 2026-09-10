@@ -34,6 +34,8 @@ wxIMPLEMENT_APP_NO_MAIN(AdapterApp);
 struct AdapterOptions final {
     wxString dataDirectory;
     wxString compilerPlugin;
+    wxString debuggerPlugin;
+    bool workspaceTrusted = true;
 };
 
 std::mutex outputMutex;
@@ -111,6 +113,18 @@ int JsonIntField(const std::string& line, const char* field, int fallback = 0)
     return found ? sign * value : fallback;
 }
 
+bool JsonBoolField(const std::string& line, const char* field, bool fallback = false)
+{
+    const std::string marker = std::string("\"") + field + "\":";
+    const size_t start = line.find(marker);
+    if (start == std::string::npos) return fallback;
+    size_t index = start + marker.size();
+    while (index < line.size() && (line[index] == ' ' || line[index] == '\t')) ++index;
+    if (line.compare(index, 4, "true") == 0) return true;
+    if (line.compare(index, 5, "false") == 0) return false;
+    return JsonIntField(line, field, fallback ? 1 : 0) != 0;
+}
+
 void Emit(const wxString& json)
 {
     const wxString line = json + wxS("\n");
@@ -140,7 +154,12 @@ void EmitSdkEvent(const codium::CodeBlocksHostEvent& event)
                     wxS("\",\"message\":\"") + JsonEscape(event.message) +
                     wxS("\",\"filePath\":\"") + JsonEscape(event.filePath) +
                     wxS("\",\"oldFilePath\":\"") + JsonEscape(event.oldFilePath) +
-                    wxS("\",\"exitCode\":") + wxString::Format(wxS("%d"), event.exitCode) +
+                    wxS("\",\"compilerId\":\"") + JsonEscape(event.compilerId) +
+                    wxS("\",\"outputPath\":\"") + JsonEscape(event.outputPath) +
+                    wxS("\",\"workingDirectory\":\"") + JsonEscape(event.workingDirectory) +
+                    wxS("\",\"line\":") + wxString::Format(wxS("%d"), event.line) +
+                    wxS(",\"column\":") + wxString::Format(wxS("%d"), event.column) +
+                    wxS(",\"exitCode\":") + wxString::Format(wxS("%d"), event.exitCode) +
                     wxS(",\"isError\":") + (event.isError ? wxS("true") : wxS("false")) +
                     wxS(",\"payload\":\"") + JsonEscape(event.payload) + wxS("\"}");
     Emit(json);
@@ -170,8 +189,12 @@ bool ParseOptions(int argc, char** argv, AdapterOptions* options, wxString* erro
             options->dataDirectory = valueAfter("--data-dir");
         } else if (argument.rfind("--compiler-plugin=", 0) == 0) {
             options->compilerPlugin = valueAfter("--compiler-plugin");
+        } else if (argument.rfind("--debugger-plugin=", 0) == 0) {
+            options->debuggerPlugin = valueAfter("--debugger-plugin");
+        } else if (argument == "--workspace-untrusted") {
+            options->workspaceTrusted = false;
         } else if (argument == "--help") {
-            std::cout << "codium-blocks-codeblocks-adapter --data-dir=DIR --compiler-plugin=FILE\n";
+            std::cout << "codium-blocks-codeblocks-adapter --data-dir=DIR --compiler-plugin=FILE [--debugger-plugin=FILE] [--workspace-untrusted]\n";
             return false;
         } else {
             if (error) *error = wxString::Format(wxS("Unknown adapter option: %s"),
@@ -219,6 +242,16 @@ public:
             HandleBuild(JsonStringField(line, "projectFile"),
                         JsonStringField(line, "target"),
                         JsonStringField(line, "configuration"));
+        } else if (type == wxS("debug")) {
+            HandleDebug(JsonStringField(line, "projectFile"),
+                        JsonStringField(line, "target"),
+                        JsonBoolField(line, "breakOnEntry", false));
+        } else if (type == wxS("continueDebug")) {
+            HandleDebugControl(wxS("continue"));
+        } else if (type == wxS("pauseDebug")) {
+            HandleDebugControl(wxS("pause"));
+        } else if (type == wxS("stopDebug")) {
+            HandleDebugControl(wxS("stop"));
         } else if (!type.empty()) {
             EmitError(wxS("unknownRequest"), wxString::Format(wxS("Unknown request type: %s"), type));
         }
@@ -241,7 +274,7 @@ private:
         if (ready_) return;
         const int requestedMajor = JsonIntField(line, "contractMajor", 1);
         const int requestedMinor = JsonIntField(line, "contractMinor", 0);
-        if (requestedMajor != 1 || requestedMinor < 0 || requestedMinor > 0) {
+        if (requestedMajor != 1 || requestedMinor < 0 || requestedMinor > 1) {
             Emit(wxString::Format(
                 wxS("{\"type\":\"ready\",\"contractMajor\":2,\"contractMinor\":0,\"sdkMajor\":%d,\"sdkMinor\":%d,\"sdkRelease\":%d,\"capabilities\":[]}"),
                 PLUGIN_SDK_VERSION_MAJOR, PLUGIN_SDK_VERSION_MINOR, PLUGIN_SDK_VERSION_RELEASE));
@@ -267,7 +300,8 @@ private:
         }
 
         wxString error;
-        if (!bootstrap_->Start(options_.dataDirectory, options_.compilerPlugin, &error)) {
+        if (!bootstrap_->Start(options_.dataDirectory, options_.compilerPlugin, &error,
+                               options_.debuggerPlugin, wxEmptyString, options_.workspaceTrusted)) {
             EmitError(wxS("bootstrapFailed"), error);
             stopRequested.store(true);
             if (wxTheApp) wxTheApp->ExitMainLoop();
@@ -275,11 +309,15 @@ private:
         }
 
         ready_ = true;
+        wxString capabilities = wxS("\"sdkBootstrap\",\"sdkEventSink\",\"projectEvents\",\"projectTargets\",\"compilerEvents\",\"compilerBuild\",\"compilerOutput\",\"compilerPluginMatched\"");
+        if (bootstrap_->Report().debuggerPluginAttached) {
+            capabilities += wxS(",\"debuggerPluginMatched\",\"debuggerEvents\",\"debuggerControl\"");
+        }
         Emit(wxString::Format(
-            wxS("{\"type\":\"ready\",\"contractMajor\":1,\"contractMinor\":0,\"sdkMajor\":%d,\"sdkMinor\":%d,\"sdkRelease\":%d,\"sdkIdentity\":\""),
+            wxS("{\"type\":\"ready\",\"contractMajor\":1,\"contractMinor\":1,\"sdkMajor\":%d,\"sdkMinor\":%d,\"sdkRelease\":%d,\"sdkIdentity\":\""),
             PLUGIN_SDK_VERSION_MAJOR, PLUGIN_SDK_VERSION_MINOR, PLUGIN_SDK_VERSION_RELEASE) +
              JsonEscape(bootstrap_->Report().sdkIdentity) +
-             wxS("\",\"capabilities\":[\"sdkBootstrap\",\"sdkEventSink\",\"projectEvents\",\"projectTargets\",\"compilerEvents\",\"compilerBuild\",\"compilerOutput\",\"compilerPluginMatched\"]}"));
+             wxS("\",\"capabilities\":[") + capabilities + wxS("]}"));
     }
 
     void HandleOpenProject(const wxString& projectFile)
@@ -316,6 +354,40 @@ private:
         wxString error;
         if (!bootstrap_->BuildProject(projectFile, target, configuration, &error)) {
             EmitError(wxS("buildStartFailed"), error);
+            return;
+        }
+        EmitPendingSdkEvents();
+        eventTimer_.Start(25);
+    }
+
+    void HandleDebug(const wxString& projectFile, const wxString& target, bool breakOnEntry)
+    {
+        if (!ready_) {
+            EmitError(wxS("notReady"), wxS("The Code::Blocks SDK adapter is not ready."));
+            return;
+        }
+        wxString error;
+        if (!bootstrap_->StartDebug(projectFile, target, breakOnEntry, &error)) {
+            EmitError(wxS("debugStartFailed"), error);
+            return;
+        }
+        EmitPendingSdkEvents();
+        eventTimer_.Start(25);
+    }
+
+    void HandleDebugControl(const wxString& action)
+    {
+        if (!ready_) {
+            EmitError(wxS("notReady"), wxS("The Code::Blocks SDK adapter is not ready."));
+            return;
+        }
+        wxString error;
+        bool accepted = false;
+        if (action == wxS("continue")) accepted = bootstrap_->ContinueDebug(&error);
+        else if (action == wxS("pause")) accepted = bootstrap_->PauseDebug(&error);
+        else if (action == wxS("stop")) accepted = bootstrap_->StopDebug(&error);
+        if (!accepted) {
+            EmitError(wxS("debugControlFailed"), error);
             return;
         }
         EmitPendingSdkEvents();
@@ -373,7 +445,17 @@ int main(int argc, char** argv)
     stopRequested.store(true);
     if (inputThread.joinable()) inputThread.join();
     session.Shutdown();
-    while (frame->GetEventHandler() != frame) frame->PopEventHandler(true);
+    while (frame->GetEventHandler() != frame) {
+        wxEvtHandler* handler = frame->GetEventHandler();
+        if (!handler || !handler->GetNextHandler()) {
+            // Some Code::Blocks debugger builds leave a terminal handler after
+            // plugin teardown. Do not call PopEventHandler on that malformed
+            // stack; the adapter is already leaving its dedicated process.
+            frame->SetEventHandler(frame);
+            break;
+        }
+        frame->PopEventHandler(true);
+    }
     delete frame;
     wxTheApp->OnExit();
     wxEntryCleanup();

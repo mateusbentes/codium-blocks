@@ -101,7 +101,7 @@ The current `1.0.1` development increment builds on the completed `0.9.0` baseli
 - a native `.cbp` importer that exposes Code::Blocks build targets in the scheme bar and task list;
 - a versioned Code::Blocks host-adapter contract with normalized project, build, diagnostic, debug, and plugin-command events;
 - an optional, separate Code::Blocks SDK host adapter with JSON Lines handshake, SDK/resource capability discovery, explicit matched Compiler-plugin loading, real `.cbp` loading, structured target enumeration, and real target builds;
-- official Code::Blocks project and compiler lifecycle event sinks normalized across the adapter boundary, including project file changes, compiler stdout/stderr, warnings, and compiler exit status;
+- official Code::Blocks project, compiler, and optional Debugger lifecycle event sinks normalized across the adapter boundary, including project file changes, compiler stdout/stderr, warnings, compiler exit status, debugger launch/pause/continue/stop events, and workspace-trust checks;
 - an Extensions command and command-palette action for Code::Blocks SDK discovery;
 - a native editor gutter with line numbers and severity markers for active problems;
 - a scheme bar for Debug/Release configuration, target, and detected toolchain selection;
@@ -110,7 +110,7 @@ The current `1.0.1` development increment builds on the completed `0.9.0` baseli
 - a deterministic problem-model parser test covering compiler, Rust, Windows-path, and ANSI diagnostics.
 - an original blue modular-block icon family for Windows, macOS, and Linux under [`assets/icons/`](assets/icons/), with transparent, metadata-free platform assets.
 
-This is not full VS Code or Code::Blocks compatibility yet. The implementation is deliberately layered and must still add richer completion/hover interaction, explicit user task configuration, a complete extension registry download/install workflow, deeper Tree View/SCM contribution APIs, debugger integration, and a policy for selected native plugins. The remaining 1.0 interface work includes richer source annotations, keyboard navigation, themes, and cross-platform visual verification. The remaining terminal goals — complete Unicode grapheme segmentation and width handling, plus optional Sixel/Kitty image rendering — remain separately scheduled. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/CODEBLOCKS_INTEGRATION.md`](docs/CODEBLOCKS_INTEGRATION.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), [`docs/DEBUGGING.md`](docs/DEBUGGING.md), [`docs/EXTENSIONS_SECURITY.md`](docs/EXTENSIONS_SECURITY.md), [`docs/CONTRIBUTIONS.md`](docs/CONTRIBUTIONS.md), [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md), and [`docs/PROBLEMS.md`](docs/PROBLEMS.md) for the current models.
+This is not full VS Code or Code::Blocks compatibility yet. The implementation is deliberately layered and must still add richer completion/hover interaction, explicit user task configuration, a complete extension registry download/install workflow, deeper Tree View/SCM contribution APIs, debugger data such as stack frames and variables, and a reviewed policy for selected native plugins. The remaining 1.0 interface work includes richer source annotations, keyboard navigation, themes, and cross-platform visual verification. The remaining terminal goals — complete Unicode grapheme segmentation and width handling, plus optional Sixel/Kitty image rendering — remain separately scheduled. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/CODEBLOCKS_INTEGRATION.md`](docs/CODEBLOCKS_INTEGRATION.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), [`docs/DEBUGGING.md`](docs/DEBUGGING.md), [`docs/EXTENSIONS_SECURITY.md`](docs/EXTENSIONS_SECURITY.md), [`docs/CONTRIBUTIONS.md`](docs/CONTRIBUTIONS.md), [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md), and [`docs/PROBLEMS.md`](docs/PROBLEMS.md) for the current models.
 
 The icon family and platform placement are documented in [`docs/ICONS.md`](docs/ICONS.md).
 
@@ -192,7 +192,7 @@ The project does not promise that every VS Code extension will work. Compatibili
 
 ## Implementation roadmap
 
-1. Complete the staged Code::Blocks host boundary: the optional adapter now provides matched-SDK bootstrap, real `.cbp` target enumeration, official project/compiler events, and real Compiler-plugin builds with output capture; next come debugger integration and a reviewed native-plugin policy.
+1. Complete the staged Code::Blocks host boundary: the optional adapter now provides matched-SDK bootstrap, real `.cbp` target enumeration, official project/compiler/Debugger events, real Compiler-plugin builds with output capture, and explicit debugger launch/control; next comes debugger data serialization and a reviewed native-plugin policy.
 2. Complete the cross-platform VSIX and Open VSX workflow with checksums, signatures, rollback, permissions, caching, and manifest validation.
 3. Deliver the classic native workbench described in [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md): project navigator, scheme bar, tabbed editor, dockable bottom panels, compact toolbar, light/dark themes, and keyboard-first navigation.
 4. Deliver the normalized diagnostics contract described in [`docs/PROBLEMS.md`](docs/PROBLEMS.md), including inline warnings and errors, gutter markers, clickable terminal/build locations, stale-result handling, and Problems navigation.

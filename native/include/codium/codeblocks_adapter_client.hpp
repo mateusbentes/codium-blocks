@@ -32,6 +32,10 @@ public:
     bool SendRaw(const wxString& jsonLine);
     bool OpenProject(const wxString& projectFile);
     bool BuildTarget(const wxString& projectFile, const wxString& target, const wxString& configuration);
+    bool DebugProject(const wxString& projectFile, const wxString& target, bool breakOnEntry);
+    bool ContinueDebug();
+    bool PauseDebug();
+    bool StopDebug();
 
     wxArrayString Poll();
     std::vector<CodeBlocksHostEvent> PollEvents();

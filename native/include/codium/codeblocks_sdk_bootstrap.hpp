@@ -9,6 +9,7 @@
 
 class cbProject;
 class cbCompilerPlugin;
+class cbDebuggerPlugin;
 class CodeBlocksEvent;
 class wxFrame;
 
@@ -30,6 +31,9 @@ struct CodeBlocksSdkReport final {
     wxString sdkIdentity;
     wxString dataDirectory;
     wxString compilerPlugin;
+    wxString debuggerPlugin;
+    wxString pluginDirectory;
+    wxString pluginPolicy;
     bool wxAppReady = false;
     bool resourcesLoaded = false;
     bool compilerPluginLoaded = false;
@@ -38,15 +42,21 @@ struct CodeBlocksSdkReport final {
     bool eventSinkRegistered = false;
     bool compilerEventsAvailable = false;
     bool compilerOutputAvailable = false;
+    bool debuggerPluginLoaded = false;
+    bool debuggerPluginAttached = false;
+    bool debuggerEventsAvailable = false;
+    bool debuggerControlAvailable = false;
+    bool workspaceTrusted = false;
 };
 
 /**
  * Owns the Code::Blocks SDK lifecycle inside the dedicated adapter process.
  *
  * This class is intentionally not linked into the main Codium::Blocks target.
- * The caller must have started a wxApp before constructing it. Only the
- * explicitly selected, matching Code::Blocks compiler plugin is loaded; no
- * plugin directory scan or arbitrary native module loading is performed.
+ * The caller must have started a wxApp before constructing it. Only explicitly
+ * selected, matching Code::Blocks Compiler and optional Debugger plugins are
+ * loaded; no complete plugin-directory scan or arbitrary native module loading
+ * is performed.
  */
 class CodeBlocksSdkBootstrap final {
 public:
@@ -58,13 +68,23 @@ public:
 
     bool Start(const wxString& dataDirectory,
                const wxString& compilerPlugin,
-               wxString* error = nullptr);
+               wxString* error = nullptr,
+               const wxString& debuggerPlugin = wxString(),
+               const wxString& pluginDirectory = wxString(),
+               bool workspaceTrusted = true);
     cbProject* LoadProject(const wxString& projectFile, wxString* error = nullptr);
     std::vector<CodeBlocksTargetInfo> EnumerateTargets(cbProject* project) const;
     bool BuildProject(const wxString& projectFile,
                       const wxString& target,
                       const wxString& configuration,
                       wxString* error = nullptr);
+    bool StartDebug(const wxString& projectFile,
+                    const wxString& target,
+                    bool breakOnEntry,
+                    wxString* error = nullptr);
+    bool ContinueDebug(wxString* error = nullptr);
+    bool PauseDebug(wxString* error = nullptr);
+    bool StopDebug(wxString* error = nullptr);
     std::vector<CodeBlocksHostEvent> DrainEvents();
     void Shutdown();
 
@@ -82,11 +102,14 @@ private:
     void OnCompilerError(CodeBlocksEvent& event);
     void BindCompilerOutput();
     void UnbindCompilerOutput();
+    void RemovePluginStaging();
     void PublishSdkEvent(CodeBlocksHostEvent event);
 
     wxFrame* appFrame_ = nullptr;
     cbProject* project_ = nullptr;
     cbCompilerPlugin* compilerPlugin_ = nullptr;
+    cbDebuggerPlugin* debuggerPlugin_ = nullptr;
+    wxString pluginStagingDirectory_;
     std::unique_ptr<CodeBlocksCompilerOutputFilter> compilerOutputFilter_;
     CodeBlocksSdkReport report_;
     std::vector<CodeBlocksHostEvent> events_;
