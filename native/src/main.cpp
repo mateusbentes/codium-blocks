@@ -610,6 +610,10 @@ public:
         AddButton(debugControls, wxS("Stop"), [this](wxCommandEvent&) { StopDebug(); }, debugPage);
         AddButton(debugControls, wxS("Watch"), [this](wxCommandEvent&) { AddWatch(); }, debugPage);
         AddButton(debugControls, wxS("Source map"), [this](wxCommandEvent&) { ConfigureSourceMap(); }, debugPage);
+        AddButton(debugControls, wxS("CB Debug"), [this](wxCommandEvent&) { StartCodeBlocksDebug(); }, debugPage);
+        AddButton(debugControls, wxS("CB Continue"), [this](wxCommandEvent&) { ContinueCodeBlocksDebug(); }, debugPage);
+        AddButton(debugControls, wxS("CB Pause"), [this](wxCommandEvent&) { PauseCodeBlocksDebug(); }, debugPage);
+        AddButton(debugControls, wxS("CB Stop"), [this](wxCommandEvent&) { StopCodeBlocksDebug(); }, debugPage);
         debugRoot->Add(debugControls, 0, wxBOTTOM | wxEXPAND, 4);
         auto* debugColumns = new wxBoxSizer(wxHORIZONTAL);
         auto* debugLeft = new wxBoxSizer(wxVERTICAL);
@@ -1923,7 +1927,9 @@ private:
             wxS("Run hello.codium"), wxS("Stop language server"),
             wxS("Install VSIX"), wxS("List installed extensions"), wxS("Discover Code::Blocks SDK"),
             wxS("Start Code::Blocks adapter"), wxS("Stop Code::Blocks adapter"),
-            wxS("Previous problem"), wxS("Next problem")
+            wxS("Previous problem"), wxS("Next problem"),
+            wxS("Start Code::Blocks debug"), wxS("Continue Code::Blocks debug"),
+            wxS("Pause Code::Blocks debug"), wxS("Stop Code::Blocks debug")
         };
         wxSingleChoiceDialog dialog(this, wxS("Select a command"), wxS("Command Palette"), commands);
         if (dialog.ShowModal() != wxID_OK) return;
@@ -1960,6 +1966,10 @@ private:
         case 29: StopCodeBlocksAdapter(); break;
         case 30: SelectAdjacentProblem(-1); break;
         case 31: SelectAdjacentProblem(1); break;
+        case 32: StartCodeBlocksDebug(); break;
+        case 33: ContinueCodeBlocksDebug(); break;
+        case 34: PauseCodeBlocksDebug(); break;
+        case 35: StopCodeBlocksDebug(); break;
         default: break;
         }
     }
@@ -2381,6 +2391,177 @@ private:
         }
     }
 
+    bool CodeBlocksCapability(const wxString& capability) const
+    {
+        return codeBlocksAdapter_.Capabilities().Index(capability) != wxNOT_FOUND;
+    }
+
+    wxString CodeBlocksTargetSelection() const
+    {
+        if (targetChoice_ && targetChoice_->GetSelection() != wxNOT_FOUND) {
+            return targetChoice_->GetStringSelection();
+        }
+        return wxS("Debug");
+    }
+
+    void StartCodeBlocksDebug()
+    {
+        if (!EnsureWorkspaceTrusted()) return;
+        if (!codeBlocksAdapter_.IsRunning()) StartCodeBlocksAdapter();
+        if (!codeBlocksAdapter_.IsReady()) {
+            AppendLog(wxS("Wait for the Code::Blocks adapter handshake before starting debug."));
+            return;
+        }
+        const wxString projectFile = CodeBlocksProjectFile();
+        if (projectFile.empty()) {
+            AppendLog(wxS("The Code::Blocks debugger requires an imported .cbp project."));
+            return;
+        }
+        if (!adapterProjectOpened_ && !codeBlocksAdapter_.OpenProject(projectFile)) {
+            AppendLog(wxS("Could not open the Code::Blocks project in the adapter."));
+            return;
+        }
+        adapterProjectOpened_ = true;
+        if (!codeBlocksAdapter_.DebugProject(projectFile, CodeBlocksTargetSelection(), true)) {
+            AppendLog(wxS("Could not start the Code::Blocks debugger."));
+            return;
+        }
+        AppendLog(wxS("Code::Blocks debugger launch requested."));
+    }
+
+    void ContinueCodeBlocksDebug()
+    {
+        if (codeBlocksAdapter_.ContinueDebug()) AppendLog(wxS("Code::Blocks debugger continue requested."));
+        else AppendLog(wxS("The Code::Blocks debugger is not ready."));
+    }
+
+    void PauseCodeBlocksDebug()
+    {
+        if (codeBlocksAdapter_.PauseDebug()) AppendLog(wxS("Code::Blocks debugger pause requested."));
+        else AppendLog(wxS("The Code::Blocks debugger is not ready."));
+    }
+
+    void StopCodeBlocksDebug()
+    {
+        if (codeBlocksAdapter_.StopDebug()) AppendLog(wxS("Code::Blocks debugger stop requested."));
+        else AppendLog(wxS("The Code::Blocks debugger is not ready."));
+    }
+
+    wxString FormatCodeBlocksValue(const codium::CodeBlocksDebugValue& value, int depth = 0) const
+    {
+        wxString label = value.symbol.empty() ? value.full : value.symbol;
+        if (label.empty()) label = wxS("<value>");
+        wxString result(static_cast<size_t>(std::max(0, depth)) * 2, wxChar(' '));
+        result += label;
+        if (!value.type.empty()) result += wxS(" : ") + value.type;
+        if (!value.value.empty()) result += wxS(" = ") + value.value;
+        if (value.valueError) result += wxS(" [error]");
+        if (value.changed) result += wxS(" [changed]");
+        if (value.truncated) result += wxS(" [truncated]");
+        for (const auto& child : value.children) result += wxS("\n") + FormatCodeBlocksValue(child, depth + 1);
+        return result;
+    }
+
+    void RequestCodeBlocksDebuggerSnapshots()
+    {
+        if (!codeBlocksAdapter_.IsReady()) return;
+        codeBlocksAdapter_.RequestDebugSnapshot(wxS("state"));
+        if (CodeBlocksCapability(wxS("debuggerStackFrames"))) {
+            codeBlocksAdapter_.RequestDebugSnapshot(wxS("frames"));
+        }
+        if (CodeBlocksCapability(wxS("debuggerThreads"))) {
+            codeBlocksAdapter_.RequestDebugSnapshot(wxS("threads"));
+        }
+        if (CodeBlocksCapability(wxS("debuggerBreakpoints"))) {
+            codeBlocksAdapter_.RequestDebugSnapshot(wxS("breakpoints"));
+        }
+        if (!watchExpressions_.empty() && CodeBlocksCapability(wxS("debuggerWatches"))) {
+            codeBlocksAdapter_.RequestDebugSnapshot(wxS("watches"), watchExpressions_[0]);
+        }
+        if (!watchExpressions_.empty() && CodeBlocksCapability(wxS("debuggerVariables"))) {
+            codeBlocksAdapter_.RequestDebugSnapshot(wxS("variables"), watchExpressions_[0]);
+        }
+    }
+
+    void HandleCodeBlocksSnapshot(const codium::CodeBlocksHostEvent& event)
+    {
+        const wxString json = event.snapshotJson.empty() ? event.payload : event.snapshotJson;
+        codium::CodeBlocksDebugSnapshot snapshot;
+        wxString error;
+        if (!codium::CodeBlocksDebugSnapshot::Parse(json, &snapshot, &error)) {
+            AppendLog(wxS("Code::Blocks debugger snapshot parse error: ") + error);
+            if (debugConsole_) debugConsole_->AppendText(wxS("Snapshot parse error: ") + error + wxS("\n"));
+            return;
+        }
+
+        if (snapshot.dataKind == wxS("frames")) {
+            debugFrameLocations_.clear();
+            if (callStack_) callStack_->Clear();
+            for (const auto& frame : snapshot.frames) {
+                DebugFrameLocation location;
+                location.id = frame.number;
+                location.line = frame.hasLine ? frame.line : 0;
+                location.character = 0;
+                location.path = sourceMapper_.Map(frame.file);
+                debugFrameLocations_.push_back(location);
+                if (callStack_) {
+                    wxString label = wxString::Format(wxS("#%d %s"), frame.number,
+                                                      frame.function.empty() ? wxS("<unknown>") : frame.function);
+                    if (!frame.file.empty()) {
+                        label += wxString::Format(wxS(" — %s"), location.path.empty() ? frame.file : location.path);
+                    }
+                    if (frame.hasLine) label += wxString::Format(wxS(":%d"), frame.line);
+                    callStack_->Append(label);
+                }
+            }
+            if (callStack_ && callStack_->IsEmpty()) callStack_->Append(wxS("No stack frames reported."));
+            if (snapshot.activeFrame >= 0 && static_cast<size_t>(snapshot.activeFrame) < callStack_->GetCount()) {
+                callStack_->SetSelection(snapshot.activeFrame);
+            }
+        } else if (snapshot.dataKind == wxS("threads")) {
+            if (debugThreads_) {
+                debugThreads_->Clear();
+                for (const auto& thread : snapshot.threads) {
+                    debugThreads_->Append(wxString::Format(wxS("%s #%d — %s"),
+                                                           thread.active ? wxS("●") : wxS("○"),
+                                                           thread.number,
+                                                           thread.info.empty() ? wxS("<unnamed thread>") : thread.info));
+                }
+                if (debugThreads_->IsEmpty()) debugThreads_->Append(wxS("No threads reported."));
+            }
+        } else if (snapshot.dataKind == wxS("breakpoints")) {
+            if (breakpoints_) {
+                breakpoints_->Clear();
+                for (const auto& breakpoint : snapshot.breakpoints) {
+                    wxString label = breakpoint.location;
+                    if (label.empty()) label = wxString::Format(wxS("line %d"), breakpoint.line);
+                    label += breakpoint.enabled ? wxS(" [enabled]") : wxS(" [disabled]");
+                    if (breakpoint.temporary) label += wxS(" [temporary]");
+                    if (!breakpoint.info.empty()) label += wxS(" — ") + breakpoint.info;
+                    breakpoints_->Append(label);
+                }
+                if (breakpoints_->IsEmpty()) breakpoints_->Append(wxS("No Code::Blocks breakpoints."));
+            }
+        } else if (snapshot.dataKind == wxS("watches")) {
+            if (watches_) {
+                watches_->Clear();
+                if (snapshot.hasValue) watches_->Append(FormatCodeBlocksValue(snapshot.value));
+                else watches_->Append(wxS("No watch value reported."));
+            }
+        } else if (snapshot.dataKind == wxS("variables")) {
+            if (variables_) {
+                variables_->Clear();
+                if (snapshot.hasValue) variables_->Append(FormatCodeBlocksValue(snapshot.value));
+                else variables_->Append(wxS("No variable value reported."));
+            }
+        }
+
+        if (debugConsole_) {
+            debugConsole_->AppendText(wxString::Format(wxS("Code::Blocks %s snapshot applied to Debug panels.\n"),
+                                                       snapshot.dataKind.empty() ? event.dataKind : snapshot.dataKind));
+        }
+    }
+
     void HandleCodeBlocksEvent(const codium::CodeBlocksHostEvent& event)
     {
         const wxString source = wxS("Code::Blocks adapter");
@@ -2423,11 +2604,7 @@ private:
             break;
         }
         case codium::CodeBlocksEventKind::DebugSnapshot:
-            if (debugConsole_) {
-                debugConsole_->AppendText(wxString::Format(
-                    wxS("Code::Blocks debugger snapshot (%s): %s\n"),
-                    event.dataKind, event.snapshotJson.empty() ? event.payload : event.snapshotJson));
-            }
+            HandleCodeBlocksSnapshot(event);
             break;
         case codium::CodeBlocksEventKind::ProjectOpened:
         case codium::CodeBlocksEventKind::ProjectTarget:
@@ -2441,7 +2618,15 @@ private:
         case codium::CodeBlocksEventKind::ProjectFileRenamed:
         case codium::CodeBlocksEventKind::DebugSessionStarted:
         case codium::CodeBlocksEventKind::DebugSessionStopped:
+            if (debugConsole_ && (event.kind == codium::CodeBlocksEventKind::DebugSessionStarted ||
+                                  event.kind == codium::CodeBlocksEventKind::DebugSessionStopped)) {
+                debugConsole_->AppendText(event.message + wxS("\n"));
+            }
+            break;
         case codium::CodeBlocksEventKind::DebugSessionPaused:
+            RequestCodeBlocksDebuggerSnapshots();
+            if (debugConsole_) debugConsole_->AppendText(event.message + wxS("\n"));
+            break;
         case codium::CodeBlocksEventKind::DebugSessionContinued:
         case codium::CodeBlocksEventKind::DebugSessionCursorChanged:
         case codium::CodeBlocksEventKind::DebugSessionUpdated:
