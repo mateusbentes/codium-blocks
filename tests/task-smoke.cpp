@@ -20,7 +20,9 @@ int main()
     const wxString root = wxStandardPaths::Get().GetTempDir() + wxFILE_SEP_PATH + wxS("codium-blocks-task-smoke");
     std::filesystem::remove_all(root.ToStdString());
     wxFileName::Mkdir(root, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
-    std::ofstream(root.ToStdString() + "/CMakeLists.txt") << "cmake_minimum_required(VERSION 3.20)\n";
+    std::ofstream(root.ToStdString() + "/CMakeLists.txt")
+        << "cmake_minimum_required(VERSION 3.20)\nproject(demo LANGUAGES CXX)\nadd_executable(demo main.cpp)\n";
+    std::ofstream(root.ToStdString() + "/main.cpp") << "int main() { return 0; }\n";
     std::ofstream(root.ToStdString() + "/Makefile") << "all:\n\t@printf task-ok\\n\n";
     std::ofstream(root.ToStdString() + "/demo.cbp")
         << R"xml(<?xml version="1.0" encoding="UTF-8"?>
@@ -43,7 +45,7 @@ int main()
 
     codium::ProjectConfig config;
     wxString error;
-    if (!config.Load(root, &error) || config.Tasks().size() < 5 || config.Schemes().size() < 8 ||
+    if (!config.Load(root, &error) || config.Tasks().size() < 6 || config.Schemes().size() < 8 ||
         config.Toolchains().Index(wxS("CMake")) == wxNOT_FOUND || config.Toolchains().Index(wxS("Make")) == wxNOT_FOUND ||
         config.Schemes()[0].configuration != wxS("Debug") || config.Schemes()[1].configuration != wxS("Release")) {
         std::cerr << "task-smoke: project detection failed\n";
@@ -52,6 +54,8 @@ int main()
 
     bool foundCodeBlocksApp = false;
     bool foundCodeBlocksTests = false;
+    bool foundCMakeDemo = false;
+    bool foundCMakeTargetArgument = false;
     for (const auto& task : config.Tasks()) {
         if (task.targetName == wxS("app") && task.program == wxS("codeblocks") && task.projectFile.EndsWith(wxS("demo.cbp"))) {
             foundCodeBlocksApp = true;
@@ -61,13 +65,29 @@ int main()
                 if (argument == wxS("--target=tests")) foundCodeBlocksTests = true;
             }
         }
+        if (task.targetName == wxS("demo") && task.program == wxS("cmake")) {
+            foundCMakeDemo = true;
+            for (const auto& argument : task.arguments) {
+                if (argument == wxS("demo")) foundCMakeTargetArgument = true;
+            }
+        }
     }
-    if (!foundCodeBlocksApp || !foundCodeBlocksTests ||
+    if (!foundCodeBlocksApp || !foundCodeBlocksTests || !foundCMakeDemo || !foundCMakeTargetArgument ||
         config.Toolchains().Index(wxS("Code::Blocks (gcc)")) == wxNOT_FOUND ||
         config.Toolchains().Index(wxS("Code::Blocks (clang)")) == wxNOT_FOUND) {
         std::cerr << "task-smoke: Code::Blocks project import failed\n";
         return 2;
     }
+    codium::ProjectPreferences savedPreferences;
+    savedPreferences.schemeName = wxS("Debug — CMake — demo");
+    savedPreferences.configuration = wxS("Debug");
+    savedPreferences.target = wxS("demo");
+    savedPreferences.toolchain = wxS("CMake");
+    if (!config.SavePreferences(root, savedPreferences, &error)) return 2;
+    codium::ProjectPreferences loadedPreferences;
+    if (!config.LoadPreferences(root, &loadedPreferences, &error) ||
+        loadedPreferences.schemeName != savedPreferences.schemeName ||
+        loadedPreferences.target != savedPreferences.target) return 2;
 
     codium::ProjectTask task;
     task.name = wxS("test task");

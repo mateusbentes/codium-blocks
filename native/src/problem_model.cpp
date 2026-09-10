@@ -113,6 +113,21 @@ bool ProblemParser::ParseCompilerLine(const wxString& line, const wxString& sour
 
     wxRegEx msvcSimple(wxS("^(.+)\\(([0-9]+),([0-9]+)\\):[[:space:]]*(warning|error)[[:space:]]*:[[:space:]]*(.*)$"));
     if (msvcSimple.IsValid() && ParseRegex(msvcSimple, line, source, workspaceRoot, problem)) return true;
+
+    wxRegEx cmake(wxS("^CMake[[:space:]]+(Error|Warning)[[:space:]]+at[[:space:]]+(.+):([0-9]+)(.*)$"));
+    if (cmake.IsValid() && cmake.Matches(line)) {
+        problem->severity = ParseSeverity(cmake.GetMatch(line, 1));
+        problem->source = source;
+        problem->message = wxString::Format(wxS("CMake %s at %s:%s%s"), cmake.GetMatch(line, 1),
+                                            cmake.GetMatch(line, 2), cmake.GetMatch(line, 3), cmake.GetMatch(line, 4));
+        problem->path = AbsolutePath(cmake.GetMatch(line, 2), workspaceRoot);
+        problem->line = std::max(0, wxAtoi(cmake.GetMatch(line, 3)) - 1);
+        problem->column = 0;
+        problem->endLine = problem->line;
+        problem->endColumn = 1;
+        problem->raw = line;
+        return true;
+    }
     return false;
 }
 
@@ -128,7 +143,8 @@ wxString ProblemParser::SeverityName(ProblemSeverity severity)
 }
 
 bool BuildDiagnosticParser::ParseLine(const wxString& rawLine, const wxString& source,
-                                      const wxString& workspaceRoot, Problem* problem)
+                                      const wxString& workspaceRoot, Problem* problem,
+                                      const wxString& buildSessionId)
 {
     if (!problem) return false;
     const wxString line = StripAnsi(rawLine);
@@ -138,13 +154,28 @@ bool BuildDiagnosticParser::ParseLine(const wxString& rawLine, const wxString& s
     Problem direct;
     if (ProblemParser::ParseCompilerLine(candidate, source, workspaceRoot, &direct)) {
         hasPending_ = false;
+        pendingSessionId_.clear();
+        direct.buildSessionId = buildSessionId;
         *problem = direct;
+        return true;
+    }
+
+    const wxString lower = candidate.Lower();
+    if (lower.StartsWith(wxS("ninja: error:")) || lower.StartsWith(wxS("make: ***")) ||
+        lower.StartsWith(wxS("ld: error:")) || lower.StartsWith(wxS("collect2: error:")) ||
+        lower.StartsWith(wxS("link : fatal error"))) {
+        problem->severity = ProblemSeverity::Error;
+        problem->source = source;
+        problem->buildSessionId = buildSessionId;
+        problem->message = candidate;
+        problem->raw = candidate;
         return true;
     }
 
     wxRegEx rustHeader(wxS("^[[:space:]]*(error|warning)(\\[([^]]+)\\])?:[[:space:]]*(.*)$"));
     if (rustHeader.IsValid() && rustHeader.Matches(candidate)) {
         hasPending_ = true;
+        pendingSessionId_ = buildSessionId;
         pendingProblem_.source = source;
         pendingProblem_.severity = ParseSeverity(rustHeader.GetMatch(candidate, 1));
         pendingProblem_.code = rustHeader.GetMatch(candidate, 3);
@@ -160,10 +191,12 @@ bool BuildDiagnosticParser::ParseLine(const wxString& rawLine, const wxString& s
         pendingProblem_.column = std::max(0, wxAtoi(rustLocation.GetMatch(candidate, 3)) - 1);
         pendingProblem_.endLine = pendingProblem_.line;
         pendingProblem_.endColumn = pendingProblem_.column + 1;
+        pendingProblem_.buildSessionId = pendingSessionId_;
         pendingProblem_.raw += wxS("\n") + candidate;
         *problem = pendingProblem_;
         hasPending_ = false;
         pendingProblem_ = Problem();
+        pendingSessionId_.clear();
         return true;
     }
     return false;
@@ -173,6 +206,7 @@ void BuildDiagnosticParser::Reset()
 {
     hasPending_ = false;
     pendingProblem_ = Problem();
+    pendingSessionId_.clear();
 }
 
 void ProblemStore::Clear(const wxString& source)
@@ -193,10 +227,11 @@ void ProblemStore::Add(const Problem& problem)
     problems_.push_back(problem);
 }
 
-void ProblemStore::AddCompilerLine(const wxString& line, const wxString& source, const wxString& workspaceRoot)
+void ProblemStore::AddCompilerLine(const wxString& line, const wxString& source, const wxString& workspaceRoot,
+                                   const wxString& buildSessionId)
 {
     Problem problem;
-    if (parsers_[source].ParseLine(line, source, workspaceRoot, &problem)) Add(problem);
+    if (parsers_[source].ParseLine(line, source, workspaceRoot, &problem, buildSessionId)) Add(problem);
 }
 
 wxArrayString ProblemStore::DisplayLines(bool errorsAndWarningsOnly) const
@@ -215,6 +250,14 @@ size_t ProblemStore::Count(ProblemSeverity severity) const
 {
     return static_cast<size_t>(std::count_if(problems_.begin(), problems_.end(), [&](const Problem& problem) {
         return problem.severity == severity;
+    }));
+}
+
+size_t ProblemStore::CountForSession(const wxString& sessionId) const
+{
+    if (sessionId.empty()) return 0;
+    return static_cast<size_t>(std::count_if(problems_.begin(), problems_.end(), [&](const Problem& problem) {
+        return problem.buildSessionId == sessionId;
     }));
 }
 

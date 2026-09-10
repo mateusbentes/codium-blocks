@@ -234,6 +234,7 @@ add_executable(codium-blocks
     native/src/vsix_manager.cpp
     native/src/workspace.cpp
     native/src/project_config.cpp
+    native/src/build_session.cpp
     native/src/task_runner.cpp
     native/src/terminal_session.cpp
     native/src/terminal_screen.cpp
@@ -366,6 +367,14 @@ add_executable(codium-blocks-task-smoke
 target_include_directories(codium-blocks-task-smoke PRIVATE native/include)
 codium_blocks_enable_warnings(codium-blocks-task-smoke)
 target_link_libraries(codium-blocks-task-smoke PRIVATE ${wxWidgets_LIBRARIES})
+
+add_executable(codium-blocks-build-session-smoke
+    native/src/build_session.cpp
+    tests/build-session-smoke.cpp
+)
+target_include_directories(codium-blocks-build-session-smoke PRIVATE native/include)
+codium_blocks_enable_warnings(codium-blocks-build-session-smoke)
+target_link_libraries(codium-blocks-build-session-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
 add_executable(codium-blocks-transport-smoke
     native/src/terminal_session.cpp
@@ -501,6 +510,7 @@ if(BUILD_TESTING)
     add_test(NAME security-smoke COMMAND codium-blocks-security-smoke)
     add_test(NAME workspace-smoke COMMAND codium-blocks-workspace-smoke)
     add_test(NAME task-smoke COMMAND codium-blocks-task-smoke)
+    add_test(NAME build-session-smoke COMMAND codium-blocks-build-session-smoke)
     add_test(NAME transport-smoke COMMAND codium-blocks-transport-smoke ${CMAKE_SOURCE_DIR})
     add_test(NAME terminal-screen-smoke COMMAND codium-blocks-terminal-screen-smoke)
     add_test(NAME terminal-profile-smoke COMMAND codium-blocks-terminal-profile-smoke)

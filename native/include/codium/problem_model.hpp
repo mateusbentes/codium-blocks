@@ -18,6 +18,7 @@ enum class ProblemSeverity {
 struct Problem final {
     ProblemSeverity severity = ProblemSeverity::Information;
     wxString source;
+    wxString buildSessionId;
     wxString message;
     wxString path;
     int line = 0;
@@ -38,23 +39,26 @@ public:
 
 class BuildDiagnosticParser final {
 public:
-    bool ParseLine(const wxString& line, const wxString& source,
-                   const wxString& workspaceRoot, Problem* problem);
+    bool ParseLine(const wxString& rawLine, const wxString& source, const wxString& workspaceRoot,
+                   Problem* problem, const wxString& buildSessionId = wxEmptyString);
     void Reset();
 
 private:
     bool hasPending_ = false;
     Problem pendingProblem_;
+    wxString pendingSessionId_;
 };
 
 class ProblemStore final {
 public:
     void Clear(const wxString& source = wxEmptyString);
     void Add(const Problem& problem);
-    void AddCompilerLine(const wxString& line, const wxString& source, const wxString& workspaceRoot);
+    void AddCompilerLine(const wxString& line, const wxString& source, const wxString& workspaceRoot,
+                         const wxString& buildSessionId = wxEmptyString);
     const std::vector<Problem>& Problems() const { return problems_; }
     wxArrayString DisplayLines(bool errorsAndWarningsOnly = false) const;
     size_t Count(ProblemSeverity severity) const;
+    size_t CountForSession(const wxString& sessionId) const;
     void MarkSourceStale(const wxString& source);
 
 private:
