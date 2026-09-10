@@ -12,7 +12,12 @@ function handle(request) {
   if (request.command === 'initialize') {
     send({ type: 'event', event: 'initialized', body: {} });
     send({ type: 'response', request_seq: request.seq, success: true, command: request.command,
-      body: { supportsConfigurationDoneRequest: true, supportsTerminateRequest: true } });
+      body: {
+        supportsConfigurationDoneRequest: true,
+        supportsTerminateRequest: true,
+        supportsFunctionBreakpoints: true,
+        supportsDataBreakpoints: true,
+      } });
   } else if (request.command === 'launch') {
     send({ type: 'response', request_seq: request.seq, success: true, command: request.command });
   } else if (request.command === 'configurationDone') {
@@ -27,6 +32,16 @@ function handle(request) {
       first.logMessage === 'counter=%d';
     send({ type: 'response', request_seq: request.seq, success: true, command: request.command,
       body: { optionsAccepted, breakpoints: (request.arguments?.breakpoints ?? []).map((item, index) => ({ id: index + 1, verified: true, line: item.line })) } });
+  } else if (request.command === 'setFunctionBreakpoints') {
+    const first = request.arguments?.breakpoints?.[0] ?? {};
+    const optionsAccepted = first.name === 'main' && first.condition === 'counter > 0' && first.hitCondition === '3';
+    send({ type: 'response', request_seq: request.seq, success: true, command: request.command,
+      body: { optionsAccepted, breakpoints: (request.arguments?.breakpoints ?? []).map((item, index) => ({ id: index + 10, verified: true, message: item.name })) } });
+  } else if (request.command === 'setDataBreakpoints') {
+    const first = request.arguments?.breakpoints?.[0] ?? {};
+    const optionsAccepted = first.dataId === 'counter' && first.accessType === 'write';
+    send({ type: 'response', request_seq: request.seq, success: true, command: request.command,
+      body: { optionsAccepted, breakpoints: (request.arguments?.breakpoints ?? []).map((item, index) => ({ id: index + 20, verified: true, message: item.dataId })) } });
   } else if (request.command === 'stackTrace') {
     send({ type: 'response', request_seq: request.seq, success: true, command: request.command,
       body: { stackFrames: [{ id: 7, name: 'main', line: 12, column: 1, source: { path: 'demo.cpp' } }] } });

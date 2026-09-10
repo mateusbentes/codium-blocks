@@ -32,6 +32,14 @@
           "default": "Hello from Codium::Blocks"
         }
       }
+    },
+    "views": {
+      "codium-blocks": [
+        {
+          "id": "hello.codium.views",
+          "name": "Hello items"
+        }
+      ]
     }
   }
 }

@@ -30,6 +30,12 @@ public:
     bool OpenLanguageDocument(const wxString& uri, const wxString& languageId,
                               int version, const wxString& text);
     bool ChangeLanguageDocument(const wxString& uri, int version, const wxString& text);
+    bool NotifyDocumentOpened(const wxString& uri, const wxString& languageId,
+                              int version, const wxString& text);
+    bool NotifyDocumentChanged(const wxString& uri, const wxString& languageId,
+                               int version, const wxString& text);
+    bool NotifyDocumentSaved(const wxString& uri, const wxString& languageId,
+                             int version, const wxString& text);
     bool RequestLanguageHover(const wxString& uri, int line, int character);
     bool RequestLanguageCompletion(const wxString& uri, int line, int character);
     bool RequestLanguageSemanticTokens(const wxString& uri);

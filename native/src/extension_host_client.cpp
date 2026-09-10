@@ -150,6 +150,30 @@ bool ExtensionHostClient::ChangeLanguageDocument(const wxString& uri, int versio
         params));
 }
 
+bool ExtensionHostClient::NotifyDocumentOpened(const wxString& uri, const wxString& languageId,
+                                               int version, const wxString& text)
+{
+    return SendRaw(wxString::Format(
+        wxS("{\"type\":\"workspaceDocumentEvent\",\"event\":\"open\",\"document\":{\"uri\":\"%s\",\"languageId\":\"%s\",\"version\":%d,\"text\":\"%s\"}}"),
+        JsonEscape(uri), JsonEscape(languageId), version, JsonEscape(text)));
+}
+
+bool ExtensionHostClient::NotifyDocumentChanged(const wxString& uri, const wxString& languageId,
+                                                int version, const wxString& text)
+{
+    return SendRaw(wxString::Format(
+        wxS("{\"type\":\"workspaceDocumentEvent\",\"event\":\"change\",\"document\":{\"uri\":\"%s\",\"languageId\":\"%s\",\"version\":%d,\"text\":\"%s\"}}"),
+        JsonEscape(uri), JsonEscape(languageId), version, JsonEscape(text)));
+}
+
+bool ExtensionHostClient::NotifyDocumentSaved(const wxString& uri, const wxString& languageId,
+                                              int version, const wxString& text)
+{
+    return SendRaw(wxString::Format(
+        wxS("{\"type\":\"workspaceDocumentEvent\",\"event\":\"save\",\"document\":{\"uri\":\"%s\",\"languageId\":\"%s\",\"version\":%d,\"text\":\"%s\"}}"),
+        JsonEscape(uri), JsonEscape(languageId), version, JsonEscape(text)));
+}
+
 bool ExtensionHostClient::RequestLanguageHover(const wxString& uri, int line, int character)
 {
     const wxString params = wxString::Format(

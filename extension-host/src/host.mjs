@@ -13,6 +13,12 @@ const originalLoad = Module._load;
 const extensions = new Map();
 const configurationListeners = new Set();
 const configuration = new Map();
+const documentListeners = {
+  open: new Set(),
+  change: new Set(),
+  save: new Set(),
+};
+const documents = new Map();
 let activeExtension = null;
 let languageServer = null;
 const languageRequestMethods = new Map();
@@ -81,6 +87,45 @@ function configurationValue(section, key, defaultValue) {
   return defaultValue;
 }
 
+function makeDocument(value) {
+  const text = String(value.text ?? '');
+  return Object.freeze({
+    uri: { toString: () => String(value.uri ?? ''), fsPath: String(value.uri ?? '') },
+    fileName: String(value.uri ?? ''),
+    languageId: String(value.languageId ?? 'plaintext'),
+    version: Number(value.version ?? 1),
+    isDirty: false,
+    getText: () => text,
+    lineAt: (line) => String(text.split(/\r?\n/)[line] ?? ''),
+  });
+}
+
+class TreeItem {
+  constructor(label, collapsibleState = 0) {
+    this.label = String(label);
+    this.collapsibleState = collapsibleState;
+    this.id = undefined;
+    this.command = undefined;
+    this.tooltip = undefined;
+  }
+}
+
+async function publishTreeView(extension, viewId, provider, element) {
+  const children = await provider.getChildren(element);
+  const items = (children ?? []).map((child) => {
+    const item = child instanceof TreeItem ? child : new TreeItem(child);
+    return {
+      label: item.label,
+      id: item.id,
+      tooltip: item.tooltip,
+      collapsibleState: item.collapsibleState,
+      command: item.command,
+    };
+  });
+  send({ type: 'event', event: 'treeView', extension: extension.id, viewId, items });
+  return items;
+}
+
 const vscode = {
   version: '0.2.0-codium-blocks',
   env: {
@@ -131,9 +176,27 @@ const vscode = {
     createStatusBarItem() {
       return { text: '', tooltip: '', show() {}, hide() {}, dispose() {} };
     },
+    registerTreeDataProvider(viewId, provider) {
+      const extension = currentExtension();
+      if (!provider || typeof provider.getChildren !== 'function') {
+        throw new Error(`Tree data provider for ${viewId} must implement getChildren().`);
+      }
+      extension.treeProviders.set(viewId, provider);
+      void publishTreeView(extension, viewId, provider).catch((error) => {
+        send({ type: 'event', event: 'treeViewError', extension: extension.id, viewId, message: error.message });
+      });
+      return disposable(() => extension.treeProviders.delete(viewId));
+    },
+    createTreeView(viewId, options = {}) {
+      const provider = options.treeDataProvider;
+      if (!provider) throw new Error(`Tree view ${viewId} requires a treeDataProvider.`);
+      const disposableRegistration = this.registerTreeDataProvider(viewId, provider);
+      return { id: viewId, onDidChangeVisibility: () => disposable(() => {}), dispose: disposableRegistration.dispose };
+    },
   },
   workspace: {
     workspaceFolders: [],
+    textDocuments: [],
     getConfiguration(section = '') {
       return {
         get(key, defaultValue) { return configurationValue(section, key, defaultValue); },
@@ -156,6 +219,18 @@ const vscode = {
       configurationListeners.add(listener);
       return disposable(() => configurationListeners.delete(listener));
     },
+    onDidOpenTextDocument(listener) {
+      documentListeners.open.add(listener);
+      return disposable(() => documentListeners.open.delete(listener));
+    },
+    onDidChangeTextDocument(listener) {
+      documentListeners.change.add(listener);
+      return disposable(() => documentListeners.change.delete(listener));
+    },
+    onDidSaveTextDocument(listener) {
+      documentListeners.save.add(listener);
+      return disposable(() => documentListeners.save.delete(listener));
+    },
   },
   languages: {
     registerCompletionItemProvider() { return disposable(() => {}); },
@@ -175,6 +250,8 @@ const vscode = {
       return { scheme: 'file', fsPath: absolute, path: absolute, toString: () => pathToFileURL(absolute).toString() };
     },
   },
+  TreeItem,
+  TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
 };
 
 // Compatibility bridge for CommonJS VS Code extensions. A future version can
@@ -244,6 +321,26 @@ function stopLanguageServer() {
   return true;
 }
 
+async function handleWorkspaceDocumentEvent(request) {
+  const document = makeDocument(request.document ?? {});
+  const key = document.uri.toString();
+  if (request.event === 'open' || request.event === 'change') documents.set(key, document);
+  if (request.event === 'save' && !documents.has(key)) documents.set(key, document);
+  if (request.event === 'save') documents.set(key, document);
+  vscode.workspace.textDocuments = [...documents.values()];
+  const listeners = documentListeners[request.event];
+  if (!listeners) throw new Error(`Unknown workspace document event: ${request.event}`);
+  for (const listener of listeners) {
+    try {
+      await listener(document);
+    } catch (error) {
+      send({ type: 'event', event: 'extensionError', message: error.message });
+    }
+  }
+  send({ type: 'event', event: 'workspaceDocument', action: request.event, uri: key, version: document.version });
+  return { action: request.event, uri: key, documents: vscode.workspace.textDocuments.length };
+}
+
 function startLanguageServer(command, args = [], cwd = process.cwd()) {
   stopLanguageServer();
   const child = spawn(command, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -276,6 +373,7 @@ async function loadExtension(extensionPath) {
     extensionPath: root,
     packageJSON: manifest,
     commands: new Map(),
+    treeProviders: new Map(),
     exports: null,
     isActive: false,
     extensionUri: vscode.Uri.file(root),
@@ -331,8 +429,11 @@ async function handle(request) {
     case 'load': {
       const extension = await loadExtension(request.extensionPath);
       response(request, { extension });
-      for (const command of extension.contributes.commands ?? []) {
+  for (const command of extension.contributes.commands ?? []) {
         send({ type: 'event', event: 'contribution', kind: 'command', command: command.command, title: command.title });
+      }
+      for (const view of extension.contributes.views?.['codium-blocks'] ?? []) {
+        send({ type: 'event', event: 'contribution', kind: 'view', viewId: view.id, title: view.name });
       }
       return;
     }
@@ -357,6 +458,9 @@ async function handle(request) {
       return;
     case 'stopLanguageServer':
       response(request, { stopped: stopLanguageServer() });
+      return;
+    case 'workspaceDocumentEvent':
+      response(request, await handleWorkspaceDocumentEvent(request));
       return;
     case 'shutdown':
       stopLanguageServer();
@@ -386,6 +490,6 @@ send({
   protocol: 2,
   runtime: 'node',
   electron: false,
-  api: ['commands', 'window', 'workspace', 'languages', 'extensions', 'Uri'],
-  capabilities: ['configuration', 'documents', 'lsp-process-manager'],
+  api: ['commands', 'window', 'workspace', 'languages', 'extensions', 'Uri', 'TreeItem'],
+  capabilities: ['configuration', 'documents', 'workspace-events', 'tree-views', 'lsp-process-manager'],
 });

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "matrixVersion": "2026.09",
+  "policy": "A matrix entry is versioned and reproducible; execution may be skipped only when its toolchain is not installed.",
+  "servers": [
+    {
+      "id": "clangd",
+      "version": "18.1.8",
+      "command": { "linux": "clangd", "darwin": "clangd", "win32": "clangd.exe" },
+      "args": ["--log=error"],
+      "languageId": "cpp",
+      "file": "main.cpp",
+      "text": "int main() { return 0; }\n",
+      "files": []
+    },
+    {
+      "id": "rust-analyzer",
+      "version": "2024-10-28",
+      "command": { "linux": "rust-analyzer", "darwin": "rust-analyzer", "win32": "rust-analyzer.exe" },
+      "args": [],
+      "languageId": "rust",
+      "file": "src/main.rs",
+      "text": "fn main() { }\n",
+      "files": [{ "path": "Cargo.toml", "content": "[package]\nname = \"codium_blocks_lsp_smoke\"\nversion = \"0.1.0\"\nedition = \"2021\"\n" }]
+    },
+    {
+      "id": "gopls",
+      "version": "v0.17.1",
+      "command": { "linux": "gopls", "darwin": "gopls", "win32": "gopls.exe" },
+      "args": ["serve"],
+      "languageId": "go",
+      "file": "main.go",
+      "text": "package main\nfunc main() {}\n",
+      "files": [{ "path": "go.mod", "content": "module example.com/codium-blocks-lsp-smoke\n\ngo 1.22\n" }]
+    },
+    {
+      "id": "pyright",
+      "version": "1.1.390",
+      "command": { "linux": "pyright-langserver", "darwin": "pyright-langserver", "win32": "pyright-langserver.cmd" },
+      "args": ["--stdio"],
+      "languageId": "python",
+      "file": "main.py",
+      "text": "def main():\n    return 0\n",
+      "files": [{ "path": "pyrightconfig.json", "content": "{\"include\":[\"main.py\"],\"pythonVersion\":\"3.11\"}\n" }]
+    }
+  ]
+}

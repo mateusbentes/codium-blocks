@@ -15,6 +15,19 @@ struct DapBreakpointRequest final {
     wxString logMessage;
 };
 
+struct DapFunctionBreakpointRequest final {
+    wxString name;
+    wxString condition;
+    wxString hitCondition;
+};
+
+struct DapDataBreakpointRequest final {
+    wxString dataId;
+    wxString accessType;
+    wxString condition;
+    wxString hitCondition;
+};
+
 class DapClient final {
 public:
     DapClient(wxEvtHandler* owner, int processId);
@@ -25,6 +38,8 @@ public:
     bool SendRequest(const wxString& command, const wxString& argumentsJson = wxS("{}"));
     bool SetBreakpoints(const wxString& sourcePath, const wxArrayInt& lines);
     bool SetBreakpoints(const wxString& sourcePath, const std::vector<DapBreakpointRequest>& breakpoints);
+    bool SetFunctionBreakpoints(const std::vector<DapFunctionBreakpointRequest>& breakpoints);
+    bool SetDataBreakpoints(const std::vector<DapDataBreakpointRequest>& breakpoints);
     bool ConfigurationDone();
     bool RequestThreads();
     bool RequestStackTrace(int threadId = 1);

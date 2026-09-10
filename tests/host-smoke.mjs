@@ -60,6 +60,8 @@ try {
   assert.equal(ready.electron, false);
   assert.equal(ready.protocol, 2);
   assert.equal(ready.capabilities.includes('configuration'), true);
+  assert.equal(ready.capabilities.includes('workspace-events'), true);
+  assert.equal(ready.capabilities.includes('tree-views'), true);
   assert.equal(ready.capabilities.includes('lsp-process-manager'), true);
 
   send({ id: 1, type: 'hello' });
@@ -74,6 +76,10 @@ try {
   assert.equal(loaded.extension.id, 'codium-blocks.hello-codium');
   assert.deepEqual(loaded.extension.commands, ['hello.codium', 'hello.codium.configure']);
   assert.equal(loaded.extension.contributes.commands.length, 2);
+  assert.equal(loaded.extension.contributes.views['codium-blocks'][0].id, 'hello.codium.views');
+  const treeView = await waitFor((message) => message.type === 'event' && message.event === 'treeView' &&
+    message.viewId === 'hello.codium.views');
+  assert.deepEqual(treeView.items.map((item) => item.label), ['Greeting: Hello from Codium::Blocks', 'Electron-free host']);
 
   send({ id: 3, type: 'executeCommand', command: 'hello.codium' });
   const executed = await waitFor((message) => message.type === 'response' && message.id === 3);
@@ -133,6 +139,18 @@ try {
   assert.equal(diagnostics.message.params.diagnostics[0].source, 'codium-blocks-fake-lsp');
   const normalizedDiagnostics = await waitFor((message) => message.type === 'event' && message.event === 'diagnostics');
   assert.equal(normalizedDiagnostics.diagnostics[0].severity, 2);
+
+  for (const [id, action] of [[23, 'open'], [24, 'change'], [25, 'save']]) {
+    send({ id, type: 'workspaceDocumentEvent', event: action, document: {
+      uri: 'file:///workspace/main.cpp', languageId: 'cpp', version: id - 22, text: 'int main() {}',
+    } });
+    const eventResponse = await waitFor((message) => message.type === 'response' && message.id === id);
+    assert.equal(eventResponse.ok, true);
+    assert.equal(eventResponse.action, action);
+    const workspaceEvent = await waitFor((message) => message.type === 'event' && message.event === 'workspaceDocument' &&
+      message.action === action);
+    assert.equal(workspaceEvent.uri, 'file:///workspace/main.cpp');
+  }
 
   send({ id: 11, type: 'languageServerRequest', message: {
     jsonrpc: '2.0', id: 102, method: 'textDocument/hover', params: {},

@@ -128,6 +128,47 @@ bool DapClient::SetBreakpoints(const wxString& sourcePath, const std::vector<Dap
     return SendRequest(wxS("setBreakpoints"), json);
 }
 
+bool DapClient::SetFunctionBreakpoints(const std::vector<DapFunctionBreakpointRequest>& breakpoints)
+{
+    wxString json = wxS("{\"breakpoints\":[");
+    for (size_t index = 0; index < breakpoints.size(); ++index) {
+        if (index != 0) json += wxS(",");
+        const auto& breakpoint = breakpoints[index];
+        json += wxS("{\"name\":\"") + JsonEscape(breakpoint.name) + wxS("\"");
+        if (!breakpoint.condition.empty()) {
+            json += wxS(",\"condition\":\"") + JsonEscape(breakpoint.condition) + wxS("\"");
+        }
+        if (!breakpoint.hitCondition.empty()) {
+            json += wxS(",\"hitCondition\":\"") + JsonEscape(breakpoint.hitCondition) + wxS("\"");
+        }
+        json += wxS("}");
+    }
+    json += wxS("]}");
+    return SendRequest(wxS("setFunctionBreakpoints"), json);
+}
+
+bool DapClient::SetDataBreakpoints(const std::vector<DapDataBreakpointRequest>& breakpoints)
+{
+    wxString json = wxS("{\"breakpoints\":[");
+    for (size_t index = 0; index < breakpoints.size(); ++index) {
+        if (index != 0) json += wxS(",");
+        const auto& breakpoint = breakpoints[index];
+        json += wxS("{\"dataId\":\"") + JsonEscape(breakpoint.dataId) + wxS("\"");
+        if (!breakpoint.accessType.empty()) {
+            json += wxS(",\"accessType\":\"") + JsonEscape(breakpoint.accessType) + wxS("\"");
+        }
+        if (!breakpoint.condition.empty()) {
+            json += wxS(",\"condition\":\"") + JsonEscape(breakpoint.condition) + wxS("\"");
+        }
+        if (!breakpoint.hitCondition.empty()) {
+            json += wxS(",\"hitCondition\":\"") + JsonEscape(breakpoint.hitCondition) + wxS("\"");
+        }
+        json += wxS("}");
+    }
+    json += wxS("]}");
+    return SendRequest(wxS("setDataBreakpoints"), json);
+}
+
 bool DapClient::ConfigurationDone()
 {
     return SendRequest(wxS("configurationDone"));

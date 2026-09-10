@@ -4,61 +4,64 @@
 
 Codium::Blocks is developed as a native C++17 and wxWidgets IDE for Windows, macOS, and Linux. The core process remains independent of Electron, Chromium, and the Code::Blocks SDK. JavaScript and TypeScript extensions run in an optional out-of-process Node.js host. Code::Blocks integration runs in a separate native adapter process and is enabled only when a matched SDK, runtime, plugin set, and ABI identity are available.
 
-The roadmap describes verified capabilities rather than aspirations presented as completed work. Each delivery must preserve the portable build, retain an adapter-disabled path, add deterministic tests for new value-owned models, update the English documentation, and pass the available cross-platform CI matrix. Optional integrations are reported as unavailable when their external toolchains are not installed; they are never replaced with fabricated success.
+This roadmap describes verified capabilities and bounded follow-up work. It does not present untested integrations as complete. Each delivery preserves the portable adapter-disabled build, adds deterministic tests for new value-owned models, updates the English documentation, and reports unavailable external toolchains instead of fabricating success.
 
-## Verified foundation
+## Verified product foundation
 
-The project already contains the architectural foundation required for a lightweight native IDE. The native workbench provides a project navigator, tabbed documents, a line-number gutter, a dockable bottom workbench, Problems, Build, Terminal, Debug, Output, and Tasks views, a command palette, workspace trust, and a persistent scheme bar. The document model supports UTF-8 text, dirty state, saving, multiple buffers, and workspace-relative paths.
+The native workbench provides a project navigator, tabbed documents, a line-number gutter, a dockable bottom workbench, Problems, Build, Terminal, Debug, Output, and Tasks views, a command palette, workspace trust, and a persistent scheme bar. The document model supports UTF-8 text, dirty state, saving, multiple buffers, and workspace-relative paths.
 
 The build system provides CMake, Make, Cargo, npm, Ninja, CMake Presets, and Code::Blocks target discovery through a common target model. User-defined tasks and schemes use executable argument vectors without implicit shell execution. Build sessions preserve task metadata, selected target, configuration, toolchain, elapsed time, status, output, and diagnostics. Build and Run use the selected scheme and discovered artifact candidates.
 
-The editor provides lexical highlighting, LSP initialization and document synchronization, semantic-token decoding, Go to File, document and workspace symbol navigation, definition and declaration requests, references, completion text-edit application, multi-block hover presentation, rename, code actions, delimiter matching, paired delimiters, basic indentation, Find and Replace, Go to Line, and circular tab navigation. The LSP transport is exercised by a deterministic fake server and by an optional real-server harness for clangd, rust-analyzer, gopls, and pyright-langserver.
+The editor provides lexical highlighting, semantic-token decoding, Go to File, document and workspace symbol navigation, definition and declaration requests, references, completion text-edit application, multi-block hover presentation, rename, code actions, delimiter matching, paired delimiters, basic indentation, Find and Replace, Go to Line, and circular tab navigation. A deterministic fake server and an optional real-server harness exercise the LSP transport.
 
-The terminal provides PTY support on Linux and macOS, dynamically selected ConPTY support on Windows with a pipe fallback, ANSI and VT handling, resize propagation, scrollback, selection, bracketed paste, mouse reporting, terminal profiles, safe hyperlinks, synchronized updates, and bounded graphics-payload consumption. The remaining terminal limitations are documented separately and do not affect native startup.
+The terminal provides PTY support on Unix-like systems, dynamically selected ConPTY support on Windows with a pipe fallback, ANSI and VT handling, resize propagation, scrollback, selection, bracketed paste, mouse reporting, terminal profiles, safe hyperlinks, synchronized updates, and bounded graphics-payload consumption. Remaining Unicode and image-rendering limitations are documented separately.
 
-The debugger foundation provides DAP framing, adapter lifecycle controls, session states, automatic refresh after stopped events, clearing of stale views after continued or terminated events, threads, stack frames, scopes, variables, watches, source mapping, and a native Debug panel. The current public debugger delivery also synchronizes the selected frame with the editor, persists breakpoints per workspace, and sends conditional breakpoints, hit conditions, and logpoints when the adapter advertises or accepts those DAP fields. Adapter responses remain correlated to their source request and are represented as value-owned pending, verified, or rejected states.
+The debugger foundation provides DAP framing, adapter lifecycle controls, session states, automatic refresh after stopped events, clearing of stale views after continued or terminated events, threads, stack frames, scopes, variables, watches, source mapping, and a native Debug panel. The client persists source breakpoints per workspace and sends conditional, hit-count, and logpoint fields. It also sends function-breakpoint and data-breakpoint requests only when the adapter advertises the corresponding capabilities.
 
 The Code::Blocks boundary is implemented as an optional isolated process. The public SDK path discovers projects, normalizes official project and compiler events, builds matched targets, captures compiler output, and exposes debugger lifecycle information. The private DebuggerGDB provider is separately compiled from an exact source and ABI identity. Its snapshots are transferred as value-owned data, and the main process never loads private Code::Blocks plugin libraries.
 
-## Ordered delivery plan
+## Current delivery status
 
-### 1. Debugger and editor synchronization
+The current increment completes four related quality outcomes without adding native packaging. Their status is summarized below.
 
-This delivery is implemented in the current public debugger increment. When a stopped event arrives, the native client refreshes the thread list and stack trace, selects the adapter's active frame, maps its source path, opens the corresponding document when it is available, moves the caret to the reported line and column, and displays the frame location in the Debug status. Selecting another frame repeats the same operation and refreshes its scopes. Continued, terminated, exited, and disconnected events clear transient variables, stack frames, and frame-location state so the editor does not present stale execution data.
+| Outcome | Implemented evidence | Deliberate boundary |
+|---|---|---|
+| Versioned real-tool matrices | `tests/real-lsp-matrix.json` fixes four language-server entries and representative workspaces. `tests/real-dap-matrix.json` fixes GDB and LLDB adapter entries by platform. `tests/integration-matrix-smoke.mjs` validates both schemas on every build. | Runtime probes remain safely skippable when an external executable is not installed. An installed tool that starts and then fails protocol initialization is a test failure. |
+| Native themes | The native UI has System, Light, Dark, and High contrast palettes. The selected theme updates panels, editor defaults, terminal surfaces, syntax colors, gutter markers, and status text. | Cross-platform screenshot comparison and complete system high-contrast detection remain validation work. |
+| Accessibility signals | Gutter markers expose letter glyphs in addition to color, controls use native wxWidgets focus behavior, and the high-contrast palette provides strong text/background separation. | A full accessibility audit still needs platform-specific keyboard, font-scaling, screen-reader, and high-DPI checks. |
+| Extension API depth | The Node host now supports workspace document open/change/save events, `workspace.textDocuments`, `TreeItem`, Tree Data Providers, and native Tree View event forwarding. | SCM provider methods, custom-editor activation, webviews, and broader VS Code API compatibility remain bounded follow-up work. |
+| Advanced DAP requests | The native client serializes `setFunctionBreakpoints` and `setDataBreakpoints`; the fake DAP smoke validates their payloads and capability gating is visible in the Debug panel. | Function and data breakpoints are session-scoped in this increment. Full persistence migration, adapter-specific diagnostics, and real GDB/LLDB execution remain validation work. |
+| Platform CI isolation | Linux, macOS, Windows, and Code::Blocks Linux integration are separate workflow files. Each file mentions and executes only its own environment. | Native packaging is intentionally deferred. |
 
-The implementation remains conservative. A frame whose source path cannot be mapped or whose file is unavailable remains visible in the call stack, but it does not replace the active editor document. The generic DAP path does not infer private adapter data and does not claim complete GDB or LLDB compatibility.
+## Ordered follow-up work
 
-### 2. Breakpoint management
+### Reproducible language-server validation
 
-Workspace breakpoints are stored outside the source tree under the configured Codium::Blocks data directory. The persistence format is escaped UTF-8 TSV and is replaced atomically. Each entry records the source path, requested line, conditional expression, hit-count expression, and optional log message. Loading a workspace restores the requested breakpoint set before a debug adapter is started.
+The versioned matrix is now a required contract check. The optional runtime harness creates isolated, language-appropriate workspaces for clangd, rust-analyzer, gopls, and pyright-langserver. It probes initialize, document open, hover, completion, definition, and document symbols. Missing executables or failures before protocol startup are reported as environment skips. Failures after startup remain failures.
 
-The Debug panel and editor gutter distinguish pending, verified, and rejected states. Toggling a breakpoint updates persistence and sends a source-specific `setBreakpoints` request when an adapter is running. Configuring a breakpoint updates its condition, hit condition, or log message and resends the complete source request. A disabled state remains reserved for a future adapter capability because DAP does not define one universal disable operation independent of removing a breakpoint from the requested set.
+The next refinement is to install or cache exact toolchain versions in dedicated platform jobs where licensing, runner availability, and maintenance policy permit it. The native IDE will not acquire a runtime dependency on any language server.
 
-The next debugger refinement is real-session validation with GDB and LLDB adapters, followed by adapter capability gating, breakpoint persistence migration, conditional-breakpoint diagnostics, logpoint output presentation, function breakpoints, and data breakpoints where the adapter explicitly supports them.
+### Real GDB and LLDB validation
 
-### 3. Reproducible language-server validation
+The DAP matrix fixes versioned entries for GDB's DAP interpreter, LLDB-DAP, and the Windows OpenDebugAD7 contract. The optional runtime probe sends a standard initialize request and reports adapter capabilities. The Code::Blocks DebuggerGDB provider remains a separate, matched Linux workflow and is not conflated with generic GDB or LLDB compatibility.
 
-The current real-server harness creates isolated, language-appropriate temporary workspaces and safely skips a server that is unavailable or cannot start before protocol initialization. A release-quality matrix must additionally provide pinned server versions and representative fixtures for clangd, rust-analyzer, gopls, and pyright on supported runners. After startup, failures in initialization, document synchronization, diagnostics, navigation, completion, hover, rename, or shutdown must fail the corresponding job rather than being classified as environmental skips.
+The next refinement is a dedicated adapter scenario for launch, stopped, stack trace, source mapping, conditional breakpoints, function breakpoints, data breakpoints, and clean disconnect. The scenario must be implemented independently for each adapter that supports the capability rather than assuming that one adapter's extensions apply to all others.
 
-The matrix will remain independent of the portable core. Installing a language server will be a CI concern or an explicit developer choice, not a runtime dependency of the native IDE. The matrix will report the exact executable, version, fixture, protocol scenario, and skip reason in its job summary.
+### Themes, accessibility, and visual verification
 
-### 4. Themes, accessibility, and visual verification
+The theme model is implemented and shared by the native workbench, editor, terminal surface, diagnostics, and breakpoints. The next step is platform-specific validation at ordinary and high-DPI scales. The validation should inspect clipped labels, focus order, readable status text, gutter alignment, and contrast in the four supported theme modes.
 
-The native workbench will provide coordinated light and dark themes with a shared information hierarchy. Theme tokens will cover editor text, selections, current line, comments, strings, semantic tokens, Problems severities, breakpoints, terminal cells, panels, status indicators, and disabled controls. Colors will not be the only state signal; labels, icons, patterns, and accessible names will remain available.
+A complete accessibility pass must also cover keyboard-only navigation, native control labels, font scaling, high-contrast system settings, focus restoration after dialogs, and non-color descriptions for diagnostics and breakpoint states. Screenshot or structured UI inspection must supplement compilation and smoke tests because layout regressions are not reliably detected by CTest.
 
-Accessibility work will cover keyboard-only navigation, focus order, native control labels, high-contrast system settings, font scaling, reduced visual density, and non-color descriptions for diagnostics and breakpoint states. Visual validation will exercise Linux, macOS, and Windows at ordinary and high-DPI scales, with screenshots or structured inspection used to catch clipped controls, unreadable labels, focus loss, and incorrect gutter alignment.
+### Extension API contracts
 
-### 5. Native packaging
+The host now transports document lifecycle events and Tree View data without exposing native pointers or private Code::Blocks objects. The next API increment should version activation and failure behavior for SCM providers, custom editors, diagnostics collections, and workspace trust. Each contribution must have a deterministic smoke scenario and an explicit unsupported result when the native workbench cannot render it.
 
-Packaging will produce native distributable artifacts without changing the runtime architecture. Linux will provide a relocatable archive and a distribution-friendly package recipe. macOS will provide an application bundle with an explicit resource layout and architecture policy. Windows will provide a native application bundle with the required wxWidgets runtime files and a documented installer or portable archive path.
+Webviews and image-rendering backends remain optional. They must not load during native startup and must be subject to explicit resource and trust policies.
 
-Packaging tests will verify that a clean machine can launch the application, locate resources, preserve the optional Node.js host boundary, and keep Code::Blocks adapter files separate from the main executable. Signing, notarization, and certificate policy will remain explicit release concerns rather than being implied by an unsigned development archive.
+### Native packaging
 
-### 6. Extension API depth
-
-The extension host will deepen versioned contracts for commands, configuration, language contributions, Tree Views, SCM providers, custom editors, diagnostics, and workspace events. Native features will remain responsible for editor, project, compiler, terminal, debugger, and operating-system integration. The Node.js host will not receive arbitrary native pointers or private Code::Blocks objects.
-
-Every added API must define activation behavior, failure handling, trust requirements, process ownership, compatibility reporting, and a deterministic smoke scenario. Webviews and image-rendering backends remain optional and must not load during native startup. The project will continue to report tested compatibility rather than claiming complete VS Code compatibility.
+Native packaging is intentionally postponed. When resumed, it will produce a relocatable Linux artifact, a macOS application bundle, and a Windows application bundle while keeping the Node host optional and the Code::Blocks adapter separate. Packaging must be tested only after the runtime contracts above are stable.
 
 ## Release 1.0 acceptance criteria
 
@@ -67,20 +70,21 @@ Release 1.0 requires a stable classic layout, a fast native editor, navigable Pr
 | Area | Required evidence |
 |---|---|
 | Native workbench | Clean startup, compact layout, visible menus and shortcuts, collapsible secondary regions, and no Electron or Chromium dependency in the core process. |
-| Editor | UTF-8 editing, undo, save, lexical fallback highlighting, semantic-token composition, navigation, completion application, hover, rename, code actions, delimiter handling, and keyboard-first operation. |
+| Editor | UTF-8 editing, undo, save, lexical fallback highlighting, semantic-token composition, navigation, completion application, hover, rename, code actions, delimiter handling, themes, and keyboard-first operation. |
 | Build | Portable target discovery, user tasks and schemes, scheme-aware Build and Run, persistent sessions, conservative diagnostics, and no implicit shell execution. |
 | Problems | Correct severity, source, range, stale state, filtering, gutter rendering, raw-output correlation, and navigation for compiler, terminal, LSP, and adapter diagnostics. |
 | Terminal | Interactive PTY or ConPTY behavior, ANSI/VT rendering, resize, scrollback, selection, mouse reporting, bracketed paste, profiles, and safe handling of unsupported graphics payloads. |
-| Debug | DAP lifecycle, automatic stopped-event refresh, active-frame editor synchronization, source mapping, watches, variables, breakpoint states, and explicit unsupported-capability reporting. |
+| Debug | DAP lifecycle, automatic stopped-event refresh, active-frame editor synchronization, source mapping, watches, variables, source and advanced breakpoint requests, and explicit unsupported-capability reporting. |
+| Extensions | Out-of-process command/configuration contracts, workspace document events, Tree View forwarding, trust gates, transactional installation, and compatibility reports. |
 | Code::Blocks | Portable adapter-disabled build, matched-SDK adapter smoke, isolated plugin loading, value-owned events, and no foreign plugin loading in the main process. |
-| Platforms | Successful clean builds and smoke tests on `ubuntu-24.04`, `macos-15`, and `windows-2022`, with separate optional Linux SDK/provider jobs. |
+| Platforms | Successful clean builds and smoke tests in isolated Linux, macOS, and Windows workflows, with a separate optional Linux SDK/provider workflow. |
 | Security | Workspace trust gates execution, extension and adapter boundaries remain explicit, installation is transactional, and third-party native compatibility is not overstated. |
 
 ## Explicit non-goals and post-1.0 work
 
 The project does not promise that every VS Code extension, every Code::Blocks plugin, or every Xcode workflow will work. Electron-dependent extensions, private VS Code APIs, proprietary services, arbitrary native plugins, unsupported webviews, and unmatched Code::Blocks binaries require explicit compatibility work or remain unsupported.
 
-Post-1.0 work may add mathematically complete Unicode grapheme and width handling, optional Sixel or Kitty rendering with strict resource limits, deeper Tree View and SCM APIs, richer custom editors, unattended extension registry workflows, and broader debugger features. These capabilities will be introduced only when their native boundary, security policy, tests, and platform behavior are defined.
+Post-1.0 work may add mathematically complete Unicode grapheme and width handling, optional Sixel or Kitty rendering with strict resource limits, deeper SCM and custom-editor APIs, unattended extension registry workflows, function/data breakpoint persistence, and broader debugger features. These capabilities will be introduced only when their native boundary, security policy, tests, and platform behavior are defined.
 
 ## References
 

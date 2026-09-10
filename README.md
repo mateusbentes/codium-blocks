@@ -6,7 +6,7 @@ Codium::Blocks is a native IDE prototype for multi-language development. It comb
 
 The target desktop platforms are **Windows, macOS, and Linux**. See [`docs/PLATFORMS.md`](docs/PLATFORMS.md) for platform-specific toolchains and data directories.
 
-Every push to `main` and every pull request is checked by GitHub Actions on all three target operating systems. The workflow builds the native application, runs CTest, checks JavaScript syntax, and executes the Extension Host smoke test.
+Every push to `main` and every pull request is checked by isolated GitHub Actions workflows for the three target operating systems. The workflows build the native application, run CTest, validate the versioned LSP/DAP matrices, check JavaScript syntax, and execute the Extension Host smoke test. The optional Code::Blocks SDK and DebuggerGDB jobs are isolated in a separate Linux workflow.
 
 ## Current status
 
@@ -41,6 +41,8 @@ The current `1.0.1` development increment builds on the completed `0.9.0` baseli
 - Go to File, Go to Symbol, delimiter matching, automatic paired delimiters, basic indentation, and circular tab navigation;
 - normalized diagnostics and language-server result events;
 - an optional `tests/real-lsp-smoke.mjs` matrix that exercises installed clangd, rust-analyzer, gopls, and pyright-langserver binaries in language-appropriate temporary workspaces without making them build dependencies; an unavailable or non-startable external toolchain is reported as skipped, while protocol failures after startup remain test failures;
+- a versioned `tests/real-lsp-matrix.json` contract for clangd, rust-analyzer, gopls, and pyright, plus a versioned `tests/real-dap-matrix.json` contract for GDB, LLDB-DAP, and OpenDebugAD7;
+- a mandatory integration-matrix validator and optional runtime probes that report exact versions, executable choices, fixture paths, and bounded skip reasons;
 - a deterministic fake-LSP integration test.
 - native File, Language, and Extensions menus;
 - keyboard shortcuts for opening, saving, hover, and completion;
@@ -101,6 +103,7 @@ The current `1.0.1` development increment builds on the completed `0.9.0` baseli
 - optional Ed25519 artifact verification through OpenSSL;
 - per-extension compatibility reports;
 - native Tree View, Git SCM, and custom-editor registries with UI surfaces.
+- workspace document open/change/save events, `workspace.textDocuments`, `TreeItem`, Tree Data Providers, and native Tree View event forwarding in the Extension Host;
 - a classic native workbench layout with a project navigator, central editor, and dockable bottom workbench;
 - Problems, Build, Terminal, Debug, and Output workbench pages;
 - a normalized problem model for GCC/Clang, MSVC, LSP, Build, and ANSI terminal diagnostics;
@@ -129,9 +132,11 @@ The current `1.0.1` development increment builds on the completed `0.9.0` baseli
 - persistent Build sessions with task, target, configuration, toolchain, elapsed time, exit status, raw output, and rerun support;
 - conservative CMake, Ninja, Make, linker, multiline Rust, GCC/Clang, MSVC, and ANSI diagnostic parsing in addition to existing LSP formats;
 - a deterministic problem-model parser test covering compiler, Rust, Windows-path, and ANSI diagnostics.
+- coordinated System, Light, Dark, and High contrast native themes with non-color gutter labels and contrast-tested palettes;
+- DAP function-breakpoint and data-breakpoint request serialization, capability reporting, and deterministic fake-adapter coverage;
 - an original blue modular-block icon family for Windows, macOS, and Linux under [`assets/icons/`](assets/icons/), with transparent, metadata-free platform assets.
 
-This is not full VS Code or Code::Blocks compatibility yet. The implementation is deliberately layered and must still add pinned real-server validation for clangd/rust-analyzer/gopls/pyright, a complete extension registry download/install workflow, deeper Tree View/SCM contribution APIs, richer debugger capability reporting, coordinated themes, accessibility validation, and native packaging. The private DebuggerGDB provider is opt-in and requires an exact matching source, SDK, compiler, wxWidgets, architecture, language-standard, and build identity; it is not inferred from a plugin filename. The build-oriented workflow now has explicit user tasks/schemes, generator-aware discovery, artifact selection, and Build-and-Run orchestration, while more complete generator semantics and variable expansion remain future work. The editor now provides Find, Replace, Go to Line, Go to File, symbol/location navigation, completion application, rich hover presentation, rename/code-action application, delimiter matching, basic indentation, and tab navigation. The debugger now synchronizes the active frame with the editor and persists advanced breakpoints, while real GDB/LLDB validation and deeper breakpoint types remain future work. The remaining terminal goals — complete Unicode grapheme segmentation and width handling, plus optional Sixel/Kitty image rendering — remain separately scheduled. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/CODEBLOCKS_INTEGRATION.md`](docs/CODEBLOCKS_INTEGRATION.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), [`docs/DEBUGGING.md`](docs/DEBUGGING.md), [`docs/EXTENSIONS_SECURITY.md`](docs/EXTENSIONS_SECURITY.md), [`docs/CONTRIBUTIONS.md`](docs/CONTRIBUTIONS.md), [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md), and [`docs/PROBLEMS.md`](docs/PROBLEMS.md) for the current models.
+This is not full VS Code or Code::Blocks compatibility yet. The implementation is deliberately layered. The versioned real-server and DAP matrices are mandatory contract checks, while runtime execution remains conditional on installed external tools. The project must still add a complete extension registry download/install workflow, deeper SCM and custom-editor contribution APIs, complete accessibility validation, and native packaging. The private DebuggerGDB provider is opt-in and requires an exact matching source, SDK, compiler, wxWidgets, architecture, language-standard, and build identity; it is not inferred from a plugin filename. The build-oriented workflow now has explicit user tasks/schemes, generator-aware discovery, artifact selection, and Build-and-Run orchestration, while more complete generator semantics and variable expansion remain future work. The editor provides Find, Replace, Go to Line, Go to File, symbol/location navigation, completion application, rich hover presentation, rename/code-action application, delimiter matching, basic indentation, and tab navigation. The debugger synchronizes the active frame with the editor and persists source breakpoints; function and data breakpoint requests are currently session-scoped and capability-gated. The remaining terminal goals — complete Unicode grapheme segmentation and width handling, plus optional Sixel/Kitty image rendering — remain separately scheduled. See [`docs/TASKS.md`](docs/TASKS.md), [`docs/CODEBLOCKS_INTEGRATION.md`](docs/CODEBLOCKS_INTEGRATION.md), [`docs/TERMINAL.md`](docs/TERMINAL.md), [`docs/DEBUGGING.md`](docs/DEBUGGING.md), [`docs/EXTENSIONS_SECURITY.md`](docs/EXTENSIONS_SECURITY.md), [`docs/CONTRIBUTIONS.md`](docs/CONTRIBUTIONS.md), [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md), and [`docs/PROBLEMS.md`](docs/PROBLEMS.md) for the current models.
 
 The icon family and platform placement are documented in [`docs/ICONS.md`](docs/ICONS.md).
 
@@ -213,9 +218,9 @@ The project does not promise that every VS Code extension will work. Compatibili
 
 ## Delivery roadmap
 
-The verified implementation status and ordered delivery plan are maintained in [`docs/ROADMAP.md`](docs/ROADMAP.md). The immediate debugger delivery is already public: stopped events refresh the native Debug views, the selected frame is synchronized with the editor, workspace breakpoints are restored from persistent storage, and conditional breakpoints, hit conditions, and log messages are sent through the standard DAP breakpoint request when configured. The next validation step is a pinned real GDB/LLDB matrix with explicit adapter capability reporting.
+The verified implementation status and ordered delivery plan are maintained in [`docs/ROADMAP.md`](docs/ROADMAP.md). The debugger delivery is public: stopped events refresh the native Debug views, the selected frame is synchronized with the editor, workspace source breakpoints are restored from persistent storage, and conditional breakpoints, hit conditions, and log messages are sent through standard DAP requests. The versioned GDB/LLDB matrix and capability-gated function/data breakpoint requests are now part of the implementation; their runtime probes remain conditional on installed adapters.
 
-The remaining 1.0 work is organized by user-visible outcomes. The ordered workstreams are reproducible real language-server validation, coordinated light/dark themes, keyboard and high-contrast accessibility, visual verification on all target platforms, native packaging, and deeper versioned extension APIs. Each workstream will be delivered as a separately tested increment with an adapter-disabled portable path and documentation in English.
+The remaining 1.0 work is organized by user-visible outcomes. The ordered workstreams are complete runtime validation for the versioned language-server and DAP matrices, keyboard and high-contrast accessibility, visual verification on all target platforms, deeper versioned extension APIs, and native packaging. Packaging is intentionally deferred until the runtime contracts are stable. Each workstream is delivered as a separately tested increment with an adapter-disabled portable path and documentation in English.
 
 The project does not claim complete VS Code, Code::Blocks, or Xcode compatibility. Compatibility is measured by the APIs, adapters, and scenarios that are implemented and tested. See [`docs/ROADMAP.md`](docs/ROADMAP.md), [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md), [`docs/PROBLEMS.md`](docs/PROBLEMS.md), and [`docs/CODEBLOCKS_INTEGRATION.md`](docs/CODEBLOCKS_INTEGRATION.md) for the detailed boundaries.
 

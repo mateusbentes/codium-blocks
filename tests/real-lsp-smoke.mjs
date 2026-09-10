@@ -1,49 +1,18 @@
 #!/usr/bin/env node
 
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 
-const servers = [
-  {
-    name: 'clangd',
-    command: 'clangd',
-    args: ['--log=error'],
-    file: 'main.cpp',
-    languageId: 'cpp',
-    text: 'int main() { return 0; }\n',
-    files: [],
-  },
-  {
-    name: 'rust-analyzer',
-    command: 'rust-analyzer',
-    args: [],
-    file: 'src/main.rs',
-    languageId: 'rust',
-    text: 'fn main() { }\n',
-    files: [{ path: 'Cargo.toml', content: '[package]\nname = "codium_blocks_lsp_smoke"\nversion = "0.1.0"\nedition = "2021"\n' }],
-  },
-  {
-    name: 'gopls',
-    command: 'gopls',
-    args: ['serve'],
-    file: 'main.go',
-    languageId: 'go',
-    text: 'package main\nfunc main() {}\n',
-    files: [{ path: 'go.mod', content: 'module example.com/codium-blocks-lsp-smoke\n\ngo 1.22\n' }],
-  },
-  {
-    name: 'pyright',
-    command: process.platform === 'win32' ? 'pyright-langserver.cmd' : 'pyright-langserver',
-    args: ['--stdio'],
-    file: 'main.py',
-    languageId: 'python',
-    text: 'def main():\n    return 0\n',
-    files: [{ path: 'pyrightconfig.json', content: '{"include":["main.py"],"pythonVersion":"3.11"}\n' }],
-  },
-];
+const matrix = JSON.parse(await readFile(new URL('./real-lsp-matrix.json', import.meta.url), 'utf8'));
+const platform = process.platform;
+const servers = matrix.servers.map((server) => ({
+  ...server,
+  name: server.id,
+  command: server.command[platform],
+}));
 
 class ServerExitError extends Error {
   constructor(phase, code, signal, stderr) {

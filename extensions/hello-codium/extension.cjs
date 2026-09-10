@@ -17,7 +17,22 @@ function activate(context) {
     return 'configuration-updated';
   });
 
-  context.subscriptions.push(helloCommand, configureCommand);
+  const tree = vscode.window.registerTreeDataProvider('hello.codium.views', {
+    getChildren() {
+      return [new vscode.TreeItem(`Greeting: ${greeting}`), new vscode.TreeItem('Electron-free host')];
+    },
+  });
+  const onOpen = vscode.workspace.onDidOpenTextDocument((document) => {
+    output.appendLine(`Opened document: ${document.fileName}`);
+  });
+  const onChange = vscode.workspace.onDidChangeTextDocument((document) => {
+    output.appendLine(`Changed document: ${document.fileName} v${document.version}`);
+  });
+  const onSave = vscode.workspace.onDidSaveTextDocument((document) => {
+    output.appendLine(`Saved document: ${document.fileName}`);
+  });
+
+  context.subscriptions.push(helloCommand, configureCommand, tree, onOpen, onChange, onSave);
   output.appendLine(`Activated in ${vscode.env.appName} (${vscode.env.appHost}).`);
   output.appendLine(`Configured greeting: ${greeting}`);
 }

@@ -17,6 +17,7 @@
 #include "codium/problem_model.hpp"
 #include "codium/semantic_tokens.hpp"
 #include "codium/syntax_highlighting.hpp"
+#include "codium/theme.hpp"
 #include "codium/vsix_manager.hpp"
 #include "codium/workspace.hpp"
 
@@ -93,6 +94,10 @@ enum : int {
     ID_CODE_ACTIONS,
     ID_NEXT_TAB,
     ID_PREVIOUS_TAB,
+    ID_THEME_SYSTEM,
+    ID_THEME_LIGHT,
+    ID_THEME_DARK,
+    ID_THEME_HIGH_CONTRAST,
     ID_TASK_PROCESS = wxID_HIGHEST + 500,
     ID_START_TERMINAL,
     ID_SEND_TERMINAL,
@@ -345,8 +350,17 @@ public:
         : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(58, -1), wxBORDER_NONE)
     {
         SetBackgroundStyle(wxBG_STYLE_PAINT);
+        SetToolTip(wxS("Line numbers and diagnostics; click the marker area to toggle a breakpoint."));
         Bind(wxEVT_PAINT, &ProblemGutter::OnPaint, this);
         Bind(wxEVT_ERASE_BACKGROUND, [](wxEraseEvent&) {});
+    }
+
+    void SetTheme(const codium::ThemePalette& palette)
+    {
+        palette_ = palette;
+        SetBackgroundColour(palette_.editor);
+        SetForegroundColour(palette_.editorMutedText);
+        Refresh();
     }
 
     void SetMarkers(const std::vector<GutterMarker>& markers)
@@ -378,21 +392,21 @@ public:
 private:
     wxColour MarkerColour(codium::ProblemSeverity severity) const
     {
-        if (severity == codium::ProblemSeverity::Error) return wxColour(215, 65, 65);
-        if (severity == codium::ProblemSeverity::Warning) return wxColour(205, 145, 30);
-        if (severity == codium::ProblemSeverity::Hint) return wxColour(100, 125, 180);
-        return wxColour(70, 120, 190);
+        if (severity == codium::ProblemSeverity::Error) return palette_.error;
+        if (severity == codium::ProblemSeverity::Warning) return palette_.warning;
+        if (severity == codium::ProblemSeverity::Hint) return palette_.hint;
+        return palette_.information;
     }
 
     wxColour BreakpointColour(codium::DapBreakpointState state) const
     {
         switch (state) {
-        case codium::DapBreakpointState::Verified: return wxColour(45, 105, 205);
-        case codium::DapBreakpointState::Rejected: return wxColour(210, 55, 55);
-        case codium::DapBreakpointState::Disabled: return wxColour(125, 125, 125);
-        case codium::DapBreakpointState::Pending: return wxColour(205, 145, 30);
+        case codium::DapBreakpointState::Verified: return palette_.breakpointVerified;
+        case codium::DapBreakpointState::Rejected: return palette_.breakpointRejected;
+        case codium::DapBreakpointState::Disabled: return palette_.editorMutedText;
+        case codium::DapBreakpointState::Pending: return palette_.breakpointPending;
         }
-        return wxColour(125, 125, 125);
+        return palette_.editorMutedText;
     }
 
     void OnPaint(wxPaintEvent&)
@@ -408,13 +422,15 @@ private:
             const wxString number = wxString::Format(wxS("%d"), documentLine + 1);
             int width = 0;
             dc.GetTextExtent(number, &width, nullptr);
-            dc.SetTextForeground(wxColour(125, 125, 125));
+            dc.SetTextForeground(palette_.editorMutedText);
             dc.DrawText(number, std::max(20, GetClientSize().GetWidth() - width - 6), line * lineHeight);
             for (const auto& marker : breakpointMarkers_) {
                 if (marker.line != documentLine) continue;
                 dc.SetBrush(wxBrush(BreakpointColour(marker.state)));
                 dc.SetPen(*wxTRANSPARENT_PEN);
                 dc.DrawCircle(8, line * lineHeight + lineHeight / 2, 5);
+                dc.SetTextForeground(palette_.dark ? *wxBLACK : *wxWHITE);
+                dc.DrawText(wxS("B"), 4, line * lineHeight + 1);
                 break;
             }
             for (const auto& marker : markers_) {
@@ -422,6 +438,11 @@ private:
                 dc.SetBrush(wxBrush(MarkerColour(marker.severity)));
                 dc.SetPen(*wxTRANSPARENT_PEN);
                 dc.DrawCircle(20, line * lineHeight + lineHeight / 2, 4);
+                dc.SetTextForeground(palette_.dark ? *wxBLACK : *wxWHITE);
+                const wxString glyph = marker.severity == codium::ProblemSeverity::Error ? wxS("E") :
+                                       marker.severity == codium::ProblemSeverity::Warning ? wxS("W") :
+                                       marker.severity == codium::ProblemSeverity::Hint ? wxS("H") : wxS("I");
+                dc.DrawText(glyph, 17, line * lineHeight + 1);
                 break;
             }
         }
@@ -429,6 +450,7 @@ private:
 
     std::vector<GutterMarker> markers_;
     std::vector<GutterBreakpointMarker> breakpointMarkers_;
+    codium::ThemePalette palette_ = codium::ThemePalette::For(codium::ThemeKind::System);
     int firstLine_ = 0;
 };
 
@@ -475,6 +497,10 @@ public:
           codeBlocksAdapter_(this),
           timer_(this)
     {
+        wxString configuredTheme;
+        if (wxGetEnv(wxS("CODIUM_BLOCKS_THEME"), &configuredTheme)) {
+            themeKind_ = codium::ThemePalette::FromName(configuredTheme);
+        }
         BuildMenuBar();
         treeRegistry_.Register(wxS("workspace"), wxS("Workspace"));
         customEditors_.Register(wxS("json"), wxS("JSON text editor"));
@@ -685,6 +711,8 @@ public:
         AddButton(debugControls, wxS("Launch"), [this](wxCommandEvent&) { LaunchDebug(); }, debugPage);
         AddButton(debugControls, wxS("Breakpoint"), [this](wxCommandEvent&) { ToggleBreakpoint(); }, debugPage);
         AddButton(debugControls, wxS("Breakpoint options"), [this](wxCommandEvent&) { ConfigureBreakpoint(); }, debugPage);
+        AddButton(debugControls, wxS("Function breakpoint"), [this](wxCommandEvent&) { ConfigureFunctionBreakpoint(); }, debugPage);
+        AddButton(debugControls, wxS("Data breakpoint"), [this](wxCommandEvent&) { ConfigureDataBreakpoint(); }, debugPage);
         AddButton(debugControls, wxS("Continue"), [this](wxCommandEvent&) { ContinueDebug(); }, debugPage);
         AddButton(debugControls, wxS("Pause"), [this](wxCommandEvent&) { PauseDebug(); }, debugPage);
         AddButton(debugControls, wxS("Stop"), [this](wxCommandEvent&) { StopDebug(); }, debugPage);
@@ -768,6 +796,7 @@ public:
         centerPanel->SetSizer(centerRoot);
         SetSizer(root);
         CreateStatusBar(3);
+        ApplyTheme();
         SetStatusText(wxS("Ready"), 0);
         SetStatusText(wxS("No workspace"), 1);
         SetStatusText(wxS("UTF-8"), 2);
@@ -860,6 +889,13 @@ private:
         debugMenu->Append(ID_STOP_DEBUG, wxS("Stop debug"));
         menuBar->Append(debugMenu, wxS("De&bug"));
 
+        auto* viewMenu = new wxMenu();
+        viewMenu->AppendRadioItem(ID_THEME_SYSTEM, wxS("System theme"));
+        viewMenu->AppendRadioItem(ID_THEME_LIGHT, wxS("Light theme"));
+        viewMenu->AppendRadioItem(ID_THEME_DARK, wxS("Dark theme"));
+        viewMenu->AppendRadioItem(ID_THEME_HIGH_CONTRAST, wxS("High contrast theme"));
+        menuBar->Append(viewMenu, wxS("&View"));
+
         auto* extensionMenu = new wxMenu();
         extensionMenu->Append(ID_START_HOST, wxS("Start Extension Host"));
         extensionMenu->Append(ID_LOAD_DEMO, wxS("Load demo extension"));
@@ -913,6 +949,10 @@ private:
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { ContinueDebug(); }, ID_DEBUG_CONTINUE);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { PauseDebug(); }, ID_DEBUG_PAUSE);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StopDebug(); }, ID_STOP_DEBUG);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { SetTheme(codium::ThemeKind::System); }, ID_THEME_SYSTEM);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { SetTheme(codium::ThemeKind::Light); }, ID_THEME_LIGHT);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { SetTheme(codium::ThemeKind::Dark); }, ID_THEME_DARK);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { SetTheme(codium::ThemeKind::HighContrast); }, ID_THEME_HIGH_CONTRAST);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StartHost(); }, ID_START_HOST);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { LoadDemo(); }, ID_LOAD_DEMO);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { ExecuteDemo(); }, ID_RUN_DEMO);
@@ -1125,10 +1165,10 @@ private:
                     ++column;
                 }
                 wxRichTextAttr style;
-                style.SetTextColour(firstSelected ? wxColour(255, 255, 255) :
+                style.SetTextColour(firstSelected ? themePalette_.editorText :
                                     first.hyperlink.empty() ? codium::TerminalScreen::PaletteColor(foreground, first.bold)
-                                                             : wxColour(80, 170, 255));
-                style.SetBackgroundColour(firstSelected ? wxColour(40, 90, 170) : wxColour(20, 20, 20));
+                                                             : themePalette_.accent);
+                style.SetBackgroundColour(firstSelected ? themePalette_.selection : themePalette_.editor);
                 style.SetFontWeight(first.bold ? wxFONTWEIGHT_BOLD : wxFONTWEIGHT_NORMAL);
                 style.SetFontUnderlined(first.underline || !first.hyperlink.empty());
                 terminalOutput_->BeginStyle(style);
@@ -1148,12 +1188,61 @@ private:
         }
     }
 
+    void ApplyThemeToWindow(wxWindow* window)
+    {
+        if (!window) return;
+        window->SetBackgroundColour(themePalette_.panel);
+        window->SetForegroundColour(themePalette_.editorText);
+        if (auto* gutter = dynamic_cast<ProblemGutter*>(window)) {
+            gutter->SetTheme(themePalette_);
+        }
+        if (window == editor_) {
+            editor_->SetBackgroundColour(themePalette_.editor);
+            editor_->SetForegroundColour(themePalette_.editorText);
+            wxTextAttr defaultStyle;
+            defaultStyle.SetTextColour(themePalette_.editorText);
+            defaultStyle.SetBackgroundColour(themePalette_.editor);
+            editor_->SetDefaultStyle(defaultStyle);
+        }
+        for (wxWindow* child : window->GetChildren()) ApplyThemeToWindow(child);
+        window->Refresh();
+    }
+
+    void ApplyTheme()
+    {
+        themePalette_ = codium::ThemePalette::For(themeKind_);
+        ApplyThemeToWindow(this);
+        if (terminalOutput_) {
+            terminalOutput_->SetBackgroundColour(themePalette_.editor);
+            terminalOutput_->SetForegroundColour(themePalette_.editorText);
+        }
+        if (editor_) ApplyInlineProblems();
+        if (GetMenuBar()) {
+            const int ids[] = {ID_THEME_SYSTEM, ID_THEME_LIGHT, ID_THEME_DARK, ID_THEME_HIGH_CONTRAST};
+            const int selected = themeKind_ == codium::ThemeKind::System ? 0 :
+                                 themeKind_ == codium::ThemeKind::Light ? 1 :
+                                 themeKind_ == codium::ThemeKind::Dark ? 2 : 3;
+            for (int index = 0; index < 4; ++index) {
+                if (wxMenuItem* item = GetMenuBar()->FindItem(ids[index])) item->Check(index == selected);
+            }
+        }
+        SetStatusText(wxString::Format(wxS("Theme: %s%s"), codium::ThemePalette::Name(themeKind_),
+                                       themePalette_.highContrast ? wxS(" · accessible contrast") : wxEmptyString), 0);
+    }
+
+    void SetTheme(codium::ThemeKind kind)
+    {
+        themeKind_ = kind;
+        ApplyTheme();
+        AppendLog(wxS("Theme changed to ") + codium::ThemePalette::Name(themeKind_) + wxS("."));
+    }
+
     wxColour ProblemColour(codium::ProblemSeverity severity) const
     {
-        if (severity == codium::ProblemSeverity::Error) return wxColour(210, 55, 55);
-        if (severity == codium::ProblemSeverity::Warning) return wxColour(190, 130, 20);
-        if (severity == codium::ProblemSeverity::Hint) return wxColour(100, 120, 180);
-        return wxColour(70, 110, 180);
+        if (severity == codium::ProblemSeverity::Error) return themePalette_.error;
+        if (severity == codium::ProblemSeverity::Warning) return themePalette_.warning;
+        if (severity == codium::ProblemSeverity::Hint) return themePalette_.hint;
+        return themePalette_.information;
     }
 
     wxTextAttr SyntaxStyle(codium::SyntaxTokenKind kind) const
@@ -1161,36 +1250,36 @@ private:
         wxTextAttr style;
         switch (kind) {
         case codium::SyntaxTokenKind::Comment:
-            style.SetTextColour(wxColour(105, 115, 125));
+            style.SetTextColour(themePalette_.editorMutedText);
             style.SetFontStyle(wxFONTSTYLE_ITALIC);
             break;
         case codium::SyntaxTokenKind::String:
-            style.SetTextColour(wxColour(30, 125, 55));
+            style.SetTextColour(themePalette_.dark ? wxColour(145, 220, 150) : wxColour(30, 125, 55));
             break;
         case codium::SyntaxTokenKind::Number:
-            style.SetTextColour(wxColour(150, 95, 25));
+            style.SetTextColour(themePalette_.dark ? wxColour(255, 205, 130) : wxColour(150, 95, 25));
             break;
         case codium::SyntaxTokenKind::Keyword:
-            style.SetTextColour(wxColour(35, 95, 185));
+            style.SetTextColour(themePalette_.accent);
             style.SetFontWeight(wxFONTWEIGHT_BOLD);
             break;
         case codium::SyntaxTokenKind::Type:
-            style.SetTextColour(wxColour(115, 65, 165));
+            style.SetTextColour(themePalette_.dark ? wxColour(210, 170, 255) : wxColour(115, 65, 165));
             break;
         case codium::SyntaxTokenKind::Function:
-            style.SetTextColour(wxColour(25, 115, 145));
+            style.SetTextColour(themePalette_.dark ? wxColour(130, 220, 230) : wxColour(25, 115, 145));
             break;
         case codium::SyntaxTokenKind::Property:
-            style.SetTextColour(wxColour(145, 75, 25));
+            style.SetTextColour(themePalette_.dark ? wxColour(255, 190, 130) : wxColour(145, 75, 25));
             break;
         case codium::SyntaxTokenKind::Preprocessor:
-            style.SetTextColour(wxColour(155, 55, 130));
+            style.SetTextColour(themePalette_.dark ? wxColour(255, 150, 210) : wxColour(155, 55, 130));
             break;
         case codium::SyntaxTokenKind::Tag:
-            style.SetTextColour(wxColour(35, 125, 75));
+            style.SetTextColour(themePalette_.dark ? wxColour(140, 220, 160) : wxColour(35, 125, 75));
             break;
         case codium::SyntaxTokenKind::Heading:
-            style.SetTextColour(wxColour(35, 95, 185));
+            style.SetTextColour(themePalette_.accent);
             style.SetFontWeight(wxFONTWEIGHT_BOLD);
             break;
         case codium::SyntaxTokenKind::Plain:
@@ -1249,7 +1338,7 @@ private:
         matchingDelimiterPositions_.push_back(pair.first);
         matchingDelimiterPositions_.push_back(pair.second);
         wxTextAttr style;
-        style.SetBackgroundColour(wxColour(220, 235, 255));
+        style.SetBackgroundColour(themePalette_.selection);
         style.SetFontWeight(wxFONTWEIGHT_BOLD);
         editor_->SetStyle(pair.first, pair.first + 1, style);
         editor_->SetStyle(pair.second, pair.second + 1, style);
@@ -2288,6 +2377,10 @@ private:
         if (dialog.ShowModal() != wxID_OK || dialog.GetValue().empty()) return;
         wxArrayString arguments;
         wxString error;
+        supportsFunctionBreakpoints_ = false;
+        supportsDataBreakpoints_ = false;
+        functionBreakpoints_.clear();
+        dataBreakpoints_.clear();
         if (dap_.Start(dialog.GetValue(), arguments, WorkspaceDirectory(), &error)) {
             dapSession_.MarkStarted();
             ClearDapTransientViews();
@@ -2352,6 +2445,12 @@ private:
             if (!breakpoint.hitCondition.empty()) label += wxS(" · hit ") + breakpoint.hitCondition;
             if (!breakpoint.logMessage.empty()) label += wxS(" · log ") + breakpoint.logMessage;
             breakpoints_->Append(label);
+        }
+        for (const auto& breakpoint : functionBreakpoints_) {
+            breakpoints_->Append(wxS("function: ") + breakpoint.name + wxS(" [session-scoped]"));
+        }
+        for (const auto& breakpoint : dataBreakpoints_) {
+            breakpoints_->Append(wxS("data: ") + breakpoint.dataId + wxS(" (") + breakpoint.accessType + wxS(") [session-scoped]"));
         }
     }
 
@@ -2440,6 +2539,44 @@ private:
         RefreshBreakpointView();
         RefreshGutters();
         SendBreakpointsForSource(document_.Path());
+    }
+
+    void ConfigureFunctionBreakpoint()
+    {
+        if (!dap_.IsRunning() || !supportsFunctionBreakpoints_) {
+            AppendLog(wxS("The active debug adapter does not advertise function breakpoints."));
+            return;
+        }
+        wxTextEntryDialog name(this, wxS("Function or method name"), wxS("Function breakpoint"), wxEmptyString);
+        if (name.ShowModal() != wxID_OK || name.GetValue().empty()) return;
+        wxTextEntryDialog condition(this, wxS("Conditional expression (optional)"), wxS("Function breakpoint condition"));
+        if (condition.ShowModal() != wxID_OK) return;
+        wxTextEntryDialog hit(this, wxS("Hit count expression (optional)"), wxS("Function breakpoint hit count"));
+        if (hit.ShowModal() != wxID_OK) return;
+        functionBreakpoints_.push_back(codium::DapFunctionBreakpointRequest{
+            name.GetValue(), condition.GetValue(), hit.GetValue()});
+        if (dap_.SetFunctionBreakpoints(functionBreakpoints_)) {
+            RefreshBreakpointView();
+            AppendLog(wxS("DAP setFunctionBreakpoints request sent."));
+        }
+    }
+
+    void ConfigureDataBreakpoint()
+    {
+        if (!dap_.IsRunning() || !supportsDataBreakpoints_) {
+            AppendLog(wxS("The active debug adapter does not advertise data breakpoints."));
+            return;
+        }
+        wxTextEntryDialog dataId(this, wxS("DAP dataId"), wxS("Data breakpoint"), wxEmptyString);
+        if (dataId.ShowModal() != wxID_OK || dataId.GetValue().empty()) return;
+        wxTextEntryDialog access(this, wxS("Access type: read, write, or readWrite"), wxS("Data breakpoint access"), wxS("write"));
+        if (access.ShowModal() != wxID_OK) return;
+        dataBreakpoints_.push_back(codium::DapDataBreakpointRequest{
+            dataId.GetValue(), access.GetValue(), wxEmptyString, wxEmptyString});
+        if (dap_.SetDataBreakpoints(dataBreakpoints_)) {
+            RefreshBreakpointView();
+            AppendLog(wxS("DAP setDataBreakpoints request sent."));
+        }
     }
 
     void RequestDebugThreads()
@@ -3029,6 +3166,9 @@ private:
         UpdateTitle();
         AppendLog(wxS("Saved: ") + document_.Path());
         NotifyLanguageDocumentChanged();
+        if (host_.IsRunning() && !document_.IsUntitled()) {
+            host_.NotifyDocumentSaved(DocumentUri(), languageId_, documentVersion_, document_.Text());
+        }
     }
 
     wxString HostScript() const
@@ -3103,9 +3243,13 @@ private:
 
     void NotifyLanguageDocumentOpened()
     {
-        if (!languageServerInitialized_ || document_.IsUntitled()) {
+        if (document_.IsUntitled()) {
             return;
         }
+        if (host_.IsRunning()) {
+            host_.NotifyDocumentOpened(DocumentUri(), languageId_, documentVersion_, document_.Text());
+        }
+        if (!languageServerInitialized_) return;
         host_.OpenLanguageDocument(DocumentUri(), languageId_, documentVersion_, document_.Text());
         semanticTokens_.clear();
         if (semanticTokensSupported_) host_.RequestLanguageSemanticTokens(DocumentUri());
@@ -3113,9 +3257,13 @@ private:
 
     void NotifyLanguageDocumentChanged()
     {
-        if (!languageServerInitialized_ || document_.IsUntitled()) {
+        if (document_.IsUntitled()) {
             return;
         }
+        if (host_.IsRunning()) {
+            host_.NotifyDocumentChanged(DocumentUri(), languageId_, documentVersion_, document_.Text());
+        }
+        if (!languageServerInitialized_) return;
         host_.ChangeLanguageDocument(DocumentUri(), documentVersion_, document_.Text());
         semanticTokens_.clear();
         if (semanticTokensSupported_) host_.RequestLanguageSemanticTokens(DocumentUri());
@@ -3618,6 +3766,24 @@ private:
         AppendLog(wxS("Registered extension command: ") + command);
     }
 
+    void RegisterContributedView(const wxString& line)
+    {
+        const wxString viewId = JsonStringField(line, wxS("viewId"));
+        const wxString title = JsonStringField(line, wxS("title"));
+        if (viewId.empty() || title.empty()) return;
+        treeRegistry_.Register(viewId, title);
+        RefreshNativeContributions();
+        AppendLog(wxS("Registered extension Tree View: ") + title);
+    }
+
+    void UpdateContributedView(const wxString& line)
+    {
+        const wxString viewId = JsonStringField(line, wxS("viewId"));
+        if (viewId.empty()) return;
+        treeRegistry_.SetItems(viewId, JsonStringFields(line, wxS("label")));
+        RefreshNativeContributions();
+    }
+
     void ShowDiagnostics(const wxString& line)
     {
         problemStore_.Clear(wxS("LSP"));
@@ -3722,12 +3888,15 @@ private:
                 const wxArrayString capabilities = {
                     wxS("supportsConfigurationDoneRequest"), wxS("supportsTerminateRequest"),
                     wxS("supportsSetVariable"), wxS("supportsEvaluateForHovers"),
-                    wxS("supportsRestartRequest"), wxS("supportsStepBack")};
+                    wxS("supportsRestartRequest"), wxS("supportsStepBack"),
+                    wxS("supportsFunctionBreakpoints"), wxS("supportsDataBreakpoints")};
                 for (const auto& capability : capabilities) {
                     const wxString marker = wxString::Format(wxS("\"%s\":true"), capability);
                     debugCapabilities_->Append(capability + (line.Find(marker) != wxNOT_FOUND ? wxS(": yes") : wxS(": no/unknown")));
                 }
             }
+            supportsFunctionBreakpoints_ = line.Find(wxS("\"supportsFunctionBreakpoints\":true")) != wxNOT_FOUND;
+            supportsDataBreakpoints_ = line.Find(wxS("\"supportsDataBreakpoints\":true")) != wxNOT_FOUND;
             dap_.ConfigurationDone();
         } else if (command == wxS("threads")) {
             if (debugThreads_) {
@@ -4040,6 +4209,13 @@ private:
                 line.Find(wxS("\"kind\":\"command\"")) != wxNOT_FOUND) {
                 RegisterContributedCommand(line);
             }
+            if (line.Find(wxS("\"event\":\"contribution\"")) != wxNOT_FOUND &&
+                line.Find(wxS("\"kind\":\"view\"")) != wxNOT_FOUND) {
+                RegisterContributedView(line);
+            }
+            if (line.Find(wxS("\"event\":\"treeView\"")) != wxNOT_FOUND) {
+                UpdateContributedView(line);
+            }
         }
         if (codeBlocksAdapter_.IsRunning()) {
             for (const auto& event : codeBlocksAdapter_.PollEvents()) {
@@ -4155,6 +4331,8 @@ private:
     wxString lastSearchQuery_;
     wxString lastReplacement_;
     wxString lastSymbolQuery_;
+    codium::ThemeKind themeKind_ = codium::ThemeKind::System;
+    codium::ThemePalette themePalette_ = codium::ThemePalette::For(codium::ThemeKind::System);
     bool lastSearchMatchCase_ = true;
     wxTimer timer_;
     bool loadingDocument_ = false;
@@ -4176,6 +4354,10 @@ private:
     wxPoint terminalSelectionActive_;
     bool terminalSelecting_ = false;
     std::map<int, wxString> dapBreakpointRequests_;
+    std::vector<codium::DapFunctionBreakpointRequest> functionBreakpoints_;
+    std::vector<codium::DapDataBreakpointRequest> dataBreakpoints_;
+    bool supportsFunctionBreakpoints_ = false;
+    bool supportsDataBreakpoints_ = false;
     std::vector<std::pair<int, int>> problemLocations_;
     std::vector<wxString> problemPaths_;
     int debugThreadId_ = 1;

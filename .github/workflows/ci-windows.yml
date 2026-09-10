@@ -1,0 +1,64 @@
+name: Codium::Blocks Windows CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Windows (windows-2022)
+    runs-on: windows-2022
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Windows dependencies
+        shell: pwsh
+        run: vcpkg install wxwidgets:x64-windows
+
+      - name: Configure Windows
+        shell: pwsh
+        run: >-
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_TARGET_TRIPLET=x64-windows
+
+      - name: Build Windows
+        shell: pwsh
+        run: cmake --build build --config Release --parallel
+
+      - name: Run Windows JavaScript checks
+        shell: pwsh
+        run: |
+          node --check extension-host/src/host.mjs
+          node --check extensions/hello-codium/extension.cjs
+          node --check tests/fake-lsp.mjs
+          node --check tests/fake-terminal.mjs
+          node --check tests/fake-dap.mjs
+          node --check tests/fake-codeblocks-adapter.mjs
+          node --check tests/host-smoke.mjs
+          node --check tests/integration-matrix-smoke.mjs
+          node --check tests/real-lsp-smoke.mjs
+          node --check tests/real-dap-smoke.mjs
+
+      - name: Validate Windows integration matrices
+        shell: pwsh
+        run: node tests/integration-matrix-smoke.mjs
+
+      - name: Run Windows CTest
+        shell: pwsh
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Run Windows Extension Host smoke test
+        shell: pwsh
+        run: node tests/host-smoke.mjs

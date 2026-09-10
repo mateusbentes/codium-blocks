@@ -1,0 +1,61 @@
+name: Codium::Blocks Linux CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux:
+    name: Linux (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Linux dependencies
+        run: |
+          for source in /etc/apt/sources.list.d/*google* /etc/apt/sources.list.d/*chrome*; do
+            if [ -f "$source" ]; then
+              sudo mv "$source" "$source.disabled"
+            fi
+          done
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y build-essential cmake pkg-config libwxgtk3.2-dev libssl-dev
+
+      - name: Configure Linux
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Linux
+        run: cmake --build build --parallel 1 --verbose
+
+      - name: Run Linux JavaScript checks
+        run: |
+          node --check extension-host/src/host.mjs
+          node --check extensions/hello-codium/extension.cjs
+          node --check tests/fake-lsp.mjs
+          node --check tests/fake-terminal.mjs
+          node --check tests/fake-dap.mjs
+          node --check tests/fake-codeblocks-adapter.mjs
+          node --check tests/host-smoke.mjs
+          node --check tests/integration-matrix-smoke.mjs
+          node --check tests/real-lsp-smoke.mjs
+          node --check tests/real-dap-smoke.mjs
+
+      - name: Validate Linux integration matrices
+        run: node tests/integration-matrix-smoke.mjs
+
+      - name: Run Linux CTest
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Run Linux Extension Host smoke test
+        run: node tests/host-smoke.mjs

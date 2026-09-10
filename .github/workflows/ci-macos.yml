@@ -1,0 +1,58 @@
+name: Codium::Blocks macOS CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    name: macOS (macos-15)
+    runs-on: macos-15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install macOS dependencies
+        run: |
+          brew update
+          brew install cmake wxwidgets
+          echo "$(brew --prefix wxwidgets)/bin" >> "$GITHUB_PATH"
+          echo "PKG_CONFIG_PATH=$(brew --prefix wxwidgets)/lib/pkgconfig" >> "$GITHUB_ENV"
+
+      - name: Configure macOS
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build macOS
+        run: cmake --build build --parallel 1 --verbose
+
+      - name: Run macOS JavaScript checks
+        run: |
+          node --check extension-host/src/host.mjs
+          node --check extensions/hello-codium/extension.cjs
+          node --check tests/fake-lsp.mjs
+          node --check tests/fake-terminal.mjs
+          node --check tests/fake-dap.mjs
+          node --check tests/fake-codeblocks-adapter.mjs
+          node --check tests/host-smoke.mjs
+          node --check tests/integration-matrix-smoke.mjs
+          node --check tests/real-lsp-smoke.mjs
+          node --check tests/real-dap-smoke.mjs
+
+      - name: Validate macOS integration matrices
+        run: node tests/integration-matrix-smoke.mjs
+
+      - name: Run macOS CTest
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Run macOS Extension Host smoke test
+        run: node tests/host-smoke.mjs

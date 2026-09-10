@@ -108,7 +108,22 @@ int main(int argc, char** argv)
     }
     std::vector<codium::DapBreakpointRequest> breakpoints;
     breakpoints.push_back(codium::DapBreakpointRequest{12, wxS("counter > 0"), wxS("3"), wxS("counter=%d")});
+    std::vector<codium::DapFunctionBreakpointRequest> functionBreakpoints;
+    codium::DapFunctionBreakpointRequest functionBreakpoint;
+    functionBreakpoint.name = wxS("main");
+    functionBreakpoint.condition = wxS("counter > 0");
+    functionBreakpoint.hitCondition = wxS("3");
+    functionBreakpoints.push_back(functionBreakpoint);
+    std::vector<codium::DapDataBreakpointRequest> dataBreakpoints;
+    codium::DapDataBreakpointRequest dataBreakpoint;
+    dataBreakpoint.dataId = wxS("counter");
+    dataBreakpoint.accessType = wxS("write");
+    dataBreakpoints.push_back(dataBreakpoint);
     if (!dap.SetBreakpoints(wxS("demo.cpp"), breakpoints) ||
+        !WaitForDap(dap, wxS("\"optionsAccepted\":true,\"breakpoints\"")) ||
+        !dap.SetFunctionBreakpoints(functionBreakpoints) ||
+        !WaitForDap(dap, wxS("\"optionsAccepted\":true,\"breakpoints\"")) ||
+        !dap.SetDataBreakpoints(dataBreakpoints) ||
         !WaitForDap(dap, wxS("\"optionsAccepted\":true,\"breakpoints\"")) ||
         !dap.RequestStackTrace(1) || !WaitForDap(dap, wxS("\"stackFrames\"")) ||
         !dap.RequestScopes(7) || !WaitForDap(dap, wxS("\"variablesReference\":42")) ||
