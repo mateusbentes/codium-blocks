@@ -11,7 +11,11 @@ namespace {
 
 bool WaitForReady(codium::CodeBlocksAdapterClient& adapter)
 {
-    for (int index = 0; index < 300 && adapter.IsRunning(); ++index) {
+    // The first Code::Blocks plugin bootstrap can be slow on a fresh hosted
+    // runner, especially while wxWidgets and the SDK initialize resources.
+    // Keep this bounded, but do not turn normal runner variance into a false
+    // handshake failure after only three seconds.
+    for (int index = 0; index < 1500 && adapter.IsRunning(); ++index) {
         wxMilliSleep(10);
         adapter.PollEvents();
         if (adapter.IsReady()) return true;
@@ -76,7 +80,12 @@ int main(int argc, char** argv)
              adapter.Capabilities().Index(wxS("debuggerThreads")) == wxNOT_FOUND ||
              adapter.Capabilities().Index(wxS("debuggerBreakpoints")) == wxNOT_FOUND ||
              adapter.Capabilities().Index(wxS("debuggerWatches")) == wxNOT_FOUND))))) {
-        std::cerr << "codeblocks-real-adapter-smoke: handshake failed: " << error.ToStdString() << "\n";
+        std::cerr << "codeblocks-real-adapter-smoke: handshake failed: " << error.ToStdString()
+                  << " (running=" << (adapter.IsRunning() ? "true" : "false")
+                  << ", handshakeReceived=" << (adapter.HandshakeReceived() ? "true" : "false")
+                  << ", ready=" << (adapter.IsReady() ? "true" : "false")
+                  << ", errorCode=" << adapter.LastErrorCode().ToStdString()
+                  << ", errorMessage=" << adapter.LastErrorMessage().ToStdString() << ")\n";
         return 3;
     }
 
