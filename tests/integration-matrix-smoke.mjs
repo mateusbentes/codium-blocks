@@ -15,6 +15,12 @@ function platformValue(value, platform) {
   return typeof value === 'string' ? value : value?.[platform];
 }
 
+function optionalPositiveInteger(value, platform) {
+  const selected = typeof value === 'number' ? value : value?.[platform];
+  if (selected === undefined) return;
+  assert.ok(Number.isInteger(selected) && selected > 0);
+}
+
 assert.equal(lsp.schemaVersion, 1);
 assert.equal(dap.schemaVersion, 1);
 assert.match(lsp.matrixVersion, /^20\d\d\.\d\d$/);
@@ -36,6 +42,10 @@ for (const server of lsp.servers) {
   assert.match(server.text, /\n$/);
   assert.ok(Number.isInteger(server.position?.line) && server.position.line >= 0);
   assert.ok(Number.isInteger(server.position?.character) && server.position.character >= 0);
+  for (const platform of ['linux', 'darwin', 'win32']) {
+    optionalPositiveInteger(server.requestTimeoutMs, platform);
+    optionalPositiveInteger(server.didOpenDelayMs, platform);
+  }
   assert.deepEqual(server.scenarios, [
     'hover', 'completion', 'definition', 'declaration', 'references',
     'documentSymbol', 'workspaceSymbol', 'rename',

@@ -18,6 +18,10 @@ const servers = matrix.servers.map((server) => ({
   versionCommand: server.versionCommand?.[platform] ?? server.command[platform],
   version: typeof server.version === 'string' ? server.version : server.version?.[platform],
   versionPattern: typeof server.versionPattern === 'string' ? server.versionPattern : server.versionPattern?.[platform],
+  requestTimeoutMs: typeof server.requestTimeoutMs === 'number'
+    ? server.requestTimeoutMs : server.requestTimeoutMs?.[platform] ?? 10000,
+  didOpenDelayMs: typeof server.didOpenDelayMs === 'number'
+    ? server.didOpenDelayMs : server.didOpenDelayMs?.[platform] ?? 0,
 }));
 
 class ServerExitError extends Error {
@@ -71,7 +75,8 @@ function waitForMessage(child, state, predicate, timeoutMs, phase) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       cleanup();
-      reject(new Error(`timeout waiting for ${phase} response`));
+      const stderr = state.stderr.trim();
+      reject(new Error(`timeout waiting for ${phase} response after ${timeoutMs}ms${stderr ? ` (stderr=${stderr})` : ''}`));
     }, timeoutMs);
     const onMessage = (message) => {
       if (!predicate(message)) return;
@@ -150,7 +155,7 @@ async function smokeServer(server, root) {
   let phase = 'initialize';
   const request = async (method, params) => {
     const id = nextId++;
-    const response = waitForMessage(child, state, (message) => message.id === id, 10000, phase);
+    const response = waitForMessage(child, state, (message) => message.id === id, server.requestTimeoutMs, phase);
     send(child, { jsonrpc: '2.0', id, method, params });
     return response;
   };
@@ -185,6 +190,7 @@ async function smokeServer(server, root) {
     send(child, { jsonrpc: '2.0', method: 'textDocument/didOpen', params: {
       textDocument: { uri, languageId: server.languageId, version: 1, text: server.text },
     } });
+    if (server.didOpenDelayMs > 0) await delay(server.didOpenDelayMs);
     const capabilities = initialized.result?.capabilities ?? {};
     const position = server.position ?? { line: 0, character: 1 };
     const scenarios = [

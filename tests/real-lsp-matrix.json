@@ -61,6 +61,8 @@
       "versionArgs": ["--version"],
       "versionPattern": "1\\.1\\.390",
       "args": ["--stdio"],
+      "requestTimeoutMs": { "win32": 30000 },
+      "didOpenDelayMs": { "win32": 2000 },
       "languageId": "python",
       "file": "main.py",
       "text": "def helper():\n    return 0\n\ndef main():\n    return helper()\n",
