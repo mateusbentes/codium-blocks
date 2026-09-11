@@ -138,8 +138,6 @@ bool StartConPty(TerminalSession* session, const wxString& program, const wxArra
         CloseHandle(inputRead); CloseHandle(inputWrite); CloseHandle(outputRead); CloseHandle(outputWrite);
         return false;
     }
-    CloseHandle(inputRead);
-    CloseHandle(outputWrite);
 
     SIZE_T attributeSize = 0;
     InitializeProcThreadAttributeList(nullptr, 1, 0, &attributeSize);
@@ -150,7 +148,7 @@ bool StartConPty(TerminalSession* session, const wxString& program, const wxArra
         if (attributes) HeapFree(GetProcessHeap(), 0, attributes);
         auto close = reinterpret_cast<ClosePseudoConsoleFn>(GetProcAddress(kernel, "ClosePseudoConsole"));
         if (close) close(console);
-        CloseHandle(inputWrite); CloseHandle(outputRead);
+        CloseHandle(inputRead); CloseHandle(inputWrite); CloseHandle(outputRead); CloseHandle(outputWrite);
         return false;
     }
 
@@ -166,7 +164,7 @@ bool StartConPty(TerminalSession* session, const wxString& program, const wxArra
     startup.lpAttributeList = attributes;
     PROCESS_INFORMATION processInfo{};
     std::wstring cwd = workingDirectory.ToStdWstring();
-    const BOOL started = CreateProcessW(executable.c_str(), commandLine.data(), nullptr, nullptr, FALSE,
+    const BOOL started = CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, FALSE,
                                         EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
                                         nullptr, cwd.empty() ? nullptr : cwd.c_str(), &startup.StartupInfo, &processInfo);
     DeleteProcThreadAttributeList(attributes);
@@ -174,10 +172,12 @@ bool StartConPty(TerminalSession* session, const wxString& program, const wxArra
     if (!started) {
         auto close = reinterpret_cast<ClosePseudoConsoleFn>(GetProcAddress(kernel, "ClosePseudoConsole"));
         if (close) close(console);
-        CloseHandle(inputWrite); CloseHandle(outputRead);
+        CloseHandle(inputRead); CloseHandle(inputWrite); CloseHandle(outputRead); CloseHandle(outputWrite);
         if (error) *error = wxS("CreateProcessW failed for ConPTY.");
         return false;
     }
+    CloseHandle(inputRead);
+    CloseHandle(outputWrite);
     CloseHandle(processInfo.hThread);
     session->pseudoConsole_ = console;
     session->childProcess_ = processInfo.hProcess;
