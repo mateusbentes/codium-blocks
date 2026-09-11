@@ -1,7 +1,11 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Codium::Blocks Contributors
+
 #include "codium/terminal_session.hpp"
 
 #include <wx/utils.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
 #include <string>
@@ -182,11 +186,24 @@ bool StartConPty(TerminalSession* session, const wxString& program, const wxArra
         if (error) *error = wxS("CreateProcessW failed for ConPTY.");
         return false;
     }
+
+    HANDLE job = CreateJobObjectW(nullptr, nullptr);
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION jobInfo{};
+    jobInfo.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (!job || !SetInformationJobObject(job, JobObjectExtendedLimitInformation,
+                                         &jobInfo, sizeof(jobInfo)) ||
+        !AssignProcessToJobObject(job, processInfo.hProcess)) {
+        // Some hosted runners already place children in a non-nestable job.
+        // Keep ConPTY usable there and retain direct-process termination as a fallback.
+        if (job) CloseHandle(job);
+        job = nullptr;
+    }
     CloseHandle(inputRead);
     CloseHandle(outputWrite);
     CloseHandle(processInfo.hThread);
     session->pseudoConsole_ = console;
     session->childProcess_ = processInfo.hProcess;
+    session->jobObject_ = job;
     session->inputWrite_ = inputWrite;
     session->outputRead_ = outputRead;
     session->usingConPty_ = true;
@@ -209,6 +226,7 @@ bool TerminalSession::Start(const wxString& program, const wxArrayString& argume
     }
     rawBuffer_.clear();
     lineBuffer_.clear();
+    pendingWrite_.clear();
 
 #if defined(__WXMSW__)
     wxString disableConPty;
@@ -260,6 +278,7 @@ bool TerminalSession::Start(const wxString& program, const wxArrayString& argume
         dup2(slaveFd, STDIN_FILENO);
         dup2(slaveFd, STDOUT_FILENO);
         dup2(slaveFd, STDERR_FILENO);
+        close(masterFd_);
         if (slaveFd > STDERR_FILENO) close(slaveFd);
         if (!workingDirectory.empty() && chdir(workingDirectory.utf8_str().data()) != 0) _exit(127);
         std::vector<std::string> values;
@@ -272,7 +291,17 @@ bool TerminalSession::Start(const wxString& program, const wxArrayString& argume
         _exit(127);
     }
     close(slaveFd);
-    fcntl(masterFd_, F_SETFL, O_NONBLOCK);
+    const int flags = fcntl(masterFd_, F_GETFL, 0);
+    if (flags < 0 || fcntl(masterFd_, F_SETFL, flags | O_NONBLOCK) != 0) {
+        const int flagsError = errno;
+        kill(-childPid_, SIGTERM);
+        while (waitpid(childPid_, nullptr, 0) < 0 && errno == EINTR) {}
+        close(masterFd_);
+        masterFd_ = -1;
+        childPid_ = 0;
+        if (error) *error = wxString::Format(wxS("Could not configure PTY: %s."), wxString::FromUTF8(std::strerror(flagsError)));
+        return false;
+    }
     pid_ = childPid_;
     usingPty_ = true;
     return true;
@@ -302,24 +331,55 @@ wxString TerminalSession::BackendName() const
 #endif
 }
 
+bool TerminalSession::FlushPendingWrite()
+{
+    if (pendingWrite_.empty()) return true;
+#if defined(__WXMSW__)
+    if (usingConPty_) {
+        while (!pendingWrite_.empty()) {
+            const DWORD requested = static_cast<DWORD>(std::min<size_t>(pendingWrite_.size(), MAXDWORD));
+            DWORD written = 0;
+            if (!WriteFile(static_cast<HANDLE>(inputWrite_), pendingWrite_.data(), requested, &written, nullptr)) {
+                return false;
+            }
+            if (written == 0) return false;
+            pendingWrite_.erase(0, written);
+        }
+        return true;
+    }
+    if (!process_ || !process_->GetOutputStream()) return false;
+    while (!pendingWrite_.empty()) {
+        wxOutputStream* stream = process_->GetOutputStream();
+        stream->Write(pendingWrite_.data(), pendingWrite_.size());
+        stream->Sync();
+        const size_t written = stream->LastWrite();
+        if (written == 0 || !stream->IsOk()) return false;
+        pendingWrite_.erase(0, written);
+    }
+    return true;
+#else
+    if (masterFd_ < 0) return false;
+    while (!pendingWrite_.empty()) {
+        const ssize_t written = write(masterFd_, pendingWrite_.data(), pendingWrite_.size());
+        if (written > 0) {
+            pendingWrite_.erase(0, static_cast<size_t>(written));
+            continue;
+        }
+        if (written < 0 && errno == EINTR) continue;
+        if (written < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return true;
+        return false;
+    }
+    return true;
+#endif
+}
+
 bool TerminalSession::Write(const wxString& text)
 {
     if (!IsRunning()) return false;
     const wxScopedCharBuffer utf8 = text.utf8_str();
-#if defined(__WXMSW__)
-    if (usingConPty_) {
-        DWORD written = 0;
-        return WriteFile(static_cast<HANDLE>(inputWrite_), utf8.data(), static_cast<DWORD>(utf8.length()), &written, nullptr) &&
-               written == utf8.length();
-    }
-    wxOutputStream* stream = process_->GetOutputStream();
-    stream->Write(utf8.data(), utf8.length());
-    stream->Sync();
-    return stream->LastWrite() == utf8.length() && stream->IsOk();
-#else
-    const ssize_t written = write(masterFd_, utf8.data(), utf8.length());
-    return written == static_cast<ssize_t>(utf8.length());
-#endif
+    if (utf8.length() == 0) return true;
+    pendingWrite_.append(utf8.data(), utf8.length());
+    return FlushPendingWrite();
 }
 
 bool TerminalSession::Resize(int columns, int rows)
@@ -342,8 +402,11 @@ void TerminalSession::Stop()
 {
 #if defined(__WXMSW__)
     if (usingConPty_) {
+        if (jobObject_) CloseHandle(static_cast<HANDLE>(jobObject_));
         if (childProcess_) {
-            TerminateProcess(static_cast<HANDLE>(childProcess_), 0);
+            if (WaitForSingleObject(static_cast<HANDLE>(childProcess_), 500) == WAIT_TIMEOUT) {
+                TerminateProcess(static_cast<HANDLE>(childProcess_), 0);
+            }
             CloseHandle(static_cast<HANDLE>(childProcess_));
         }
         if (inputWrite_) CloseHandle(static_cast<HANDLE>(inputWrite_));
@@ -351,8 +414,9 @@ void TerminalSession::Stop()
         HMODULE kernel = GetModuleHandleW(L"kernel32.dll");
         auto close = reinterpret_cast<ClosePseudoConsoleFn>(GetProcAddress(kernel, "ClosePseudoConsole"));
         if (close && pseudoConsole_) close(static_cast<HPCON>(pseudoConsole_));
-        childProcess_ = nullptr; inputWrite_ = nullptr; outputRead_ = nullptr; pseudoConsole_ = nullptr;
+        childProcess_ = nullptr; jobObject_ = nullptr; inputWrite_ = nullptr; outputRead_ = nullptr; pseudoConsole_ = nullptr;
         pid_ = 0; usingConPty_ = false; usingPty_ = false;
+        pendingWrite_.clear();
         return;
     }
     if (process_) {
@@ -385,7 +449,7 @@ void TerminalSession::Stop()
         }
     }
     if (masterFd_ >= 0) close(masterFd_);
-    masterFd_ = -1; childPid_ = 0; pid_ = 0; usingPty_ = false;
+    masterFd_ = -1; childPid_ = 0; pid_ = 0; usingPty_ = false; pendingWrite_.clear();
 #endif
 }
 
@@ -404,6 +468,7 @@ void TerminalSession::HandleProcessExit(long pid, int)
 
 wxString TerminalSession::PollRaw()
 {
+    FlushPendingWrite();
     char chunk[8192];
     std::string bytes;
 #if defined(__WXMSW__)

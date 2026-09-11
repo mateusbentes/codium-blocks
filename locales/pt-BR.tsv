@@ -485,3 +485,5 @@ label.themeHighContrast	Alto contraste
 label.themeLight	Claro
 label.themeSystem	Sistema
 message.codeBlocksLoadPolicy	Somente pré-verificação: o Codium::Blocks não carrega bibliotecas compartilhadas do Code::Blocks até que um host com ABI de SDK compatível seja conectado. Plugins nativos dependem de Manager, PluginManager, cbPlugin e da infraestrutura de eventos.
+dialog.vsixVerification	Verificar pacote VSIX
+input.vsixSha256	Digest SHA-256 esperado do VSIX (64 caracteres hexadecimais):

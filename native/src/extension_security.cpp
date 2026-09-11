@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Codium::Blocks Contributors
+
 #include "codium/extension_security.hpp"
 
 #include <wx/filename.h>

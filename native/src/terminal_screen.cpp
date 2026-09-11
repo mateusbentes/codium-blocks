@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Codium::Blocks Contributors
+
 #include "codium/terminal_screen.hpp"
 
 #include <wx/utils.h>

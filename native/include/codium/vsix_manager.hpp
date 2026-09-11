@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Codium::Blocks Contributors
+
 #pragma once
 
 #include <wx/arrstr.h>
@@ -9,6 +12,7 @@ class VsixManager final {
 public:
     explicit VsixManager(wxString extensionRoot);
 
+    // Deliberately rejects unverified packages; use InstallVerified or InstallSigned.
     bool Install(const wxString& vsixPath, wxString* message = nullptr);
     bool InstallVerified(const wxString& vsixPath, const wxString& expectedSha256,
                          wxString* message = nullptr);

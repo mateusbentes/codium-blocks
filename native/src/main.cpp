@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Codium::Blocks Contributors
+
 #include "codium/document.hpp"
 #include "codium/editor_actions.hpp"
 #include "codium/extension_host_client.hpp"
@@ -3587,8 +3590,13 @@ private:
             return;
         }
 
+        wxTextEntryDialog digest(this, T(wxS("input.vsixSha256")), T(wxS("dialog.vsixVerification")), wxEmptyString);
+        if (digest.ShowModal() != wxID_OK) {
+            return;
+        }
+
         wxString message;
-        if (extensions_.Install(dialog.GetPath(), &message)) {
+        if (extensions_.InstallVerified(dialog.GetPath(), digest.GetValue().Strip(wxString::both), &message)) {
             AppendLog(message);
         } else {
             AppendLog(T(wxS("message.errorPrefix")) + message);

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Codium::Blocks Contributors
+
 #include "codium/dap_client.hpp"
 
 #include <wx/utils.h>
@@ -226,6 +229,7 @@ void DapClient::HandleProcessExit(long pid, int)
 
 void DapClient::ParseFrames(wxArrayString& messages)
 {
+    constexpr size_t kMaximumFrameSize = 16U * 1024U * 1024U;
     while (true) {
         const size_t headerEnd = inputBuffer_.find("\r\n\r\n");
         if (headerEnd == std::string::npos) return;
@@ -240,9 +244,26 @@ void DapClient::ParseFrames(wxArrayString& messages)
         while (numberStart < headers.size() && std::isspace(static_cast<unsigned char>(headers[numberStart]))) ++numberStart;
         size_t numberEnd = numberStart;
         while (numberEnd < headers.size() && std::isdigit(static_cast<unsigned char>(headers[numberEnd]))) ++numberEnd;
-        const size_t length = std::stoul(headers.substr(numberStart, numberEnd - numberStart));
+        if (numberStart == numberEnd) {
+            inputBuffer_.erase(0, headerEnd + 4);
+            continue;
+        }
+        size_t length = 0;
+        bool validLength = true;
+        for (size_t index = numberStart; index < numberEnd; ++index) {
+            const size_t digit = static_cast<size_t>(headers[index] - '0');
+            if (length > (kMaximumFrameSize - digit) / 10U) {
+                validLength = false;
+                break;
+            }
+            length = length * 10U + digit;
+        }
+        if (!validLength || length > kMaximumFrameSize) {
+            inputBuffer_.erase(0, headerEnd + 4);
+            continue;
+        }
         const size_t bodyStart = headerEnd + 4;
-        if (inputBuffer_.size() < bodyStart + length) return;
+        if (bodyStart > inputBuffer_.size() || length > inputBuffer_.size() - bodyStart) return;
         const std::string body = inputBuffer_.substr(bodyStart, length);
         messages.Add(wxString::FromUTF8(body.data(), body.size()));
         inputBuffer_.erase(0, bodyStart + length);

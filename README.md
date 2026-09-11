@@ -10,7 +10,7 @@ Every push to `main` and every pull request is checked by isolated GitHub Action
 
 ## Current status
 
-The current `1.0.1` development increment builds on the completed `0.9.0` baseline and provides:
+The current `1.0.1` development snapshot builds on the completed `0.9.0` baseline and provides the following. It is not a stable release until a matching `v1.0.1` tag, clean package validation, and human release review have been completed. See [`CHANGELOG.md`](CHANGELOG.md) for the version history:
 
 - a native C++/wxWidgets window;
 - no Electron dependency or linkage;
@@ -19,7 +19,7 @@ The current `1.0.1` development increment builds on the completed `0.9.0` baseli
 - CommonJS extension loading through `package.json`;
 - an initial bridge for `vscode.commands`, `vscode.window`, `vscode.workspace`, `vscode.languages`, `vscode.extensions`, `vscode.Uri`, and `vscode.env`;
 - extension command execution;
-- offline `.vsix` installation through the cross-platform wxWidgets ZIP reader;
+- offline `.vsix` installation through the cross-platform wxWidgets ZIP reader with an expected SHA-256 digest;
 - a local installed-extension listing;
 - an automated end-to-end smoke test;
 - a demonstration extension that displays a message through the host.
@@ -167,7 +167,7 @@ Extension settings are stored outside the source tree: under `%APPDATA%/CodiumBl
 
 ## Packages
 
-The CMake installation layout and CPack workflows produce Linux `.deb`/`.tar.gz`, macOS `.dmg`, and Windows portable `.zip` artifacts. Package builds keep the Code::Blocks adapter disabled, place user-installed extensions in the platform data directory, and emit SHA-256 checksums. Package workflows upload artifacts for review; they do not publish a GitHub release automatically. See [`docs/PACKAGING.md`](docs/PACKAGING.md) for local commands and release boundaries.
+The CMake installation layout and CPack workflows are capable of producing Linux `.deb`/`.tar.gz`, macOS `.dmg`, and Windows portable `.zip` artifacts. Package builds keep the Code::Blocks adapter disabled, place user-installed extensions in the platform data directory, and emit SHA-256 checksums. Package workflows validate their generated formats and upload artifacts for review; they do not publish a GitHub release automatically. The macOS workflow also performs bundle dependency fixup and rejects Homebrew-linked paths in the staged application. See [`docs/PACKAGING.md`](docs/PACKAGING.md) for local commands and release boundaries.
 
 ## Build
 
@@ -231,7 +231,7 @@ The verified implementation status and ordered delivery plan are maintained in [
 
 The remaining 1.0 work is organized by user-visible outcomes. The ordered workstreams are broader real-server scenario coverage where adapters expose different capabilities, a complete keyboard, screen-reader, font-scaling, and high-DPI accessibility audit, deeper versioned extension APIs, and native packaging. The isolated workflows now provide fixed-tool installation steps and high-contrast visual artifacts, but those artifacts still require human review on each runner family. Packaging is intentionally deferred until the runtime contracts are stable. Each workstream is delivered as a separately tested increment with an adapter-disabled portable path and documentation in English.
 
-The project does not claim complete VS Code, Code::Blocks, or Xcode compatibility. Compatibility is measured by the APIs, adapters, and scenarios that are implemented and tested. See [`docs/ROADMAP.md`](docs/ROADMAP.md), [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md), [`docs/PROBLEMS.md`](docs/PROBLEMS.md), and [`docs/CODEBLOCKS_INTEGRATION.md`](docs/CODEBLOCKS_INTEGRATION.md) for the detailed boundaries.
+The project does not claim complete VS Code, Code::Blocks, or Xcode compatibility. Compatibility is measured by the APIs, adapters, and scenarios that are implemented and tested. The native UI currently ships English and Brazilian Portuguese catalogs with English fallback; technical documentation remains in English. See [`docs/ROADMAP.md`](docs/ROADMAP.md), [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md), [`docs/PROBLEMS.md`](docs/PROBLEMS.md), and [`docs/CODEBLOCKS_INTEGRATION.md`](docs/CODEBLOCKS_INTEGRATION.md) for the detailed boundaries.
 
 ## Security
 

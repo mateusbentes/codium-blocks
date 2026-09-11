@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Codium::Blocks Contributors
+
 #pragma once
 
 #include <wx/arrstr.h>
@@ -29,6 +32,8 @@ public:
     wxArrayString Poll();
 
 private:
+    bool FlushPendingWrite();
+
 #if defined(__WXMSW__)
     friend bool StartConPty(TerminalSession*, const wxString&, const wxArrayString&,
                             const wxString&, wxString*);
@@ -39,6 +44,7 @@ private:
     long pid_ = 0;
     std::string rawBuffer_;
     std::string lineBuffer_;
+    std::string pendingWrite_;
     bool usingPty_ = false;
 #if !defined(__WXMSW__)
     int masterFd_ = -1;
@@ -46,6 +52,7 @@ private:
 #else
     void* pseudoConsole_ = nullptr;
     void* childProcess_ = nullptr;
+    void* jobObject_ = nullptr;
     void* inputWrite_ = nullptr;
     void* outputRead_ = nullptr;
     bool usingConPty_ = false;

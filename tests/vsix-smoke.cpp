@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Codium::Blocks Contributors
+
 #include "codium/vsix_manager.hpp"
 #include "codium/extension_security.hpp"
 
@@ -57,6 +60,10 @@ int main()
         std::cerr << "vsix-smoke: invalid checksum was accepted\n";
         return 1;
     }
+    if (manager.InstallVerified(vsixPath, wxEmptyString, &message)) {
+        std::cerr << "vsix-smoke: missing checksum was accepted\n";
+        return 1;
+    }
 
     const wxString maliciousPath = root + wxFILE_SEP_PATH + wxS("malicious.vsix");
     {
@@ -67,7 +74,10 @@ int main()
         archive.Write(payload.utf8_str().data(), payload.utf8_str().length());
         archive.Close();
     }
-    if (manager.Install(maliciousPath, &message) || wxFileExists(root + wxFILE_SEP_PATH + wxS("escape.txt"))) {
+    wxString maliciousDigest;
+    if (!codium::ExtensionSecurity::ComputeSha256(maliciousPath, &maliciousDigest, &message) ||
+        manager.InstallVerified(maliciousPath, maliciousDigest, &message) ||
+        wxFileExists(root + wxFILE_SEP_PATH + wxS("escape.txt"))) {
         std::cerr << "vsix-smoke: unsafe archive path was accepted\n";
         return 1;
     }

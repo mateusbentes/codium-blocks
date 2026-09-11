@@ -3,6 +3,12 @@ project(CodiumBlocks VERSION 1.0.1 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 
+if("$ENV{GITHUB_REF_TYPE}" STREQUAL "tag" AND
+   NOT "$ENV{GITHUB_REF_NAME}" STREQUAL "v${PROJECT_VERSION}")
+    message(FATAL_ERROR
+        "Release tag '$ENV{GITHUB_REF_NAME}' does not match project version v${PROJECT_VERSION}")
+endif()
+
 option(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_SDK "Expose an optional Code::Blocks SDK include root to the native target" OFF)
 set(CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT "" CACHE PATH "Code::Blocks SDK installation or source root")
 option(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER "Build the isolated Code::Blocks SDK host adapter when a usable SDK is found" ON)
@@ -600,6 +606,13 @@ if(APPLE AND CODIUM_BLOCKS_MACOS_BUNDLE)
     set(CODIUM_BLOCKS_INSTALL_DOC_DIR
         "${CODIUM_BLOCKS_INSTALL_DATA_DIR}/share/doc/codium-blocks")
     install(TARGETS codium-blocks BUNDLE DESTINATION .)
+    install(CODE [[
+        include(BundleUtilities)
+        set(CODIUM_BLOCKS_BUNDLE "${CMAKE_INSTALL_PREFIX}/codium-blocks.app")
+        if(EXISTS "${CODIUM_BLOCKS_BUNDLE}")
+            fixup_bundle("${CODIUM_BLOCKS_BUNDLE}" "" "")
+        endif()
+    ]])
 else()
     set(CODIUM_BLOCKS_INSTALL_DATA_DIR "${CMAKE_INSTALL_DATADIR}/codium-blocks")
     set(CODIUM_BLOCKS_INSTALL_DOC_DIR "${CMAKE_INSTALL_DATADIR}/doc/codium-blocks")
@@ -615,7 +628,7 @@ endif()
 install(DIRECTORY extension-host DESTINATION ${CODIUM_BLOCKS_INSTALL_DATA_DIR})
 install(DIRECTORY extensions DESTINATION ${CODIUM_BLOCKS_INSTALL_DATA_DIR})
 install(DIRECTORY locales DESTINATION ${CODIUM_BLOCKS_INSTALL_DATA_DIR})
-install(FILES README.md LICENSE COPYING DESTINATION ${CODIUM_BLOCKS_INSTALL_DOC_DIR})
+install(FILES README.md CHANGELOG.md LICENSE COPYING DESTINATION ${CODIUM_BLOCKS_INSTALL_DOC_DIR})
 install(DIRECTORY docs protocol DESTINATION ${CODIUM_BLOCKS_INSTALL_DOC_DIR})
 
 if(UNIX AND NOT APPLE)

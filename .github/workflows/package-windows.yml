@@ -8,16 +8,28 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: codium-blocks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   package-windows:
     name: Windows portable package (windows-2022)
     runs-on: windows-2022
+    timeout-minutes: 30
     steps:
       - name: Check out source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Validate release tag
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path CMakeLists.txt -Pattern '^project\(CodiumBlocks VERSION ([^ ]+)' | Select-Object -First 1).Matches.Groups[1].Value
+          if ([string]::IsNullOrWhiteSpace($version) -or $env:GITHUB_REF_NAME -ne "v$version") { throw "Release tag does not match CMake project version $version." }
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
 
@@ -58,12 +70,21 @@ jobs:
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'codium-blocks.exe')) { throw 'Windows package is missing the native executable.' }
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'en-US.tsv')) { throw 'Windows package is missing en-US.tsv.' }
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'pt-BR.tsv')) { throw 'Windows package is missing pt-BR.tsv.' }
+          if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'CHANGELOG.md')) { throw 'Windows package is missing CHANGELOG.md.' }
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'wx*.dll')) { throw 'Windows package is missing wxWidgets runtime DLLs.' }
+          $dataRoot = Join-Path $env:RUNNER_TEMP 'codium-blocks-package-data'
+          Remove-Item -Recurse -Force $dataRoot -ErrorAction SilentlyContinue
+          $executable = (Get-ChildItem -Path $expanded -Recurse -Filter 'codium-blocks.exe' | Select-Object -First 1).FullName
+          $process = Start-Process -FilePath $executable -PassThru -Environment @{ CODIUM_BLOCKS_DATA = $dataRoot }
+          Start-Sleep -Seconds 4
+          $process.Refresh()
+          if ($process.HasExited -and $process.ExitCode -ne 0) { throw "Packaged executable exited with code $($process.ExitCode)." }
+          if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
           $hashes = $packages | Get-FileHash -Algorithm SHA256
           $hashes | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path)" } | Set-Content build/codium-blocks-windows.sha256
 
       - name: Upload Windows package
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: codium-blocks-windows-package
           path: |

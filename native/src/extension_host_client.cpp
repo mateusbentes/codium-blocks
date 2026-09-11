@@ -1,7 +1,12 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Codium::Blocks Contributors
+
 #include "codium/extension_host_client.hpp"
 
 #include <wx/filename.h>
 #include <wx/utils.h>
+
+#include <vector>
 
 namespace codium {
 
@@ -44,8 +49,14 @@ bool ExtensionHostClient::Start(const wxString& hostScript, const wxString& node
 
     process_ = new wxProcess(owner_);
     process_->Redirect();
-    const wxString command = wxString::Format(wxS("%s \"%s\""), nodeExecutable, hostScript);
-    pid_ = wxExecute(command, wxEXEC_ASYNC, process_);
+    wxArrayString argv;
+    argv.Add(nodeExecutable);
+    argv.Add(hostScript);
+    std::vector<const wxChar*> nativeArgv;
+    nativeArgv.reserve(argv.GetCount() + 1);
+    for (const auto& argument : argv) nativeArgv.push_back(argument.wx_str());
+    nativeArgv.push_back(nullptr);
+    pid_ = wxExecute(nativeArgv.data(), wxEXEC_ASYNC, process_);
     if (pid_ == 0) {
         delete process_;
         process_ = nullptr;

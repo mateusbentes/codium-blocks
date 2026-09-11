@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Codium::Blocks Contributors
+
 #include "codium/vsix_manager.hpp"
 #include "codium/extension_security.hpp"
 #include "codium/signature_verifier.hpp"
@@ -10,6 +13,7 @@
 #include <wx/wfstream.h>
 #include <wx/zipstrm.h>
 
+#include <cctype>
 #include <memory>
 
 namespace codium {
@@ -55,6 +59,15 @@ bool WriteTextFile(const wxString& path, const wxString& text)
     return file.Write(bytes.data(), bytes.length()) == bytes.length();
 }
 
+bool IsSha256Digest(const wxString& digest)
+{
+    if (digest.length() != 64) return false;
+    for (const auto ch : digest) {
+        if (!std::isxdigit(static_cast<unsigned char>(ch))) return false;
+    }
+    return true;
+}
+
 } // namespace
 
 VsixManager::VsixManager(wxString extensionRoot)
@@ -65,7 +78,11 @@ VsixManager::VsixManager(wxString extensionRoot)
 
 bool VsixManager::Install(const wxString& vsixPath, wxString* message)
 {
-    return InstallVerified(vsixPath, wxEmptyString, message);
+    if (message) {
+        *message = wxS("An expected SHA-256 digest is required for VSIX installation. Use InstallVerified or InstallSigned.");
+    }
+    (void)vsixPath;
+    return false;
 }
 
 bool VsixManager::InstallSigned(const wxString& vsixPath, const wxString& expectedSha256,
@@ -84,6 +101,10 @@ bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expe
 {
     if (!wxFileExists(vsixPath) || !vsixPath.Lower().EndsWith(wxS(".vsix"))) {
         if (message) *message = wxS("The file must exist and have a .vsix extension.");
+        return false;
+    }
+    if (!IsSha256Digest(expectedSha256)) {
+        if (message) *message = wxS("The expected VSIX SHA-256 digest must contain exactly 64 hexadecimal characters.");
         return false;
     }
 

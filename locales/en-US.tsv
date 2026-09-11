@@ -485,3 +485,5 @@ label.themeHighContrast	High contrast
 label.themeLight	Light
 label.themeSystem	System
 message.codeBlocksLoadPolicy	Preflight only: Codium::Blocks does not load Code::Blocks shared libraries until a matching SDK host ABI is attached. Native plugins depend on Manager, PluginManager, cbPlugin, and event infrastructure.
+dialog.vsixVerification	Verify VSIX package
+input.vsixSha256	Expected VSIX SHA-256 digest (64 hexadecimal characters):

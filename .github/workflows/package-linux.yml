@@ -8,16 +8,28 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: codium-blocks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   package-linux:
     name: Linux packages (ubuntu-24.04)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - name: Check out source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Validate release tag
+        if: github.ref_type == 'tag'
+        run: |
+          version=$(sed -n 's/^project(CodiumBlocks VERSION \([^ ]*\).*/\1/p' CMakeLists.txt)
+          test -n "$version"
+          test "$GITHUB_REF_NAME" = "v$version"
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
 
@@ -45,12 +57,25 @@ jobs:
 
       - name: Generate Linux packages
         run: |
+          set -euo pipefail
           cmake --build build --target install/strip -- DESTDIR="$PWD/staging"
+          test -n "$(find staging -type f -path '*/bin/codium-blocks' -print -quit)"
           (cd build && cpack)
-          sha256sum build/codium-blocks-*.deb build/codium-blocks-*.tar.gz > build/codium-blocks-linux.sha256
+          deb=$(find build -maxdepth 1 -type f -name 'codium-blocks-*.deb' -print -quit)
+          tgz=$(find build -maxdepth 1 -type f -name 'codium-blocks-*.tar.gz' -print -quit)
+          test -n "$deb" && test -s "$deb"
+          test -n "$tgz" && test -s "$tgz"
+          dpkg-deb --info "$deb"
+          dpkg-deb --contents "$deb" | grep -F 'usr/bin/codium-blocks'
+          dpkg-deb --contents "$deb" | grep -F 'en-US.tsv'
+          dpkg-deb --contents "$deb" | grep -F 'CHANGELOG.md'
+          tar -tzf "$tgz" | grep -F 'bin/codium-blocks'
+          tar -tzf "$tgz" | grep -F 'locales/en-US.tsv'
+          tar -tzf "$tgz" | grep -F 'CHANGELOG.md'
+          sha256sum "$deb" "$tgz" > build/codium-blocks-linux.sha256
 
       - name: Upload Linux packages
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: codium-blocks-linux-packages
           path: |

@@ -8,16 +8,28 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: codium-blocks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   package-macos:
     name: macOS application bundle (macos-15)
     runs-on: macos-15
+    timeout-minutes: 30
     steps:
       - name: Check out source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Validate release tag
+        if: github.ref_type == 'tag'
+        run: |
+          version=$(sed -n 's/^project(CodiumBlocks VERSION \([^ ]*\).*/\1/p' CMakeLists.txt)
+          test -n "$version"
+          test "$GITHUB_REF_NAME" = "v$version"
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
 
@@ -42,11 +54,40 @@ jobs:
 
       - name: Generate macOS DMG
         run: |
+          set -euo pipefail
+          staging="$RUNNER_TEMP/codium-blocks-install"
+          rm -rf "$staging"
+          cmake --install build --prefix "$staging"
+          app="$staging/codium-blocks.app"
+          test -x "$app/Contents/MacOS/codium-blocks"
+          otool -L "$app/Contents/MacOS/codium-blocks"
+          if otool -L "$app/Contents/MacOS/codium-blocks" | grep -E '/(opt/homebrew|usr/local|opt/local)/'; then
+            echo 'The installed macOS bundle still references a package-manager path.' >&2
+            exit 1
+          fi
           (cd build && cpack -C Release)
-          shasum -a 256 build/codium-blocks-*.dmg > build/codium-blocks-macos.sha256
+          dmg=$(find build -maxdepth 1 -type f -name 'codium-blocks-*.dmg' -print -quit)
+          test -n "$dmg" && test -s "$dmg"
+          mount_point=$(hdiutil attach -nobrowse -readonly "$dmg" | sed -n 's#.*\(/Volumes/.*\)$#\1#p' | tail -n 1)
+          test -n "$mount_point"
+          cleanup() { hdiutil detach "$mount_point" >/dev/null || true; }
+          trap cleanup EXIT
+          packaged_app=$(find "$mount_point" -maxdepth 1 -type d -name '*.app' -print -quit)
+          test -x "$packaged_app/Contents/MacOS/codium-blocks"
+          otool -L "$packaged_app/Contents/MacOS/codium-blocks" | tee build/codium-blocks-macos-dependencies.txt
+          if grep -E '/(opt/homebrew|usr/local|opt/local)/' build/codium-blocks-macos-dependencies.txt; then
+            echo 'The DMG contains a bundle with an external package-manager dependency.' >&2
+            exit 1
+          fi
+          "$packaged_app/Contents/MacOS/codium-blocks" > build/codium-blocks-macos-package.log 2>&1 &
+          app_pid=$!
+          sleep 5
+          kill "$app_pid" 2>/dev/null || true
+          wait "$app_pid" 2>/dev/null || true
+          shasum -a 256 "$dmg" > build/codium-blocks-macos.sha256
 
       - name: Upload macOS package
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: codium-blocks-macos-package
           path: |

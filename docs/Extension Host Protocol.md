@@ -1,23 +1,7 @@
 # Extension Host Protocol
 
-The prototype uses **JSON Lines** over `stdin`/`stdout`. Each line is an independent JSON object. The final transport may be replaced with named pipes, Unix domain sockets, or Windows named pipes without changing the logical contract.
+This file is a compatibility pointer retained for links from earlier development snapshots. The **canonical Extension Host protocol is version 2** and is maintained in [`protocol/README.md`](../protocol/README.md).
 
-## Host messages
+Version 1 described the initial prototype and is not the current contract. New integrations must implement protocol 2 and negotiate the `protocol` value in the `ready` message. Historical protocol 1 consumers are not promised compatibility unless a future adapter explicitly documents it.
 
-```json
-{"type":"ready","protocol":1,"runtime":"node","electron":false}
-{"type":"event","event":"notification","level":"info","message":"..."}
-{"type":"response","id":2,"ok":true}
-```
-
-## Broker messages
-
-```json
-{"id":1,"type":"hello"}
-{"id":2,"type":"load","extensionPath":"/absolute/path"}
-{"id":3,"type":"executeCommand","command":"hello.codium","args":[]}
-{"id":4,"type":"listExtensions"}
-{"id":5,"type":"shutdown"}
-```
-
-Protocol version `1` covers only the initial `vscode` subset: `commands`, `window`, `workspace`, `languages`, `extensions`, and `Uri`. The contract must be versioned before accepting third-party extensions.
+The canonical document defines JSON Lines transport, host and broker messages, extension contributions, persistent configuration, workspace document events, and the language-server process manager. Changes to the wire contract must update the canonical document, the host smoke test, and the protocol compatibility matrix together.
