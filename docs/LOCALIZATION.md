@@ -26,6 +26,8 @@ The language selected by the application follows this order:
 
 The **View > Language** menu writes the preference and asks for a restart. Restarting is deliberate: native menus, notebook page labels, controls, accelerator labels, and accessibility descriptions are constructed together during window creation. Rebuilding them in place would risk losing editor state and event bindings. Dialogs opened after a language change use the newly selected catalog immediately, while the complete workbench is applied on the next launch.
 
+`CODIUM_BLOCKS_LANGUAGE` is an explicit test and portable-launch override. It takes precedence for the current process but is not written back to `ui-language.tsv`, so deterministic CI runs cannot silently change a developer's saved language choice.
+
 ## Catalog format
 
 Catalogs are UTF-8 TSV files with one stable key and one translated value per line:

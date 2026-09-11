@@ -60,13 +60,28 @@ int main(int argc, char** argv)
     // The fake Node process validates the byte transport, not terminal emulation.
     // Keep this smoke test deterministic on Windows; ConPTY is exercised by the
     // native UI path and can be tested separately with a real interactive shell.
-    wxSetEnv(wxS("CODIUM_BLOCKS_DISABLE_CONPTY"), wxS("1"));
+    wxString requireConPty;
+    const bool requireConPtyBackend = wxGetEnv(wxS("CODIUM_BLOCKS_REQUIRE_CONPTY"), &requireConPty) &&
+        !requireConPty.empty() && requireConPty != wxS("0");
+#if defined(__WXMSW__)
+    if (requireConPtyBackend) wxUnsetEnv(wxS("CODIUM_BLOCKS_DISABLE_CONPTY"));
+    else wxSetEnv(wxS("CODIUM_BLOCKS_DISABLE_CONPTY"), wxS("1"));
+#else
+    (void)requireConPtyBackend;
+#endif
     wxString error;
     if (!terminal.Start(wxS("node"), terminalArguments, root, &error)) {
         std::cerr << "transport-smoke: terminal start failed (backend=" << terminal.BackendName().ToStdString()
                   << "): " << error.ToStdString() << "\n";
         return 1;
     }
+#if defined(__WXMSW__)
+    if (requireConPtyBackend && terminal.BackendName() != wxS("ConPTY")) {
+        std::cerr << "transport-smoke: ConPTY was required but backend was "
+                  << terminal.BackendName().ToStdString() << "\n";
+        return 1;
+    }
+#endif
     if (terminal.BackendName() == wxS("ConPTY") && !terminal.Resize(100, 30)) {
         std::cerr << "transport-smoke: ConPTY resize unavailable; continuing with the negotiated size\n";
     }
@@ -86,6 +101,21 @@ int main(int argc, char** argv)
     }
     terminal.Write(wxS("exit\r\n"));
     terminal.Stop();
+#if !defined(__WXMSW__)
+    codium::TerminalSession stubborn(nullptr, wxID_HIGHEST + 702);
+    wxArrayString stubbornArguments;
+    stubbornArguments.Add(wxS("-c"));
+    stubbornArguments.Add(wxS("trap '' HUP TERM; while :; do sleep 1; done"));
+    if (!stubborn.Start(wxS("/bin/sh"), stubbornArguments, root, &error)) {
+        std::cerr << "transport-smoke: stubborn shell start failed: " << error.ToStdString() << "\n";
+        return 1;
+    }
+    stubborn.Stop();
+    if (stubborn.IsRunning()) {
+        std::cerr << "transport-smoke: stubborn shell remained running after Stop\n";
+        return 1;
+    }
+#endif
     wxUnsetEnv(wxS("CODIUM_BLOCKS_DISABLE_CONPTY"));
 
     codium::DapClient dap(nullptr, wxID_HIGHEST + 701);

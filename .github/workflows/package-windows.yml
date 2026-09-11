@@ -14,10 +14,10 @@ jobs:
     runs-on: windows-2022
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -52,11 +52,18 @@ jobs:
           cpack --config build/CPackConfig.cmake -C Release
           $packages = @(Get-ChildItem build/codium-blocks-*.zip)
           if ($packages.Count -eq 0) { throw 'No Windows package was generated.' }
+          $expanded = Join-Path $env:RUNNER_TEMP 'codium-blocks-package-validation'
+          Remove-Item -Recurse -Force $expanded -ErrorAction SilentlyContinue
+          Expand-Archive -Path $packages[0].FullName -DestinationPath $expanded
+          if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'codium-blocks.exe')) { throw 'Windows package is missing the native executable.' }
+          if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'en-US.tsv')) { throw 'Windows package is missing en-US.tsv.' }
+          if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'pt-BR.tsv')) { throw 'Windows package is missing pt-BR.tsv.' }
+          if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'wx*.dll')) { throw 'Windows package is missing wxWidgets runtime DLLs.' }
           $hashes = $packages | Get-FileHash -Algorithm SHA256
           $hashes | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path)" } | Set-Content build/codium-blocks-windows.sha256
 
       - name: Upload Windows package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: codium-blocks-windows-package
           path: |

@@ -15,17 +15,18 @@ jobs:
     runs-on: macos-15
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
-          go-version: 1.23.6
+          go-version: '1.23.6'
+          cache: false
 
       - name: Install macOS dependencies
         run: |
@@ -94,7 +95,57 @@ jobs:
           test -s artifacts/codium-blocks-macos-high-contrast.png
 
       - name: Upload macOS visual validation
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: codium-blocks-macos-visual-validation
+          path: artifacts/
+
+  bundle-macos:
+    name: macOS bundle (macos-15)
+    runs-on: macos-15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install macOS bundle dependencies
+        run: |
+          brew update
+          brew install cmake wxwidgets
+          echo "$(brew --prefix wxwidgets)/bin" >> "$GITHUB_PATH"
+          echo "PKG_CONFIG_PATH=$(brew --prefix wxwidgets)/lib/pkgconfig" >> "$GITHUB_ENV"
+
+      - name: Configure macOS bundle
+        run: >-
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF -DCODIUM_BLOCKS_MACOS_BUNDLE=ON
+
+      - name: Build macOS bundle
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Run macOS bundle validation
+        run: |
+          ctest --test-dir build -C Release -R 'localization-smoke|install-layout-smoke|terminal-screen-smoke|terminal-profile-smoke' --output-on-failure
+          node --check extension-host/src/host.mjs
+          node tests/host-smoke.mjs
+
+      - name: Capture macOS bundle high-contrast workbench
+        run: |
+          mkdir -p artifacts
+          CODIUM_BLOCKS_THEME=high-contrast ./build/codium-blocks.app/Contents/MacOS/codium-blocks >artifacts/native-ui-macos-bundle.log 2>&1 &
+          pid=$!
+          sleep 4
+          screencapture -x artifacts/codium-blocks-macos-bundle-high-contrast.png
+          kill "$pid" 2>/dev/null || true
+          wait "$pid" 2>/dev/null || true
+          test -s artifacts/codium-blocks-macos-bundle-high-contrast.png
+
+      - name: Upload macOS bundle visual validation
+        uses: actions/upload-artifact@v7
+        with:
+          name: codium-blocks-macos-bundle-visual-validation
           path: artifacts/

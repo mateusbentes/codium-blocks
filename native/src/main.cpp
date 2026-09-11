@@ -1570,7 +1570,7 @@ private:
     void UpdateTitle()
     {
         const wxString name = document_.IsUntitled()
-            ? (workspace_.IsOpen() ? workspace_.RootPath() : wxString(wxS("Untitled")))
+            ? (workspace_.IsOpen() ? workspace_.RootPath() : T(wxS("document.untitled")))
             : wxFileName(document_.Path()).GetFullName();
         SetTitle(wxString::Format(wxS("%s%s — Codium::Blocks %s"),
                                   name, document_.IsDirty() ? wxS(" *") : wxEmptyString,
@@ -2169,7 +2169,9 @@ private:
         }
         wxArrayString arguments;
 #if defined(__WXMSW__)
-        arguments.Add(wxS("/Q"));
+        if (wxFileName(terminalShell_).GetFullName().Lower() == wxS("cmd.exe")) {
+            arguments.Add(wxS("/Q"));
+        }
 #else
         arguments.Add(wxS("-i"));
 #endif
@@ -2206,10 +2208,14 @@ private:
         choices.Add(wxS("powershell.exe"));
         choices.Add(wxS("pwsh.exe"));
 #else
-        choices.Add(wxS("/bin/sh"));
-        choices.Add(wxS("/bin/bash"));
-        choices.Add(wxS("/bin/zsh"));
-        choices.Add(wxS("/usr/bin/fish"));
+        const wxString candidates[] = {
+            wxS("/bin/sh"), wxS("/bin/bash"), wxS("/bin/zsh"),
+            wxS("/bin/fish"), wxS("/usr/bin/fish")
+        };
+        for (const auto& candidate : candidates) {
+            if (wxFileName::IsFileExecutable(candidate)) choices.Add(candidate);
+        }
+        if (choices.empty()) choices.Add(DefaultShell());
 #endif
         wxSingleChoiceDialog dialog(this, T(wxS("dialog.selectShell")),
                                     T(wxS("dialog.terminalShell")), choices);

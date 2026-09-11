@@ -116,6 +116,10 @@ int main(int argc, char** argv)
     if (overridden.ActiveLanguage() != codium::UiLanguage::PortugueseBrazil) return Fail("language environment override was ignored");
     if (overridden.Text(wxS("menu.file")) != wxS("&Arquivo")) return Fail("language environment override translation failed");
 
+    codium::Localization afterOverride;
+    if (!afterOverride.Load(sourceRoot, dataRoot, &error)) return Fail("loading after environment override failed");
+    if (afterOverride.SelectedLanguage() != codium::UiLanguage::English) return Fail("environment override changed persisted preference");
+
     wxFileName::Rmdir(dataRoot, wxPATH_RMDIR_RECURSIVE);
     std::cout << "localization-smoke: ok\n";
     return 0;

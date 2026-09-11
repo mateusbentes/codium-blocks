@@ -18,6 +18,8 @@ Sixel DCS and Kitty graphics APC payloads are consumed and discarded by policy r
 
 Terminal profiles are stored outside the source tree through `wxFileConfig`: `%APPDATA%/CodiumBlocks` on Windows, `~/Library/Application Support/CodiumBlocks` on macOS, and `$XDG_STATE_HOME/codium-blocks` or `~/.config/codium-blocks` on Linux. `CODIUM_BLOCKS_DATA` overrides the location for portable deployments and tests. The default profile stores the selected shell, dimensions, and the last 500 command-history entries.
 
+On Unix, stopping a PTY session signals its process group and uses bounded escalation to avoid leaving descendant processes behind or blocking the workbench indefinitely when a shell ignores termination signals. Windows ConPTY uses the corresponding process termination path provided by the operating system.
+
 The terminal-screen smoke test validates cursor movement, SGR colors, erase-display, scrolling, alternate-screen entry/exit, cursor visibility, scrollback, mouse modes, bracketed paste, wide cells, combining characters, OSC 8 allowlisting, synchronized updates, graphics payload consumption, and regional-indicator pairing. The profile smoke test validates persistence. The transport test separately validates interactive echo, resize, ANSI preservation, clean shutdown, and DAP.
 
 This remains a focused native VT implementation rather than a complete xterm emulator. Release 1.0 is the target for complete Unicode grapheme segmentation, full Unicode width edge cases, and an optional, resource-limited Sixel/Kitty image-rendering policy. Later work may refine synchronized-update edge cases and richer hyperlink behavior.

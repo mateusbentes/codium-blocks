@@ -214,7 +214,7 @@ bool TerminalSession::Start(const wxString& program, const wxArrayString& argume
         dup2(slaveFd, STDOUT_FILENO);
         dup2(slaveFd, STDERR_FILENO);
         if (slaveFd > STDERR_FILENO) close(slaveFd);
-        if (!workingDirectory.empty()) chdir(workingDirectory.utf8_str().data());
+        if (!workingDirectory.empty() && chdir(workingDirectory.utf8_str().data()) != 0) _exit(127);
         std::vector<std::string> values;
         values.emplace_back(program.utf8_str().data());
         for (const auto& argument : arguments) values.emplace_back(argument.utf8_str().data());
@@ -317,9 +317,25 @@ void TerminalSession::Stop()
     pid_ = 0;
 #else
     if (childPid_ > 0) {
-        kill(childPid_, SIGHUP);
-        kill(childPid_, SIGTERM);
-        waitpid(childPid_, nullptr, 0);
+        const pid_t processGroup = -static_cast<pid_t>(childPid_);
+        if (kill(processGroup, SIGHUP) != 0 && errno == ESRCH) kill(childPid_, SIGHUP);
+        if (kill(processGroup, SIGTERM) != 0 && errno == ESRCH) kill(childPid_, SIGTERM);
+
+        bool exited = false;
+        for (int attempt = 0; attempt < 50; ++attempt) {
+            int status = 0;
+            const pid_t result = waitpid(childPid_, &status, WNOHANG);
+            if (result == childPid_ || (result < 0 && errno == ECHILD)) {
+                exited = true;
+                break;
+            }
+            if (result < 0 && errno != EINTR) break;
+            usleep(10 * 1000);
+        }
+        if (!exited) {
+            if (kill(processGroup, SIGKILL) != 0 && errno == ESRCH) kill(childPid_, SIGKILL);
+            while (waitpid(childPid_, nullptr, 0) < 0 && errno == EINTR) {}
+        }
     }
     if (masterFd_ >= 0) close(masterFd_);
     masterFd_ = -1; childPid_ = 0; pid_ = 0; usingPty_ = false;

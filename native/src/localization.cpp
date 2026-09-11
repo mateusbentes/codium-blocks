@@ -5,6 +5,7 @@
 #include <wx/file.h>
 #include <wx/filename.h>
 #include <wx/intl.h>
+#include <wx/strconv.h>
 #include <wx/textfile.h>
 #include <wx/utils.h>
 
@@ -40,6 +41,7 @@ bool Localization::Load(const wxString& resourceRoot, const wxString& dataRoot, 
 {
     resourceRoot_ = resourceRoot;
     dataRoot_ = dataRoot;
+    environmentOverride_ = false;
     wxFileName::Mkdir(dataRoot_, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
 
     selectedLanguage_ = UiLanguage::System;
@@ -61,6 +63,7 @@ bool Localization::Load(const wxString& resourceRoot, const wxString& dataRoot, 
     wxString configured;
     if (wxGetEnv(wxS("CODIUM_BLOCKS_LANGUAGE"), &configured) && !configured.empty()) {
         selectedLanguage_ = LanguageFromName(configured);
+        environmentOverride_ = true;
     }
     return SetLanguage(selectedLanguage_, error);
 }
@@ -89,7 +92,7 @@ bool Localization::SetLanguage(UiLanguage language, wxString* error)
         }
     }
 
-    return SavePreference(error);
+    return environmentOverride_ ? true : SavePreference(error);
 }
 
 wxString Localization::Text(const wxString& key) const
@@ -155,7 +158,7 @@ bool Localization::LoadCatalog(const wxString& path, std::map<wxString, wxString
 {
     if (!catalog) return false;
     wxTextFile file;
-    if (!file.Open(path)) {
+    if (!file.Open(path, wxConvUTF8)) {
         if (error) *error = wxString::Format(wxS("Could not open localization catalog: %s"), path);
         return false;
     }

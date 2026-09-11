@@ -15,17 +15,18 @@ jobs:
     runs-on: windows-2022
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
-          go-version: 1.23.6
+          go-version: '1.23.6'
+          cache: false
 
       - name: Install Windows dependencies
         shell: pwsh
@@ -96,6 +97,13 @@ jobs:
         shell: pwsh
         run: ctest --test-dir build -C Release --output-on-failure
 
+      - name: Run Windows ConPTY smoke
+        shell: pwsh
+        run: |
+          $env:CODIUM_BLOCKS_REQUIRE_CONPTY = '1'
+          ctest --test-dir build -C Release -R '^transport-smoke$' --output-on-failure
+          Remove-Item Env:CODIUM_BLOCKS_REQUIRE_CONPTY
+
       - name: Run Windows Extension Host smoke test
         shell: pwsh
         run: node tests/host-smoke.mjs
@@ -119,7 +127,7 @@ jobs:
           if (-not (Test-Path "$PWD/artifacts/codium-blocks-windows-high-contrast.png")) { throw 'Windows visual validation did not create a screenshot.' }
 
       - name: Upload Windows visual validation
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: codium-blocks-windows-visual-validation
           path: artifacts/

@@ -44,6 +44,7 @@ private:
     std::map<wxString, wxString> catalog_;
     UiLanguage selectedLanguage_ = UiLanguage::System;
     UiLanguage activeLanguage_ = UiLanguage::English;
+    bool environmentOverride_ = false;
 };
 
 } // namespace codium
