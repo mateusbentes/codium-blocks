@@ -490,6 +490,13 @@ target_include_directories(codium-blocks-transport-smoke PRIVATE native/include)
 codium_blocks_enable_warnings(codium-blocks-transport-smoke)
 target_link_libraries(codium-blocks-transport-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
+if(WIN32)
+    add_executable(codium-blocks-conpty-client-smoke
+        tests/conpty-client-smoke.cpp
+    )
+    codium_blocks_enable_warnings(codium-blocks-conpty-client-smoke)
+endif()
+
 add_executable(codium-blocks-terminal-screen-smoke
     native/src/terminal_screen.cpp
     tests/terminal-screen-smoke.cpp
@@ -682,7 +689,13 @@ if(BUILD_TESTING)
     add_test(NAME task-smoke COMMAND codium-blocks-task-smoke)
     add_test(NAME target-discovery-smoke COMMAND codium-blocks-target-discovery-smoke)
     add_test(NAME build-session-smoke COMMAND codium-blocks-build-session-smoke)
-    add_test(NAME transport-smoke COMMAND codium-blocks-transport-smoke ${CMAKE_SOURCE_DIR})
+    if(WIN32)
+        add_test(NAME transport-smoke
+            COMMAND codium-blocks-transport-smoke ${CMAKE_SOURCE_DIR}
+                $<TARGET_FILE:codium-blocks-conpty-client-smoke>)
+    else()
+        add_test(NAME transport-smoke COMMAND codium-blocks-transport-smoke ${CMAKE_SOURCE_DIR})
+    endif()
     add_test(NAME terminal-screen-smoke COMMAND codium-blocks-terminal-screen-smoke)
     add_test(NAME terminal-profile-smoke COMMAND codium-blocks-terminal-profile-smoke)
     add_test(NAME debug-model-smoke COMMAND codium-blocks-debug-model-smoke)

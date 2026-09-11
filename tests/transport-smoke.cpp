@@ -55,6 +55,7 @@ int main(int argc, char** argv)
     const wxString root = wxString::FromUTF8(argv[1]);
     const wxString fakeTerminal = root + wxS("/tests/fake-terminal.mjs");
     const wxString fakeDap = root + wxS("/tests/fake-dap.mjs");
+    const wxString conPtyClient = argc >= 3 ? wxString::FromUTF8(argv[2]) : wxString(wxEmptyString);
 
     codium::TerminalSession terminal(nullptr, wxID_HIGHEST + 700);
     wxString requireConPty;
@@ -62,18 +63,17 @@ int main(int argc, char** argv)
         !requireConPty.empty() && requireConPty != wxS("0");
     wxString terminalProgram = wxS("node");
     wxArrayString terminalArguments;
-    bool useWindowsCommandShell = false;
+    bool useNativeConPtyClient = false;
 #if defined(__WXMSW__)
     if (requireConPtyBackend) {
-        // Validate ConPTY with a native console program. Node's Windows stdio
-        // startup path is a separate concern from the pseudo-console itself.
-        if (!wxGetEnv(wxS("ComSpec"), &terminalProgram) || terminalProgram.empty()) {
-            terminalProgram = wxS("cmd.exe");
+        // Validate ConPTY with a native console program. This keeps the smoke
+        // independent of cmd.exe's line editor and Node's Windows stdio path.
+        if (conPtyClient.empty()) {
+            std::cerr << "transport-smoke: native ConPTY client was not configured\n";
+            return 1;
         }
-        terminalArguments.Add(wxS("/d"));
-        terminalArguments.Add(wxS("/q"));
-        terminalArguments.Add(wxS("/k"));
-        useWindowsCommandShell = true;
+        terminalProgram = conPtyClient;
+        useNativeConPtyClient = true;
     } else {
         terminalArguments.Add(fakeTerminal);
     }
@@ -102,7 +102,7 @@ int main(int argc, char** argv)
         return 1;
     }
 #endif
-    if (!useWindowsCommandShell && !WaitForTerminal(terminal, wxS("ready"))) {
+    if (!WaitForTerminal(terminal, wxS("ready"))) {
         std::cerr << "transport-smoke: terminal process did not become ready (backend="
                   << terminal.BackendName().ToStdString() << ", running="
                   << (terminal.IsRunning() ? "true" : "false") << ")\n";
@@ -114,7 +114,7 @@ int main(int argc, char** argv)
     // ConPTY translates input into console key events. A console Enter is a
     // carriage return; do not append LF, which becomes a second input event.
     terminal.PollRaw();
-    const wxString pingCommand = useWindowsCommandShell ? wxS("echo pong\r") : wxS("ping\r\n");
+    const wxString pingCommand = useNativeConPtyClient ? wxS("ping\r") : wxS("ping\r\n");
     if (!terminal.Write(pingCommand)) {
         std::cerr << "transport-smoke: terminal write failed (backend=" << terminal.BackendName().ToStdString()
                   << ")\n";
@@ -125,14 +125,12 @@ int main(int argc, char** argv)
                   << ", running=" << (terminal.IsRunning() ? "true" : "false") << ")\n";
         return 1;
     }
-    const wxString ansiCommand = useWindowsCommandShell
-        ? wxS("prompt $E[31mred$E[0m$G\r")
-        : wxS("ansi\r\n");
+    const wxString ansiCommand = useNativeConPtyClient ? wxS("ansi\r") : wxS("ansi\r\n");
     if (!terminal.Write(ansiCommand) || !WaitForRawTerminal(terminal, wxString::FromUTF8("\x1b[31m"))) {
         std::cerr << "transport-smoke: ANSI output or PTY resize failed\n";
         return 1;
     }
-    terminal.Write(wxS("exit\r\n"));
+    terminal.Write(useNativeConPtyClient ? wxS("exit\r") : wxS("exit\r\n"));
     terminal.Stop();
 #if !defined(__WXMSW__)
     codium::TerminalSession stubborn(nullptr, wxID_HIGHEST + 702);
