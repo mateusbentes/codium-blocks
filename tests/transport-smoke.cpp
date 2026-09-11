@@ -11,20 +11,22 @@ namespace {
 
 bool WaitForTerminal(codium::TerminalSession& terminal, const wxString& expected)
 {
-    for (int i = 0; i < 150 && terminal.IsRunning(); ++i) {
+    for (int i = 0; i < 150; ++i) {
         wxMilliSleep(10);
         for (const auto& line : terminal.Poll()) {
             if (line.Find(expected) != wxNOT_FOUND) return true;
         }
+        if (!terminal.IsRunning() && i > 10) break;
     }
     return false;
 }
 
 bool WaitForRawTerminal(codium::TerminalSession& terminal, const wxString& expected)
 {
-    for (int i = 0; i < 150 && terminal.IsRunning(); ++i) {
+    for (int i = 0; i < 150; ++i) {
         wxMilliSleep(10);
         if (terminal.PollRaw().Find(expected) != wxNOT_FOUND) return true;
+        if (!terminal.IsRunning() && i > 10) break;
     }
     return false;
 }

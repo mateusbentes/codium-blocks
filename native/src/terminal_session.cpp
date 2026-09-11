@@ -53,6 +53,46 @@ using ClosePseudoConsoleFn = void(WINAPI*)(HPCON);
 #define PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE 0x00020016
 #endif
 
+std::wstring ResolveWindowsExecutable(const wxString& program)
+{
+    const std::wstring requested = program.ToStdWstring();
+    const size_t slash = requested.find_last_of(L"\\/");
+    const size_t dot = requested.find_last_of(L'.');
+    const wchar_t* extension = dot == std::wstring::npos || (slash != std::wstring::npos && dot < slash)
+        ? L".exe"
+        : nullptr;
+    std::vector<wchar_t> buffer(512);
+    for (;;) {
+        const DWORD length = SearchPathW(nullptr, requested.c_str(), extension,
+                                          static_cast<DWORD>(buffer.size()), buffer.data(), nullptr);
+        if (length == 0) return requested;
+        if (length < buffer.size()) return std::wstring(buffer.data(), length);
+        buffer.resize(length + 1);
+    }
+}
+
+std::wstring QuoteWindowsArgument(const std::wstring& value)
+{
+    std::wstring quoted = L"\"";
+    size_t backslashes = 0;
+    for (const wchar_t character : value) {
+        if (character == L'\\') {
+            ++backslashes;
+        } else if (character == L'\"') {
+            quoted.append(backslashes * 2 + 1, L'\\');
+            quoted += L'\"';
+            backslashes = 0;
+        } else {
+            quoted.append(backslashes, L'\\');
+            quoted += character;
+            backslashes = 0;
+        }
+    }
+    quoted.append(backslashes * 2, L'\\');
+    quoted += L'\"';
+    return quoted;
+}
+
 #endif
 
 } // namespace
@@ -114,18 +154,19 @@ bool StartConPty(TerminalSession* session, const wxString& program, const wxArra
         return false;
     }
 
-    wxString command = program;
+    const std::wstring executable = ResolveWindowsExecutable(program);
+    std::wstring commandLine = QuoteWindowsArgument(executable);
     for (const auto& argument : arguments) {
-        command += wxS(" \"") + argument + wxS("\"");
+        commandLine += L" ";
+        commandLine += QuoteWindowsArgument(argument.ToStdWstring());
     }
-    std::wstring commandLine = command.ToStdWstring();
     commandLine.push_back(L'\0');
     STARTUPINFOEXW startup{};
     startup.StartupInfo.cb = sizeof(startup);
     startup.lpAttributeList = attributes;
     PROCESS_INFORMATION processInfo{};
     std::wstring cwd = workingDirectory.ToStdWstring();
-    const BOOL started = CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, FALSE,
+    const BOOL started = CreateProcessW(executable.c_str(), commandLine.data(), nullptr, nullptr, FALSE,
                                         EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
                                         nullptr, cwd.empty() ? nullptr : cwd.c_str(), &startup.StartupInfo, &processInfo);
     DeleteProcThreadAttributeList(attributes);
@@ -357,7 +398,6 @@ void TerminalSession::HandleProcessExit(long pid, int)
 
 wxString TerminalSession::PollRaw()
 {
-    if (!IsRunning()) return wxEmptyString;
     char chunk[8192];
     std::string bytes;
 #if defined(__WXMSW__)
