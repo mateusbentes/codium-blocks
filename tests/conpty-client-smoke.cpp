@@ -35,6 +35,14 @@ bool WriteOutput(HANDLE output, const char* text)
     return WriteText(output, text);
 }
 
+void EnableVirtualTerminalOutput(HANDLE output)
+{
+    DWORD mode = 0;
+    if (GetConsoleMode(output, &mode)) {
+        SetConsoleMode(output, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    }
+}
+
 bool ReadInput(HANDLE input, char* buffer, DWORD capacity, DWORD* received, DWORD* errorCode)
 {
     DWORD mode = 0;
@@ -81,6 +89,7 @@ int main()
     DWORD outputMode = 0;
     const bool inputIsConsole = GetConsoleMode(input, &inputMode) != FALSE;
     const bool outputIsConsole = GetConsoleMode(output, &outputMode) != FALSE;
+    EnableVirtualTerminalOutput(output);
     const char* handleDescription = inputIsConsole
         ? (outputIsConsole ? "ready handles=console,console\r\n" : "ready handles=console,redirected\r\n")
         : (outputIsConsole ? "ready handles=redirected,console\r\n" : "ready handles=redirected,redirected\r\n");

@@ -126,8 +126,15 @@ int main(int argc, char** argv)
         return 1;
     }
     const wxString ansiCommand = useNativeConPtyClient ? wxS("ansi\r") : wxS("ansi\r\n");
-    if (!terminal.Write(ansiCommand) || !WaitForRawTerminal(terminal, wxString::FromUTF8("\x1b[31m"))) {
-        std::cerr << "transport-smoke: ANSI output or PTY resize failed\n";
+    if (!terminal.Write(ansiCommand)) {
+        std::cerr << "transport-smoke: ANSI command write failed (backend="
+                  << terminal.BackendName().ToStdString() << ")\n";
+        return 1;
+    }
+    if (!WaitForRawTerminal(terminal, wxString::FromUTF8("\x1b[31m"))) {
+        std::cerr << "transport-smoke: ANSI output timeout (backend="
+                  << terminal.BackendName().ToStdString() << ", running="
+                  << (terminal.IsRunning() ? "true" : "false") << ")\n";
         return 1;
     }
     terminal.Write(useNativeConPtyClient ? wxS("exit\r") : wxS("exit\r\n"));
