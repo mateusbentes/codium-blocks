@@ -131,6 +131,10 @@ function supportsProvider(capabilities, provider) {
   return value === true || (value !== false && value !== undefined);
 }
 
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 async function smokeServer(server, root) {
   const child = spawn(server.command, server.args, {
     cwd: root,
@@ -154,10 +158,10 @@ async function smokeServer(server, root) {
       processId: process.pid,
       rootUri: pathToFileURL(root).href,
       capabilities: {
-        textDocument: {
-          completion: {}, hover: {}, definition: {}, references: {}, rename: {}, publishDiagnostics: {},
+          textDocument: {
+            completion: {}, hover: {}, definition: {}, references: {}, rename: {}, publishDiagnostics: {},
+          },
         },
-      },
       workspaceFolders: [{ uri: pathToFileURL(root).href, name: 'codium-blocks-real-lsp-smoke' }],
     });
     if (initialized.error) throw new Error(JSON.stringify(initialized.error));
@@ -202,24 +206,32 @@ async function smokeServer(server, root) {
       }
       phase = name;
       let result;
-      try {
-        result = await request(method, params);
-      } catch (error) {
-        if (/no identifier|no references|no symbol|not found/i.test(error.message)) {
-          responses[name] = 'not-applicable-at-position';
-          continue;
+      const noViewRetries = server.id === 'gopls' ? 8 : 0;
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          result = await request(method, params);
+        } catch (error) {
+          if (/no identifier|no references|no symbol|not found/i.test(error.message)) {
+            responses[name] = 'not-applicable-at-position';
+            break;
+          }
+          throw error;
         }
-        throw error;
-      }
-      if (result.error) {
-        const message = JSON.stringify(result.error);
-        if (/no identifier|no references|no symbol|not found/i.test(message)) {
-          responses[name] = 'not-applicable-at-position';
-          continue;
+        if (result.error) {
+          const message = JSON.stringify(result.error);
+          if (/no views/i.test(message) && attempt < noViewRetries) {
+            await delay(500);
+            continue;
+          }
+          if (/no identifier|no references|no symbol|not found/i.test(message)) {
+            responses[name] = 'not-applicable-at-position';
+            break;
+          }
+          throw new Error(`${name} rejected: ${message}`);
         }
-        throw new Error(`${name} rejected: ${message}`);
+        responses[name] = true;
+        break;
       }
-      responses[name] = true;
     }
     return {
       initialized: true,
