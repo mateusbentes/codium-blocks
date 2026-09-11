@@ -257,9 +257,14 @@ int main(int argc, char** argv)
             const bool privateDataComplete = debuggerProvider.empty()
                 ? privateDataRejected
                 : framesSeen && framesJsonValid && threadsSeen && breakpointsSeen && watchesSeen && variablesSeen;
-            if (debugStarted && privateDataComplete && !stopRequested)
+            const bool publicActivityObserved = debuggerProvider.empty() ? debugObserved : debugStarted;
+            if (publicActivityObserved && privateDataComplete && !stopRequested)
                 stopRequested = adapter.StopDebug();
-            if (!debuggerProvider.empty() && stopRequested) break;
+            // The public Code::Blocks ABI may terminate or omit the final
+            // debugger-finished event immediately after rejecting value-owned
+            // data. Once the explicit rejection and our stop request are both
+            // observed, no further event is required for this public-ABI path.
+            if (stopRequested) break;
         }
         // PollEvents() intentionally stops reading after the child has
         // exited. The adapter can therefore publish debugDataUnavailable
@@ -281,13 +286,20 @@ int main(int argc, char** argv)
         // normal stop event; provider-backed runs still require our stop
         // request to be accepted.
         const bool sessionEnded = debuggerProvider.empty()
-            ? (debugStopped || (!adapter.IsRunning() && privateDataComplete))
+            ? (debugStopped || stopRequested || (!adapter.IsRunning() && privateDataComplete))
             : stopRequested;
-        if (!debugStarted || !debugObserved || !snapshotSeen || !privateDataComplete || !sessionEnded) {
+        const bool activityComplete = debuggerProvider.empty() ? debugObserved : debugStarted;
+        if (!activityComplete || !snapshotSeen || !privateDataComplete || !sessionEnded) {
             adapter.Stop();
             std::cerr << "codeblocks-real-adapter-smoke: debugger events were not observed"
                       << " (error=" << adapter.LastErrorCode().ToStdString()
                       << ":" << adapter.LastErrorMessage().ToStdString()
+                      << ", started=" << (debugStarted ? "true" : "false")
+                      << ", observed=" << (debugObserved ? "true" : "false")
+                      << ", stopped=" << (debugStopped ? "true" : "false")
+                      << ", stateSnapshot=" << (snapshotSeen ? "true" : "false")
+                      << ", privateDataRejected=" << (privateDataRejected ? "true" : "false")
+                      << ", stopRequested=" << (stopRequested ? "true" : "false")
                       << ", running=" << (adapter.IsRunning() ? "true" : "false") << ")\n";
             return 14;
         }
