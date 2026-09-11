@@ -280,6 +280,8 @@ try {
     } catch (error) {
       if (error?.code === 'ENOENT' || String(error?.message).includes('ENOENT')) {
         console.log(`real-lsp-smoke: ${server.name} skipped — executable not installed`);
+      } else if (server.noViewsPolicy?.[platform] === 'environment-skip' && /no views/i.test(error?.message ?? '')) {
+        console.log(`real-lsp-smoke: ${server.name} skipped — ${platform} gopls did not create a workspace view in this runner (${error.message})`);
       } else if (error?.code === 'LSP_SERVER_EXIT' && error.phase === 'initialize') {
         console.log(`real-lsp-smoke: ${server.name} skipped — executable could not start in this environment (${error.message})`);
       } else {

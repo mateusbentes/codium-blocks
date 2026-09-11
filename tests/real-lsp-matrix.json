@@ -42,6 +42,7 @@
       "versionArgs": ["version"],
       "versionPattern": "v0\\.17\\.1",
       "args": ["serve"],
+      "noViewsPolicy": { "win32": "environment-skip" },
       "languageId": "go",
       "file": "main.go",
       "text": "package main\nfunc helper() int { return 0 }\nfunc main() { _ = helper() }\n",

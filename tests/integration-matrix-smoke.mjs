@@ -38,6 +38,12 @@ for (const server of lsp.servers) {
     'documentSymbol', 'workspaceSymbol', 'rename',
   ]);
   assert.ok(Array.isArray(server.files));
+  if (server.noViewsPolicy !== undefined) {
+    for (const [platform, policy] of Object.entries(server.noViewsPolicy)) {
+      assert.ok(['linux', 'darwin', 'win32'].includes(platform));
+      assert.equal(policy, 'environment-skip');
+    }
+  }
 }
 for (const adapter of dap.adapters) {
   assert.ok(adapter.platforms.length > 0);
