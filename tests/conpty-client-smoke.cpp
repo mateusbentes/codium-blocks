@@ -45,6 +45,7 @@ void EnableVirtualTerminalOutput(HANDLE output)
 
 bool ReadInput(HANDLE input, char* buffer, DWORD capacity, DWORD* received, DWORD* errorCode)
 {
+    *received = 0;
     DWORD mode = 0;
     if (GetConsoleMode(input, &mode)) {
         // ConPTY injects terminal input as console key events. Reading the
