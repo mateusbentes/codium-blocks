@@ -55,7 +55,7 @@ jobs:
           rust-analyzer --version | grep -F '1.82.0'
           gopls version | grep -F 'v0.17.1'
           pyright --version | grep -F '1.1.390'
-          lldb --version | grep -F '18.1.8'
+          llvm-config --version | grep -F '18.1.8'
 
       - name: Build macOS
         run: cmake --build build --parallel 1 --verbose
