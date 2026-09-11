@@ -47,7 +47,10 @@
       "text": "package main\nfunc helper() int { return 0 }\nfunc main() { _ = helper() }\n",
       "position": { "line": 2, "character": 17 },
       "scenarios": ["hover", "completion", "definition", "declaration", "references", "documentSymbol", "workspaceSymbol", "rename"],
-      "files": [{ "path": "go.mod", "content": "module example.com/codium-blocks-lsp-smoke\n\ngo 1.22\n" }]
+      "files": [
+        { "path": "go.mod", "content": "module example.com/codium-blocks-lsp-smoke\n\ngo 1.22\n" },
+        { "path": "go.work", "content": "go 1.22\n\nuse .\n" }
+      ]
     },
     {
       "id": "pyright",
