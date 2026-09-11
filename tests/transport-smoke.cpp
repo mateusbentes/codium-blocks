@@ -72,6 +72,7 @@ int main(int argc, char** argv)
         }
         terminalArguments.Add(wxS("/d"));
         terminalArguments.Add(wxS("/q"));
+        terminalArguments.Add(wxS("/k"));
         useWindowsCommandShell = true;
     } else {
         terminalArguments.Add(fakeTerminal);
@@ -110,7 +111,10 @@ int main(int argc, char** argv)
     if (terminal.BackendName() == wxS("ConPTY") && !terminal.Resize(100, 30)) {
         std::cerr << "transport-smoke: ConPTY resize unavailable; continuing with the negotiated size\n";
     }
-    const wxString pingCommand = useWindowsCommandShell ? wxS("echo pong\r\n") : wxS("ping\r\n");
+    // ConPTY translates input into console key events. A console Enter is a
+    // carriage return; do not append LF, which becomes a second input event.
+    terminal.PollRaw();
+    const wxString pingCommand = useWindowsCommandShell ? wxS("echo pong\r") : wxS("ping\r\n");
     if (!terminal.Write(pingCommand)) {
         std::cerr << "transport-smoke: terminal write failed (backend=" << terminal.BackendName().ToStdString()
                   << ")\n";
@@ -122,7 +126,7 @@ int main(int argc, char** argv)
         return 1;
     }
     const wxString ansiCommand = useWindowsCommandShell
-        ? wxS("prompt $E[31mred$E[0m$G\r\n")
+        ? wxS("prompt $E[31mred$E[0m$G\r")
         : wxS("ansi\r\n");
     if (!terminal.Write(ansiCommand) || !WaitForRawTerminal(terminal, wxString::FromUTF8("\x1b[31m"))) {
         std::cerr << "transport-smoke: ANSI output or PTY resize failed\n";
