@@ -166,6 +166,18 @@ async function smokeServer(server, root) {
     });
     if (initialized.error) throw new Error(JSON.stringify(initialized.error));
     send(child, { jsonrpc: '2.0', method: 'initialized', params: {} });
+    if (server.id === 'gopls') {
+      send(child, {
+        jsonrpc: '2.0',
+        method: 'workspace/didChangeWorkspaceFolders',
+        params: {
+          event: {
+            added: [{ uri: pathToFileURL(root).href, name: 'codium-blocks-real-lsp-smoke' }],
+            removed: [],
+          },
+        },
+      });
+    }
     if (server.id === 'gopls') await delay(1500);
     send(child, { jsonrpc: '2.0', method: 'textDocument/didOpen', params: {
       textDocument: { uri, languageId: server.languageId, version: 1, text: server.text },
