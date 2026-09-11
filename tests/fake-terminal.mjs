@@ -2,6 +2,8 @@
 
 process.stdin.setEncoding('utf8');
 let buffer = '';
+process.stdin.resume();
+process.stdout.write('ready\n');
 process.stdin.on('data', (chunk) => {
   buffer += chunk;
   while (true) {

@@ -116,22 +116,20 @@ bool StartConPty(TerminalSession* session, const wxString& program, const wxArra
     auto create = reinterpret_cast<CreatePseudoConsoleFn>(GetProcAddress(kernel, "CreatePseudoConsole"));
     if (!create) return false;
 
-    SECURITY_ATTRIBUTES security{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
     HANDLE inputRead = nullptr;
     HANDLE inputWrite = nullptr;
     HANDLE outputRead = nullptr;
     HANDLE outputWrite = nullptr;
-    if (!CreatePipe(&inputRead, &inputWrite, &security, 0) ||
-        !CreatePipe(&outputRead, &outputWrite, &security, 0)) {
+    // Keep the pipe endpoints private to the host; ConPTY receives its own
+    // duplicated endpoints through CreatePseudoConsole.
+    if (!CreatePipe(&inputRead, &inputWrite, nullptr, 0) ||
+        !CreatePipe(&outputRead, &outputWrite, nullptr, 0)) {
         if (inputRead) CloseHandle(inputRead);
         if (inputWrite) CloseHandle(inputWrite);
         if (outputRead) CloseHandle(outputRead);
         if (outputWrite) CloseHandle(outputWrite);
         return false;
     }
-    SetHandleInformation(inputWrite, HANDLE_FLAG_INHERIT, 0);
-    SetHandleInformation(outputRead, HANDLE_FLAG_INHERIT, 0);
-
     COORD size{120, 32};
     HPCON console = nullptr;
     if (FAILED(create(size, inputRead, outputWrite, 0, &console))) {
@@ -160,7 +158,8 @@ bool StartConPty(TerminalSession* session, const wxString& program, const wxArra
     }
     commandLine.push_back(L'\0');
     STARTUPINFOEXW startup{};
-    startup.StartupInfo.cb = sizeof(startup);
+    // The extended startup structure carries the pseudo-console attribute.
+    startup.StartupInfo.cb = sizeof(STARTUPINFOEXW);
     startup.lpAttributeList = attributes;
     PROCESS_INFORMATION processInfo{};
     std::wstring cwd = workingDirectory.ToStdWstring();

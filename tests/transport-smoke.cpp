@@ -57,14 +57,31 @@ int main(int argc, char** argv)
     const wxString fakeDap = root + wxS("/tests/fake-dap.mjs");
 
     codium::TerminalSession terminal(nullptr, wxID_HIGHEST + 700);
-    wxArrayString terminalArguments;
-    terminalArguments.Add(fakeTerminal);
-    // The fake Node process validates the byte transport, not terminal emulation.
-    // Keep this smoke test deterministic on Windows; ConPTY is exercised by the
-    // native UI path and can be tested separately with a real interactive shell.
     wxString requireConPty;
     const bool requireConPtyBackend = wxGetEnv(wxS("CODIUM_BLOCKS_REQUIRE_CONPTY"), &requireConPty) &&
         !requireConPty.empty() && requireConPty != wxS("0");
+    wxString terminalProgram = wxS("node");
+    wxArrayString terminalArguments;
+    bool useWindowsCommandShell = false;
+#if defined(__WXMSW__)
+    if (requireConPtyBackend) {
+        // Validate ConPTY with a native console program. Node's Windows stdio
+        // startup path is a separate concern from the pseudo-console itself.
+        if (!wxGetEnv(wxS("ComSpec"), &terminalProgram) || terminalProgram.empty()) {
+            terminalProgram = wxS("cmd.exe");
+        }
+        terminalArguments.Add(wxS("/d"));
+        terminalArguments.Add(wxS("/q"));
+        useWindowsCommandShell = true;
+    } else {
+        terminalArguments.Add(fakeTerminal);
+    }
+#else
+    terminalArguments.Add(fakeTerminal);
+#endif
+    // The fake Node process validates byte transport on the portable path. The
+    // required Windows path uses cmd.exe so ConPTY is tested with a native
+    // interactive console process rather than Node's separate stdio layer.
 #if defined(__WXMSW__)
     if (requireConPtyBackend) wxUnsetEnv(wxS("CODIUM_BLOCKS_DISABLE_CONPTY"));
     else wxSetEnv(wxS("CODIUM_BLOCKS_DISABLE_CONPTY"), wxS("1"));
@@ -72,7 +89,7 @@ int main(int argc, char** argv)
     (void)requireConPtyBackend;
 #endif
     wxString error;
-    if (!terminal.Start(wxS("node"), terminalArguments, root, &error)) {
+    if (!terminal.Start(terminalProgram, terminalArguments, root, &error)) {
         std::cerr << "transport-smoke: terminal start failed (backend=" << terminal.BackendName().ToStdString()
                   << "): " << error.ToStdString() << "\n";
         return 1;
@@ -84,10 +101,17 @@ int main(int argc, char** argv)
         return 1;
     }
 #endif
+    if (!useWindowsCommandShell && !WaitForTerminal(terminal, wxS("ready"))) {
+        std::cerr << "transport-smoke: terminal process did not become ready (backend="
+                  << terminal.BackendName().ToStdString() << ", running="
+                  << (terminal.IsRunning() ? "true" : "false") << ")\n";
+        return 1;
+    }
     if (terminal.BackendName() == wxS("ConPTY") && !terminal.Resize(100, 30)) {
         std::cerr << "transport-smoke: ConPTY resize unavailable; continuing with the negotiated size\n";
     }
-    if (!terminal.Write(wxS("ping\r\n"))) {
+    const wxString pingCommand = useWindowsCommandShell ? wxS("echo pong\r\n") : wxS("ping\r\n");
+    if (!terminal.Write(pingCommand)) {
         std::cerr << "transport-smoke: terminal write failed (backend=" << terminal.BackendName().ToStdString()
                   << ")\n";
         return 1;
@@ -97,7 +121,10 @@ int main(int argc, char** argv)
                   << ", running=" << (terminal.IsRunning() ? "true" : "false") << ")\n";
         return 1;
     }
-    if (!terminal.Write(wxS("ansi\r\n")) || !WaitForRawTerminal(terminal, wxString::FromUTF8("\x1b[31m"))) {
+    const wxString ansiCommand = useWindowsCommandShell
+        ? wxS("prompt $E[31mred$E[0m$G\r\n")
+        : wxS("ansi\r\n");
+    if (!terminal.Write(ansiCommand) || !WaitForRawTerminal(terminal, wxString::FromUTF8("\x1b[31m"))) {
         std::cerr << "transport-smoke: ANSI output or PTY resize failed\n";
         return 1;
     }
