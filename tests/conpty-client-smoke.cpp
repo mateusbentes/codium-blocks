@@ -5,6 +5,7 @@
 #include <windows.h>
 
 #include <cstring>
+#include <iterator>
 
 namespace {
 
@@ -23,7 +24,24 @@ bool ReadInput(HANDLE input, char* buffer, DWORD capacity, DWORD* received)
 {
     DWORD mode = 0;
     if (GetConsoleMode(input, &mode)) {
-        return ReadConsoleA(input, buffer, capacity, received, nullptr) != FALSE;
+        // ConPTY injects terminal input as console key events. Reading the
+        // input-record buffer avoids the line-editor semantics of ReadConsoleA
+        // and works for both cooked and raw console input modes.
+        SetConsoleMode(input, mode & ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT));
+        INPUT_RECORD records[64]{};
+        while (*received == 0) {
+            DWORD recordCount = 0;
+            if (!ReadConsoleInputA(input, records, static_cast<DWORD>(std::size(records)), &recordCount)) {
+                return false;
+            }
+            for (DWORD index = 0; index < recordCount && *received < capacity; ++index) {
+                const KEY_EVENT_RECORD& key = records[index].Event.KeyEvent;
+                if (records[index].EventType == KEY_EVENT && key.bKeyDown && key.uChar.AsciiChar != '\0') {
+                    buffer[(*received)++] = key.uChar.AsciiChar;
+                }
+            }
+        }
+        return true;
     }
     return ReadFile(input, buffer, capacity, received, nullptr) != FALSE;
 }
