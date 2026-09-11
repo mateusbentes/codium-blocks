@@ -72,6 +72,21 @@ wxString BreakpointFilePath(const wxString& workspaceRoot)
     return directory + wxFILE_SEP_PATH + wxString::FromUTF8(suffix.str()) + wxS(".tsv");
 }
 
+wxString AdvancedBreakpointFilePath(const wxString& workspaceRoot)
+{
+    wxString dataRoot;
+    if (!wxGetEnv(wxS("CODIUM_BLOCKS_DATA"), &dataRoot) || dataRoot.empty()) {
+        dataRoot = wxStandardPaths::Get().GetUserConfigDir() + wxFILE_SEP_PATH + wxS("CodiumBlocks");
+    }
+    const std::string keyInput = workspaceRoot.utf8_str().data();
+    const size_t key = std::hash<std::string>{}(keyInput);
+    std::ostringstream suffix;
+    suffix << std::hex << key;
+    const wxString directory = dataRoot + wxFILE_SEP_PATH + wxS("breakpoints");
+    wxFileName::Mkdir(directory, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+    return directory + wxFILE_SEP_PATH + wxString::FromUTF8(suffix.str()) + wxS("-advanced.tsv");
+}
+
 wxString EscapeTsv(const wxString& value)
 {
     wxString escaped;
@@ -539,6 +554,86 @@ bool DapBreakpointStore::Save(const wxString& workspaceRoot, const std::vector<D
     if (file.Write(bytes.data(), bytes.length()) != bytes.length() || !file.Close() || !wxRenameFile(temporary, path, true)) {
         wxRemoveFile(temporary);
         if (error) *error = wxString::Format(wxS("Could not commit breakpoints: %s."), path);
+        return false;
+    }
+    return true;
+}
+
+bool DapAdvancedBreakpointStore::Load(const wxString& workspaceRoot,
+                                      std::vector<DapFunctionBreakpoint>* functions,
+                                      std::vector<DapDataBreakpoint>* data, wxString* error)
+{
+    if (!functions || !data) {
+        if (error) *error = wxS("Advanced breakpoint output vectors are required.");
+        return false;
+    }
+    functions->clear();
+    data->clear();
+    const wxString path = AdvancedBreakpointFilePath(workspaceRoot);
+    if (!wxFileExists(path)) return true;
+    wxFile file;
+    if (!file.Open(path, wxFile::read)) {
+        if (error) *error = wxString::Format(wxS("Could not read advanced breakpoints: %s."), path);
+        return false;
+    }
+    wxString text;
+    if (!file.ReadAll(&text)) {
+        if (error) *error = wxString::Format(wxS("Could not read advanced breakpoints: %s."), path);
+        return false;
+    }
+    wxStringTokenizer lines(text, wxS("\n"), wxTOKEN_STRTOK);
+    while (lines.HasMoreTokens()) {
+        wxString line = lines.GetNextToken();
+        if (line.EndsWith(wxS("\r"))) line.RemoveLast();
+        wxStringTokenizer fields(line, wxS("\t"), wxTOKEN_RET_EMPTY);
+        wxArrayString values;
+        while (fields.HasMoreTokens()) values.Add(UnescapeTsv(fields.GetNextToken()));
+        if (values.size() < 2) continue;
+        if (values[0] == wxS("function") && !values[1].empty()) {
+            DapFunctionBreakpoint breakpoint;
+            breakpoint.name = values[1];
+            if (values.size() > 2) breakpoint.condition = values[2];
+            if (values.size() > 3) breakpoint.hitCondition = values[3];
+            functions->push_back(std::move(breakpoint));
+        } else if (values[0] == wxS("data") && values.size() >= 3 && !values[1].empty()) {
+            DapDataBreakpoint breakpoint;
+            breakpoint.dataId = values[1];
+            breakpoint.accessType = values[2];
+            if (values.size() > 3) breakpoint.condition = values[3];
+            if (values.size() > 4) breakpoint.hitCondition = values[4];
+            data->push_back(std::move(breakpoint));
+        }
+    }
+    return true;
+}
+
+bool DapAdvancedBreakpointStore::Save(const wxString& workspaceRoot,
+                                      const std::vector<DapFunctionBreakpoint>& functions,
+                                      const std::vector<DapDataBreakpoint>& data, wxString* error)
+{
+    const wxString path = AdvancedBreakpointFilePath(workspaceRoot);
+    const wxString temporary = path + wxS(".tmp");
+    wxFile file;
+    if (!file.Open(temporary, wxFile::write)) {
+        if (error) *error = wxString::Format(wxS("Could not write advanced breakpoints: %s."), temporary);
+        return false;
+    }
+    wxString text;
+    for (const auto& breakpoint : functions) {
+        if (breakpoint.name.empty()) continue;
+        text += wxS("function\t") + EscapeTsv(breakpoint.name) + wxS("\t") +
+                EscapeTsv(breakpoint.condition) + wxS("\t") + EscapeTsv(breakpoint.hitCondition) + wxS("\n");
+    }
+    for (const auto& breakpoint : data) {
+        if (breakpoint.dataId.empty() || breakpoint.accessType.empty()) continue;
+        text += wxS("data\t") + EscapeTsv(breakpoint.dataId) + wxS("\t") +
+                EscapeTsv(breakpoint.accessType) + wxS("\t") + EscapeTsv(breakpoint.condition) + wxS("\t") +
+                EscapeTsv(breakpoint.hitCondition) + wxS("\n");
+    }
+    const wxScopedCharBuffer bytes = text.utf8_str();
+    if (file.Write(bytes.data(), bytes.length()) != bytes.length() || !file.Close() || !wxRenameFile(temporary, path, true)) {
+        wxRemoveFile(temporary);
+        if (error) *error = wxString::Format(wxS("Could not commit advanced breakpoints: %s."), path);
         return false;
     }
     return true;

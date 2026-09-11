@@ -167,6 +167,28 @@ int main()
         std::cerr << "debug-model-smoke: breakpoint persistence failed\n";
         return 18;
     }
+    std::vector<codium::DapFunctionBreakpoint> functions;
+    functions.push_back(codium::DapFunctionBreakpoint{
+        wxS("main"), wxS("counter > 0"), wxS("2"), 0, wxEmptyString,
+        codium::DapBreakpointState::Pending});
+    std::vector<codium::DapDataBreakpoint> dataBreakpoints;
+    dataBreakpoints.push_back(codium::DapDataBreakpoint{
+        wxS("counter"), wxS("write"), wxS(""), wxS(""), 0, wxEmptyString,
+        codium::DapBreakpointState::Pending});
+    if (!codium::DapAdvancedBreakpointStore::Save(root, functions, dataBreakpoints, &error)) {
+        std::cerr << "debug-model-smoke: advanced breakpoint save failed: " << error.ToStdString() << "\n";
+        return 19;
+    }
+    std::vector<codium::DapFunctionBreakpoint> restoredFunctions;
+    std::vector<codium::DapDataBreakpoint> restoredData;
+    if (!codium::DapAdvancedBreakpointStore::Load(root, &restoredFunctions, &restoredData, &error) ||
+        restoredFunctions.size() != 1 || restoredFunctions[0].name != wxS("main") ||
+        restoredFunctions[0].condition != wxS("counter > 0") || restoredFunctions[0].hitCondition != wxS("2") ||
+        restoredData.size() != 1 || restoredData[0].dataId != wxS("counter") ||
+        restoredData[0].accessType != wxS("write")) {
+        std::cerr << "debug-model-smoke: advanced breakpoint persistence failed\n";
+        return 20;
+    }
     std::filesystem::remove_all(root.ToStdString());
 
     std::cout << "debug-model-smoke: ok — source mapping, persistent watches, Code::Blocks snapshots, and DAP session state\n";

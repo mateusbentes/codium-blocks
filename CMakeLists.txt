@@ -257,6 +257,16 @@ add_executable(codium-blocks
     native/src/codeblocks_adapter_client.cpp
 )
 
+add_executable(codium-blocks-real-dap-debuggee
+    tests/fixtures/real-dap-debuggee.cpp
+)
+if(MSVC)
+    target_compile_options(codium-blocks-real-dap-debuggee PRIVATE /Zi /Od)
+    target_link_options(codium-blocks-real-dap-debuggee PRIVATE /DEBUG)
+else()
+    target_compile_options(codium-blocks-real-dap-debuggee PRIVATE -g -O0)
+endif()
+
 # wxIMPLEMENT_APP provides WinMain on Windows. Mark only the GUI target as a
 # Windows-subsystem executable; smoke tests intentionally remain console apps.
 if(WIN32)
@@ -568,7 +578,10 @@ if(BUILD_TESTING)
     )
     add_test(
         NAME real-dap-smoke
-        COMMAND node ${CMAKE_SOURCE_DIR}/tests/real-dap-smoke.mjs
+        COMMAND ${CMAKE_COMMAND} -E env
+            CODIUM_BLOCKS_REAL_DAP_DEBUGGEE=$<TARGET_FILE:codium-blocks-real-dap-debuggee>
+            CODIUM_BLOCKS_REAL_DAP_SOURCE=${CMAKE_SOURCE_DIR}/tests/fixtures/real-dap-debuggee.cpp
+            node ${CMAKE_SOURCE_DIR}/tests/real-dap-smoke.mjs
     )
     add_test(NAME document-smoke COMMAND codium-blocks-document-smoke)
     add_test(NAME editor-actions-smoke COMMAND codium-blocks-editor-actions-smoke)

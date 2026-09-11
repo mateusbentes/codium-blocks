@@ -30,10 +30,31 @@ jobs:
             fi
           done
           sudo apt-get update -o Acquire::Retries=3
-          sudo apt-get install -y build-essential cmake pkg-config libwxgtk3.2-dev libssl-dev
+          sudo apt-get install -y build-essential cmake pkg-config libwxgtk3.2-dev libssl-dev \
+            imagemagick xvfb \
+            clangd-18=1:18.1.3-1ubuntu1 lldb-18=1:18.1.3-1ubuntu1 \
+            gdb=15.1-1ubuntu1~24.04.1 golang-go=2:1.22~2build1 rustup
+          sudo ln -sf /usr/bin/clangd-18 /usr/local/bin/clangd
+          sudo ln -sf /usr/bin/lldb-dap-18 /usr/local/bin/lldb-dap
+          rustup toolchain install 1.82.0 --profile minimal
+          rustup component add rust-analyzer --toolchain 1.82.0
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$HOME/.rustup/toolchains/1.82.0-x86_64-unknown-linux-gnu/bin/rust-analyzer" "$HOME/.local/bin/rust-analyzer"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          GOTOOLCHAIN=go1.23.6 GOBIN="$HOME/.local/bin" go install golang.org/x/tools/gopls@v0.17.1
+          npm install --global pyright@1.1.390
 
       - name: Configure Linux
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Verify Linux toolchain versions
+        run: |
+          clangd --version | grep -F '18.1.3'
+          rust-analyzer --version | grep -F '1.82.0'
+          gopls version | grep -F 'v0.17.1'
+          pyright --version | grep -F '1.1.390'
+          gdb --version | grep -F '15.1'
+          lldb-18 --version | grep -F '18.1.3'
 
       - name: Build Linux
         run: cmake --build build --parallel 1 --verbose
@@ -59,3 +80,22 @@ jobs:
 
       - name: Run Linux Extension Host smoke test
         run: node tests/host-smoke.mjs
+
+      - name: Capture Linux high-contrast workbench
+        run: |
+          mkdir -p artifacts
+          xvfb-run -a --server-args="-screen 0 1600x1000x24" sh -c '
+            CODIUM_BLOCKS_THEME=high-contrast ./build/codium-blocks >artifacts/native-ui-linux.log 2>&1 &
+            pid=$!
+            sleep 4
+            import -window root artifacts/codium-blocks-linux-high-contrast.png
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+          '
+          test -s artifacts/codium-blocks-linux-high-contrast.png
+
+      - name: Upload Linux visual validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: codium-blocks-linux-visual-validation
+          path: artifacts/

@@ -22,36 +22,36 @@ The Code::Blocks boundary is implemented as an optional isolated process. The pu
 
 ## Current delivery status
 
-The current increment completes four related quality outcomes without adding native packaging. Their status is summarized below.
+The current increment completes the quality outcomes below without adding native packaging. Their status is summarized below.
 
 | Outcome | Implemented evidence | Deliberate boundary |
 |---|---|---|
-| Versioned real-tool matrices | `tests/real-lsp-matrix.json` fixes four language-server entries and representative workspaces. `tests/real-dap-matrix.json` fixes GDB and LLDB adapter entries by platform. `tests/integration-matrix-smoke.mjs` validates both schemas on every build. | Runtime probes remain safely skippable when an external executable is not installed. An installed tool that starts and then fails protocol initialization is a test failure. |
-| Native themes | The native UI has System, Light, Dark, and High contrast palettes. The selected theme updates panels, editor defaults, terminal surfaces, syntax colors, gutter markers, and status text. | Cross-platform screenshot comparison and complete system high-contrast detection remain validation work. |
-| Accessibility signals | Gutter markers expose letter glyphs in addition to color, controls use native wxWidgets focus behavior, and the high-contrast palette provides strong text/background separation. | A full accessibility audit still needs platform-specific keyboard, font-scaling, screen-reader, and high-DPI checks. |
+| Versioned real-tool matrices | `tests/real-lsp-matrix.json` fixes four language-server entries, tool versions, representative workspaces, and capability-gated scenarios. `tests/real-dap-matrix.json` fixes GDB and LLDB adapter entries by platform. `tests/integration-matrix-smoke.mjs` validates both schemas on every build. | Runtime probes remain safely skippable when an external executable is not installed. An installed tool with a mismatched version, or one that starts and fails a required protocol scenario, is a test failure. |
+| Native themes | The native UI has System, Light, Dark, and High contrast palettes. The selected theme updates panels, editor defaults, terminal surfaces, syntax colors, gutter markers, and status text. Dedicated workflows capture a high-contrast workbench at a large runner display resolution. | Human comparison of screenshots and complete system high-contrast detection remain validation work. |
+| Accessibility signals | Gutter markers expose letter glyphs in addition to color, controls use native wxWidgets focus behavior, the high-contrast palette provides strong text/background separation, and each platform workflow produces a visual validation artifact. | A full accessibility audit still needs platform-specific keyboard, font-scaling, screen-reader, focus-restoration, and high-DPI checks. |
 | Extension API depth | The Node host now supports workspace document open/change/save events, `workspace.textDocuments`, `TreeItem`, Tree Data Providers, and native Tree View event forwarding. | SCM provider methods, custom-editor activation, webviews, and broader VS Code API compatibility remain bounded follow-up work. |
-| Advanced DAP requests | The native client serializes `setFunctionBreakpoints` and `setDataBreakpoints`; the fake DAP smoke validates their payloads and capability gating is visible in the Debug panel. | Function and data breakpoints are session-scoped in this increment. Full persistence migration, adapter-specific diagnostics, and real GDB/LLDB execution remain validation work. |
+| Advanced DAP requests | The native client serializes `setFunctionBreakpoints` and `setDataBreakpoints`; configured entries persist per workspace, adapter rejection messages are retained, the fake DAP validates payloads, and the real probe runs launch/stop/stack/scopes/variables/continue/disconnect scenarios when capabilities permit. | Adapter-specific data-ID discovery, richer rejection UX, and broader LLDB/OpenDebugAD7 behavior remain validation work. |
 | Platform CI isolation | Linux, macOS, Windows, and Code::Blocks Linux integration are separate workflow files. Each file mentions and executes only its own environment. | Native packaging is intentionally deferred. |
 
 ## Ordered follow-up work
 
 ### Reproducible language-server validation
 
-The versioned matrix is now a required contract check. The optional runtime harness creates isolated, language-appropriate workspaces for clangd, rust-analyzer, gopls, and pyright-langserver. It probes initialize, document open, hover, completion, definition, and document symbols. Missing executables or failures before protocol startup are reported as environment skips. Failures after startup remain failures.
+The versioned matrix is now a required contract check. Dedicated platform workflows install or cache the pinned clangd, rust-analyzer, gopls, and pyright versions. The runtime harness creates isolated, language-appropriate workspaces and verifies initialize, document open, hover, completion, definition, declaration, references, document symbols, workspace symbols, and rename when the server advertises each provider. Missing executables or failures before protocol startup are reported as environment skips. Version mismatches and failures after startup remain failures.
 
-The next refinement is to install or cache exact toolchain versions in dedicated platform jobs where licensing, runner availability, and maintenance policy permit it. The native IDE will not acquire a runtime dependency on any language server.
+The native IDE will not acquire a runtime dependency on any language server. Future refinements should add server-specific fixtures for diagnostics and semantic-token edge cases without weakening the fixed-version contract.
 
 ### Real GDB and LLDB validation
 
-The DAP matrix fixes versioned entries for GDB's DAP interpreter, LLDB-DAP, and the Windows OpenDebugAD7 contract. The optional runtime probe sends a standard initialize request and reports adapter capabilities. The Code::Blocks DebuggerGDB provider remains a separate, matched Linux workflow and is not conflated with generic GDB or LLDB compatibility.
+The DAP matrix fixes versioned entries for GDB's DAP interpreter, LLDB-DAP, and the Windows OpenDebugAD7 contract. The runtime probe sends initialize and, for launch-capable entries, exercises launch, stopped, stack trace, scopes, variables, continuation, source/function/data breakpoint requests when advertised, and clean disconnect. It records the LLDB-DAP 18.1.3 handshake variation in which the adapter does not emit `initialized` after its initialize response. The Code::Blocks DebuggerGDB provider remains a separate, matched Linux workflow and is not conflated with generic GDB or LLDB compatibility.
 
-The next refinement is a dedicated adapter scenario for launch, stopped, stack trace, source mapping, conditional breakpoints, function breakpoints, data breakpoints, and clean disconnect. The scenario must be implemented independently for each adapter that supports the capability rather than assuming that one adapter's extensions apply to all others.
+The next refinement is adapter-specific fixture coverage for LLDB-DAP and OpenDebugAD7, including their source-path conventions and data-breakpoint discovery. The implementation must continue to gate each request on the adapter's initialize capabilities rather than assuming that one adapter's extensions apply to all others.
 
 ### Themes, accessibility, and visual verification
 
 The theme model is implemented and shared by the native workbench, editor, terminal surface, diagnostics, and breakpoints. The next step is platform-specific validation at ordinary and high-DPI scales. The validation should inspect clipped labels, focus order, readable status text, gutter alignment, and contrast in the four supported theme modes.
 
-A complete accessibility pass must also cover keyboard-only navigation, native control labels, font scaling, high-contrast system settings, focus restoration after dialogs, and non-color descriptions for diagnostics and breakpoint states. Screenshot or structured UI inspection must supplement compilation and smoke tests because layout regressions are not reliably detected by CTest.
+A complete accessibility pass must also cover keyboard-only navigation, native control labels, font scaling, high-contrast system settings, focus restoration after dialogs, and non-color descriptions for diagnostics and breakpoint states. The isolated workflows now create high-contrast screenshots on all target operating systems; human review and, where available, structured UI inspection must supplement those artifacts because layout and screen-reader regressions are not reliably detected by CTest.
 
 ### Extension API contracts
 
@@ -84,7 +84,7 @@ Release 1.0 requires a stable classic layout, a fast native editor, navigable Pr
 
 The project does not promise that every VS Code extension, every Code::Blocks plugin, or every Xcode workflow will work. Electron-dependent extensions, private VS Code APIs, proprietary services, arbitrary native plugins, unsupported webviews, and unmatched Code::Blocks binaries require explicit compatibility work or remain unsupported.
 
-Post-1.0 work may add mathematically complete Unicode grapheme and width handling, optional Sixel or Kitty rendering with strict resource limits, deeper SCM and custom-editor APIs, unattended extension registry workflows, function/data breakpoint persistence, and broader debugger features. These capabilities will be introduced only when their native boundary, security policy, tests, and platform behavior are defined.
+Post-1.0 work may add mathematically complete Unicode grapheme and width handling, optional Sixel or Kitty rendering with strict resource limits, deeper SCM and custom-editor APIs, unattended extension registry workflows, adapter-specific data-breakpoint discovery, and broader debugger features. These capabilities will be introduced only when their native boundary, security policy, tests, and platform behavior are defined.
 
 ## References
 

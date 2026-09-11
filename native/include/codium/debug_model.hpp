@@ -83,6 +83,25 @@ struct DapBreakpoint final {
     DapBreakpointState state = DapBreakpointState::Pending;
 };
 
+struct DapFunctionBreakpoint final {
+    wxString name;
+    wxString condition;
+    wxString hitCondition;
+    int id = 0;
+    wxString message;
+    DapBreakpointState state = DapBreakpointState::Pending;
+};
+
+struct DapDataBreakpoint final {
+    wxString dataId;
+    wxString accessType;
+    wxString condition;
+    wxString hitCondition;
+    int id = 0;
+    wxString message;
+    DapBreakpointState state = DapBreakpointState::Pending;
+};
+
 struct DapRefreshPlan final {
     DapRunState state = DapRunState::Disconnected;
     bool stateChanged = false;
@@ -130,6 +149,14 @@ public:
     static std::vector<DapBreakpoint> Load(const wxString& workspaceRoot);
     static bool Save(const wxString& workspaceRoot, const std::vector<DapBreakpoint>& breakpoints,
                      wxString* error = nullptr);
+};
+
+class DapAdvancedBreakpointStore final {
+public:
+    static bool Load(const wxString& workspaceRoot, std::vector<DapFunctionBreakpoint>* functions,
+                     std::vector<DapDataBreakpoint>* data, wxString* error = nullptr);
+    static bool Save(const wxString& workspaceRoot, const std::vector<DapFunctionBreakpoint>& functions,
+                     const std::vector<DapDataBreakpoint>& data, wxString* error = nullptr);
 };
 
 struct CodeBlocksDebugValue final {

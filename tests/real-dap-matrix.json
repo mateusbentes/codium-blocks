@@ -5,24 +5,45 @@
   "adapters": [
     {
       "id": "gdb-dap",
-      "version": "14.2",
+      "version": "15.1",
       "platforms": ["linux"],
       "command": { "linux": "gdb", "darwin": null, "win32": null },
-      "args": ["--interpreter=dap"]
+      "args": ["--interpreter=dap"],
+      "versionArgs": ["--version"],
+      "versionPattern": "GNU gdb.*15\\.1",
+      "scenario": "launch-stop-stack-breakpoints-disconnect",
+      "debuggee": "real-dap-debuggee.cpp",
+      "breakpointLine": 14
     },
     {
       "id": "lldb-dap",
-      "version": "18.1.8",
+      "version": { "linux": "18.1.3", "darwin": "18.1.8", "win32": "18.1.8" },
       "platforms": ["linux", "darwin", "win32"],
       "command": { "linux": "lldb-dap", "darwin": "lldb-dap", "win32": "lldb-dap.exe" },
-      "args": []
+      "versionCommand": { "linux": "lldb-18", "darwin": "lldb", "win32": "lldb.exe" },
+      "args": [],
+      "requiresInitializedEvent": false,
+      "versionArgs": ["--version"],
+      "versionPattern": {
+        "linux": "18\\.1\\.3",
+        "darwin": "18\\.1\\.8",
+        "win32": "18\\.1\\.8"
+      },
+      "scenario": "launch-stop-stack-breakpoints-disconnect",
+      "debuggee": "real-dap-debuggee.cpp",
+      "breakpointLine": 14
     },
     {
       "id": "open-debug-ad7",
       "version": "0.1.0-codium-blocks-contract",
       "platforms": ["win32"],
       "command": { "linux": null, "darwin": null, "win32": "OpenDebugAD7.exe" },
-      "args": []
+      "args": [],
+      "versionArgs": null,
+      "versionPattern": null,
+      "scenario": "initialize-only",
+      "debuggee": null,
+      "breakpointLine": null
     }
   ]
 }

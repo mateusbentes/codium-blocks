@@ -5,42 +5,63 @@
   "servers": [
     {
       "id": "clangd",
-      "version": "18.1.8",
+      "version": { "linux": "18.1.3", "darwin": "18.1.8", "win32": "18.1.8" },
       "command": { "linux": "clangd", "darwin": "clangd", "win32": "clangd.exe" },
+      "versionArgs": ["--version"],
+      "versionPattern": {
+        "linux": "clangd version 18\\.1\\.3",
+        "darwin": "clangd version 18\\.1\\.8",
+        "win32": "clangd version 18\\.1\\.8"
+      },
       "args": ["--log=error"],
       "languageId": "cpp",
       "file": "main.cpp",
       "text": "int main() { return 0; }\n",
+      "position": { "line": 0, "character": 5 },
+      "scenarios": ["hover", "completion", "definition", "declaration", "references", "documentSymbol", "workspaceSymbol", "rename"],
       "files": []
     },
     {
       "id": "rust-analyzer",
-      "version": "2024-10-28",
+      "version": "1.82.0",
       "command": { "linux": "rust-analyzer", "darwin": "rust-analyzer", "win32": "rust-analyzer.exe" },
+      "versionArgs": ["--version"],
+      "versionPattern": "rust-analyzer 1\\.82\\.0",
       "args": [],
       "languageId": "rust",
       "file": "src/main.rs",
-      "text": "fn main() { }\n",
+      "text": "fn helper() -> i32 { 0 }\nfn main() { let _ = helper(); }\n",
+      "position": { "line": 0, "character": 3 },
+      "scenarios": ["hover", "completion", "definition", "declaration", "references", "documentSymbol", "workspaceSymbol", "rename"],
       "files": [{ "path": "Cargo.toml", "content": "[package]\nname = \"codium_blocks_lsp_smoke\"\nversion = \"0.1.0\"\nedition = \"2021\"\n" }]
     },
     {
       "id": "gopls",
       "version": "v0.17.1",
       "command": { "linux": "gopls", "darwin": "gopls", "win32": "gopls.exe" },
+      "versionArgs": ["version"],
+      "versionPattern": "v0\\.17\\.1",
       "args": ["serve"],
       "languageId": "go",
       "file": "main.go",
-      "text": "package main\nfunc main() {}\n",
+      "text": "package main\nfunc helper() int { return 0 }\nfunc main() { _ = helper() }\n",
+      "position": { "line": 2, "character": 17 },
+      "scenarios": ["hover", "completion", "definition", "declaration", "references", "documentSymbol", "workspaceSymbol", "rename"],
       "files": [{ "path": "go.mod", "content": "module example.com/codium-blocks-lsp-smoke\n\ngo 1.22\n" }]
     },
     {
       "id": "pyright",
       "version": "1.1.390",
       "command": { "linux": "pyright-langserver", "darwin": "pyright-langserver", "win32": "pyright-langserver.cmd" },
+      "versionCommand": { "linux": "pyright", "darwin": "pyright", "win32": "pyright.cmd" },
+      "versionArgs": ["--version"],
+      "versionPattern": "1\\.1\\.390",
       "args": ["--stdio"],
       "languageId": "python",
       "file": "main.py",
-      "text": "def main():\n    return 0\n",
+      "text": "def helper():\n    return 0\n\ndef main():\n    return helper()\n",
+      "position": { "line": 4, "character": 11 },
+      "scenarios": ["hover", "completion", "definition", "declaration", "references", "documentSymbol", "workspaceSymbol", "rename"],
       "files": [{ "path": "pyrightconfig.json", "content": "{\"include\":[\"main.py\"],\"pythonVersion\":\"3.11\"}\n" }]
     }
   ]

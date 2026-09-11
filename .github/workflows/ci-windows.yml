@@ -22,9 +22,29 @@ jobs:
         with:
           node-version: 22
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.23.6
+
       - name: Install Windows dependencies
         shell: pwsh
-        run: vcpkg install wxwidgets:x64-windows
+        run: |
+          vcpkg install wxwidgets:x64-windows
+          choco install llvm --version=18.1.8 -y --no-progress
+          rustup-init.exe -y --default-toolchain none
+          rustup toolchain install 1.82.0 --profile minimal
+          rustup component add rust-analyzer --toolchain 1.82.0
+          $llvmBin = Join-Path $env:ProgramFiles 'LLVM/bin'
+          $rustAnalyzerBin = Join-Path $env:USERPROFILE '.rustup/toolchains/1.82.0-x86_64-pc-windows-msvc/bin'
+          "$llvmBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "$rustAnalyzerBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          New-Item -ItemType Directory -Force -Path (Join-Path $env:USERPROFILE '.local/bin') | Out-Null
+          $env:GOBIN = Join-Path $env:USERPROFILE '.local/bin'
+          $env:GOTOOLCHAIN = 'go1.23.6'
+          go install golang.org/x/tools/gopls@v0.17.1
+          $env:GOBIN | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          npm install --global pyright@1.1.390
 
       - name: Configure Windows
         shell: pwsh
@@ -32,6 +52,15 @@ jobs:
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64
           -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
           -DVCPKG_TARGET_TRIPLET=x64-windows
+
+      - name: Verify Windows toolchain versions
+        shell: pwsh
+        run: |
+          clangd.exe --version | Select-String '18.1.8'
+          rust-analyzer.exe --version | Select-String '1.82.0'
+          gopls.exe version | Select-String 'v0.17.1'
+          pyright.cmd --version | Select-String '1.1.390'
+          lldb.exe --version | Select-String '18.1.8'
 
       - name: Build Windows
         shell: pwsh
@@ -62,3 +91,27 @@ jobs:
       - name: Run Windows Extension Host smoke test
         shell: pwsh
         run: node tests/host-smoke.mjs
+
+      - name: Capture Windows high-contrast workbench
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $process = Start-Process -FilePath "$PWD/build/Release/codium-blocks.exe" -PassThru -Environment @{ CODIUM_BLOCKS_THEME = 'high-contrast' }
+          Start-Sleep -Seconds 4
+          Add-Type -AssemblyName System.Windows.Forms
+          Add-Type -AssemblyName System.Drawing
+          $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
+          $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+          $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+          $graphics.CopyFromScreen($bounds.Left, $bounds.Top, 0, 0, $bitmap.Size)
+          $bitmap.Save("$PWD/artifacts/codium-blocks-windows-high-contrast.png", [System.Drawing.Imaging.ImageFormat]::Png)
+          $graphics.Dispose()
+          $bitmap.Dispose()
+          Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+          if (-not (Test-Path "$PWD/artifacts/codium-blocks-windows-high-contrast.png")) { throw 'Windows visual validation did not create a screenshot.' }
+
+      - name: Upload Windows visual validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: codium-blocks-windows-visual-validation
+          path: artifacts/

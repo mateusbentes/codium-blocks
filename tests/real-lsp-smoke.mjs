@@ -12,6 +12,9 @@ const servers = matrix.servers.map((server) => ({
   ...server,
   name: server.id,
   command: server.command[platform],
+  versionCommand: server.versionCommand?.[platform] ?? server.command[platform],
+  version: typeof server.version === 'string' ? server.version : server.version?.[platform],
+  versionPattern: typeof server.versionPattern === 'string' ? server.versionPattern : server.versionPattern?.[platform],
 }));
 
 class ServerExitError extends Error {
@@ -40,6 +43,24 @@ async function waitForClose(child, timeoutMs = 3000) {
       new Promise((resolve) => child.once('close', resolve)),
       new Promise((resolve) => setTimeout(resolve, timeoutMs)),
     ]);
+  }
+}
+
+async function verifyVersion(server) {
+  if (!server.versionArgs || !server.versionPattern || !server.command) return;
+  const child = spawn(server.versionCommand, server.versionArgs, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32' && server.versionCommand.endsWith('.cmd'),
+  });
+  let output = '';
+  child.stdout.on('data', (chunk) => { output += chunk.toString(); });
+  child.stderr.on('data', (chunk) => { output += chunk.toString(); });
+  await new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', resolve);
+  });
+  if (!new RegExp(server.versionPattern).test(output)) {
+    throw new Error(`${server.name}: installed version does not match ${server.version}; output=${output.trim()}`);
   }
 }
 
@@ -105,6 +126,11 @@ function attachParser(child, state) {
   });
 }
 
+function supportsProvider(capabilities, provider) {
+  const value = capabilities?.[provider];
+  return value === true || (value !== false && value !== undefined);
+}
+
 async function smokeServer(server, root) {
   const child = spawn(server.command, server.args, {
     cwd: root,
@@ -139,29 +165,66 @@ async function smokeServer(server, root) {
     send(child, { jsonrpc: '2.0', method: 'textDocument/didOpen', params: {
       textDocument: { uri, languageId: server.languageId, version: 1, text: server.text },
     } });
-    phase = 'hover';
-    const hover = await request('textDocument/hover', {
-      textDocument: { uri }, position: { line: 0, character: 1 },
-    });
-    phase = 'completion';
-    const completion = await request('textDocument/completion', {
-      textDocument: { uri }, position: { line: 0, character: 1 },
-    });
-    phase = 'definition';
-    const definition = await request('textDocument/definition', {
-      textDocument: { uri }, position: { line: 0, character: 1 },
-    });
-    phase = 'documentSymbol';
-    const symbols = await request('textDocument/documentSymbol', { textDocument: { uri } });
+    const capabilities = initialized.result?.capabilities ?? {};
+    const position = server.position ?? { line: 0, character: 1 };
+    const scenarios = [
+      ['hover', 'hoverProvider', 'textDocument/hover', { textDocument: { uri }, position }],
+      ['completion', 'completionProvider', 'textDocument/completion', { textDocument: { uri }, position }],
+      ['definition', 'definitionProvider', 'textDocument/definition', { textDocument: { uri }, position }],
+      ['declaration', 'declarationProvider', 'textDocument/declaration', { textDocument: { uri }, position }],
+      ['references', 'referencesProvider', 'textDocument/references', {
+        textDocument: { uri }, position, context: { includeDeclaration: true },
+      }],
+      ['documentSymbol', 'documentSymbolProvider', 'textDocument/documentSymbol', { textDocument: { uri } }],
+      ['workspaceSymbol', 'workspaceSymbolProvider', 'workspace/symbol', { query: 'main' }],
+      ['rename', 'renameProvider', 'textDocument/rename', { textDocument: { uri }, position, newName: 'renamed_main' }],
+    ];
+    const responses = {};
+    for (const [name, provider, method, params] of scenarios) {
+      if (!server.scenarios?.includes(name) || !supportsProvider(capabilities, provider)) {
+        responses[name] = 'unsupported';
+        continue;
+      }
+      if (name === 'rename') {
+        let prepare;
+        try {
+          prepare = await request('textDocument/prepareRename', {
+            textDocument: { uri }, position,
+          });
+        } catch {
+          responses[name] = 'unsupported';
+          continue;
+        }
+        if (prepare.result === null || prepare.result === undefined) {
+          responses[name] = 'not-applicable-at-position';
+          continue;
+        }
+      }
+      phase = name;
+      let result;
+      try {
+        result = await request(method, params);
+      } catch (error) {
+        if (/no identifier|no references|no symbol|not found/i.test(error.message)) {
+          responses[name] = 'not-applicable-at-position';
+          continue;
+        }
+        throw error;
+      }
+      if (result.error) {
+        const message = JSON.stringify(result.error);
+        if (/no identifier|no references|no symbol|not found/i.test(message)) {
+          responses[name] = 'not-applicable-at-position';
+          continue;
+        }
+        throw new Error(`${name} rejected: ${message}`);
+      }
+      responses[name] = true;
+    }
     return {
       initialized: true,
-      providers: initialized.result?.capabilities ?? {},
-      responses: {
-        hover: !hover.error,
-        completion: !completion.error,
-        definition: !definition.error,
-        documentSymbol: !symbols.error,
-      },
+      providers: capabilities,
+      responses,
     };
   } finally {
     try { send(child, { jsonrpc: '2.0', id: 999, method: 'shutdown', params: null }); } catch {}
@@ -184,9 +247,10 @@ try {
     await mkdir(dirname(sourcePath), { recursive: true });
     await writeFile(sourcePath, server.text, 'utf8');
     try {
+      await verifyVersion(server);
       const result = await smokeServer(server, serverRoot);
       executed += 1;
-      console.log(`real-lsp-smoke: ${server.name} ok — initialize, didOpen, hover, completion, definition, documentSymbol`);
+      console.log(`real-lsp-smoke: ${server.name} ok — initialize, didOpen, and capability-gated editor scenarios`);
       console.log(`real-lsp-smoke: ${server.name} responses ${JSON.stringify(result.responses)}`);
     } catch (error) {
       if (error?.code === 'ENOENT' || String(error?.message).includes('ENOENT')) {

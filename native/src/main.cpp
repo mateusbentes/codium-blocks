@@ -268,6 +268,34 @@ std::vector<int> JsonIntFields(const wxString& line, const wxString& field)
     return values;
 }
 
+bool JsonBoolField(const wxString& line, const wxString& field, bool fallback = false)
+{
+    const wxString marker = wxString::Format(wxS("\"%s\":"), field);
+    const int start = line.Find(marker);
+    if (start == wxNOT_FOUND) return fallback;
+    const wxString value = line.Mid(start + static_cast<int>(marker.length())).Strip(wxString::both);
+    if (value.StartsWith(wxS("true"))) return true;
+    if (value.StartsWith(wxS("false"))) return false;
+    return fallback;
+}
+
+std::vector<bool> JsonBoolFields(const wxString& line, const wxString& field)
+{
+    std::vector<bool> values;
+    const wxString marker = wxString::Format(wxS("\"%s\":"), field);
+    int searchFrom = 0;
+    while (searchFrom < static_cast<int>(line.length())) {
+        const int relativeStart = line.Mid(searchFrom).Find(marker);
+        if (relativeStart == wxNOT_FOUND) break;
+        int index = searchFrom + relativeStart + static_cast<int>(marker.length());
+        while (index < static_cast<int>(line.length()) && (line[index] == wxChar(' ') || line[index] == wxChar('\t'))) ++index;
+        if (line.Mid(index).StartsWith(wxS("true"))) values.push_back(true);
+        else if (line.Mid(index).StartsWith(wxS("false"))) values.push_back(false);
+        searchFrom = index + 1;
+    }
+    return values;
+}
+
 wxString JsonEscape(const wxString& value)
 {
     wxString result;
@@ -472,6 +500,11 @@ struct DebugFrameLocation final {
     int line = 0;
     int character = 0;
     wxString path;
+};
+
+enum class DapAdvancedBreakpointRequestKind {
+    Function,
+    Data,
 };
 
 enum class LspResultMode {
@@ -1502,6 +1535,11 @@ private:
         watchExpressions_ = codium::WatchStore::Load(workspace_.RootPath());
         RefreshWatchView();
         dapSession_.ReplaceBreakpoints(codium::DapBreakpointStore::Load(workspace_.RootPath()));
+        wxString breakpointError;
+        if (!codium::DapAdvancedBreakpointStore::Load(workspace_.RootPath(), &functionBreakpoints_,
+                                                      &dataBreakpoints_, &breakpointError)) {
+            AppendLog(wxS("Advanced breakpoint persistence unavailable: ") + breakpointError);
+        }
         RefreshBreakpointView();
         PopulateFileTree();
         RefreshNativeContributions();
@@ -2379,8 +2417,17 @@ private:
         wxString error;
         supportsFunctionBreakpoints_ = false;
         supportsDataBreakpoints_ = false;
-        functionBreakpoints_.clear();
-        dataBreakpoints_.clear();
+        for (auto& breakpoint : functionBreakpoints_) {
+            breakpoint.state = codium::DapBreakpointState::Pending;
+            breakpoint.message.clear();
+            breakpoint.id = 0;
+        }
+        for (auto& breakpoint : dataBreakpoints_) {
+            breakpoint.state = codium::DapBreakpointState::Pending;
+            breakpoint.message.clear();
+            breakpoint.id = 0;
+        }
+        dapAdvancedBreakpointRequests_.clear();
         if (dap_.Start(dialog.GetValue(), arguments, WorkspaceDirectory(), &error)) {
             dapSession_.MarkStarted();
             ClearDapTransientViews();
@@ -2447,10 +2494,18 @@ private:
             breakpoints_->Append(label);
         }
         for (const auto& breakpoint : functionBreakpoints_) {
-            breakpoints_->Append(wxS("function: ") + breakpoint.name + wxS(" [session-scoped]"));
+            wxString label = wxS("function: ") + breakpoint.name + wxS(" [") +
+                             codium::DapDebugSessionModel::BreakpointStateName(breakpoint.state) + wxS("]");
+            if (!breakpoint.condition.empty()) label += wxS(" · if ") + breakpoint.condition;
+            if (!breakpoint.hitCondition.empty()) label += wxS(" · hit ") + breakpoint.hitCondition;
+            if (!breakpoint.message.empty()) label += wxS(" — ") + breakpoint.message;
+            breakpoints_->Append(label);
         }
         for (const auto& breakpoint : dataBreakpoints_) {
-            breakpoints_->Append(wxS("data: ") + breakpoint.dataId + wxS(" (") + breakpoint.accessType + wxS(") [session-scoped]"));
+            wxString label = wxS("data: ") + breakpoint.dataId + wxS(" (") + breakpoint.accessType + wxS(") [") +
+                             codium::DapDebugSessionModel::BreakpointStateName(breakpoint.state) + wxS("]");
+            if (!breakpoint.message.empty()) label += wxS(" — ") + breakpoint.message;
+            breakpoints_->Append(label);
         }
     }
 
@@ -2460,6 +2515,11 @@ private:
         wxString error;
         if (!codium::DapBreakpointStore::Save(workspace_.RootPath(), dapSession_.AllRequestedBreakpoints(), &error)) {
             AppendLog(wxS("Could not persist breakpoints: ") + error);
+        }
+        error.clear();
+        if (!codium::DapAdvancedBreakpointStore::Save(workspace_.RootPath(), functionBreakpoints_,
+                                                      dataBreakpoints_, &error)) {
+            AppendLog(wxS("Could not persist advanced breakpoints: ") + error);
         }
     }
 
@@ -2484,6 +2544,44 @@ private:
         std::set<wxString> paths;
         for (const auto& breakpoint : dapSession_.AllRequestedBreakpoints()) paths.insert(breakpoint.sourcePath);
         for (const auto& path : paths) SendBreakpointsForSource(path);
+        SendFunctionBreakpoints();
+        SendDataBreakpoints();
+    }
+
+    bool SendFunctionBreakpoints()
+    {
+        if (!dap_.IsRunning() || !supportsFunctionBreakpoints_) return false;
+        std::vector<codium::DapFunctionBreakpointRequest> requests;
+        requests.reserve(functionBreakpoints_.size());
+        for (const auto& breakpoint : functionBreakpoints_) {
+            requests.push_back(codium::DapFunctionBreakpointRequest{
+                breakpoint.name, breakpoint.condition, breakpoint.hitCondition});
+        }
+        if (!dap_.SetFunctionBreakpoints(requests)) return false;
+        dapAdvancedBreakpointRequests_[dap_.LastRequestSequence()] = DapAdvancedBreakpointRequestKind::Function;
+        for (auto& breakpoint : functionBreakpoints_) {
+            breakpoint.state = codium::DapBreakpointState::Pending;
+            breakpoint.message.clear();
+        }
+        return true;
+    }
+
+    bool SendDataBreakpoints()
+    {
+        if (!dap_.IsRunning() || !supportsDataBreakpoints_) return false;
+        std::vector<codium::DapDataBreakpointRequest> requests;
+        requests.reserve(dataBreakpoints_.size());
+        for (const auto& breakpoint : dataBreakpoints_) {
+            requests.push_back(codium::DapDataBreakpointRequest{
+                breakpoint.dataId, breakpoint.accessType, breakpoint.condition, breakpoint.hitCondition});
+        }
+        if (!dap_.SetDataBreakpoints(requests)) return false;
+        dapAdvancedBreakpointRequests_[dap_.LastRequestSequence()] = DapAdvancedBreakpointRequestKind::Data;
+        for (auto& breakpoint : dataBreakpoints_) {
+            breakpoint.state = codium::DapBreakpointState::Pending;
+            breakpoint.message.clear();
+        }
+        return true;
     }
 
     void ToggleBreakpoint()
@@ -2553,9 +2651,13 @@ private:
         if (condition.ShowModal() != wxID_OK) return;
         wxTextEntryDialog hit(this, wxS("Hit count expression (optional)"), wxS("Function breakpoint hit count"));
         if (hit.ShowModal() != wxID_OK) return;
-        functionBreakpoints_.push_back(codium::DapFunctionBreakpointRequest{
-            name.GetValue(), condition.GetValue(), hit.GetValue()});
-        if (dap_.SetFunctionBreakpoints(functionBreakpoints_)) {
+        codium::DapFunctionBreakpoint configured;
+        configured.name = name.GetValue();
+        configured.condition = condition.GetValue();
+        configured.hitCondition = hit.GetValue();
+        functionBreakpoints_.push_back(configured);
+        PersistBreakpoints();
+        if (SendFunctionBreakpoints()) {
             RefreshBreakpointView();
             AppendLog(wxS("DAP setFunctionBreakpoints request sent."));
         }
@@ -2571,9 +2673,12 @@ private:
         if (dataId.ShowModal() != wxID_OK || dataId.GetValue().empty()) return;
         wxTextEntryDialog access(this, wxS("Access type: read, write, or readWrite"), wxS("Data breakpoint access"), wxS("write"));
         if (access.ShowModal() != wxID_OK) return;
-        dataBreakpoints_.push_back(codium::DapDataBreakpointRequest{
-            dataId.GetValue(), access.GetValue(), wxEmptyString, wxEmptyString});
-        if (dap_.SetDataBreakpoints(dataBreakpoints_)) {
+        codium::DapDataBreakpoint configured;
+        configured.dataId = dataId.GetValue();
+        configured.accessType = access.GetValue();
+        dataBreakpoints_.push_back(configured);
+        PersistBreakpoints();
+        if (SendDataBreakpoints()) {
             RefreshBreakpointView();
             AppendLog(wxS("DAP setDataBreakpoints request sent."));
         }
@@ -2667,6 +2772,7 @@ private:
     {
         if (dap_.IsRunning()) {
             dap_.Stop();
+            dapAdvancedBreakpointRequests_.clear();
             dapSession_.MarkDisconnected();
             UpdateDapStatus();
             AppendLog(wxS("Debug adapter stopped."));
@@ -2676,6 +2782,7 @@ private:
     void OnDebugFinished(wxProcessEvent& event)
     {
         dap_.HandleProcessExit(event.GetPid(), event.GetExitCode());
+        dapAdvancedBreakpointRequests_.clear();
         dapSession_.MarkDisconnected();
         UpdateDapStatus();
         AppendLog(wxString::Format(wxS("Debug adapter finished with exit code %d."), event.GetExitCode()));
@@ -3963,6 +4070,51 @@ private:
             } else {
                 AppendLog(wxS("DAP breakpoint response received without a source path."));
             }
+        } else if (command == wxS("setFunctionBreakpoints") || command == wxS("setDataBreakpoints")) {
+            const int requestSequence = JsonIntField(line, wxS("request_seq"));
+            const auto pending = dapAdvancedBreakpointRequests_.find(requestSequence);
+            if (pending == dapAdvancedBreakpointRequests_.end()) {
+                AppendLog(wxS("DAP advanced breakpoint response received without a matching request."));
+                return;
+            }
+            const bool isFunction = pending->second == DapAdvancedBreakpointRequestKind::Function;
+            dapAdvancedBreakpointRequests_.erase(pending);
+            const auto messages = JsonStringFields(line, wxS("message"));
+            const bool success = JsonBoolField(line, wxS("success"), true);
+            const wxString fallback = isFunction ? wxS("The adapter rejected the function breakpoint request.")
+                                                 : wxS("The adapter rejected the data breakpoint request.");
+            if (isFunction) {
+                const auto verified = JsonBoolFields(line, wxS("verified"));
+                const auto ids = JsonIntFields(line, wxS("id"));
+                for (size_t index = 0; index < functionBreakpoints_.size(); ++index) {
+                    auto& breakpoint = functionBreakpoints_[index];
+                    breakpoint.state = success && index < verified.size() && verified[index]
+                        ? codium::DapBreakpointState::Verified : codium::DapBreakpointState::Rejected;
+                    breakpoint.id = index < ids.size() ? ids[index] : 0;
+                    breakpoint.message = index < messages.size() ? messages[index] : wxString();
+                    if (!success && breakpoint.message.empty()) breakpoint.message = fallback;
+                    if (success && breakpoint.state == codium::DapBreakpointState::Rejected && breakpoint.message.empty()) {
+                        breakpoint.message = wxS("The adapter did not verify this function breakpoint.");
+                    }
+                }
+            } else {
+                const auto verified = JsonBoolFields(line, wxS("verified"));
+                const auto ids = JsonIntFields(line, wxS("id"));
+                for (size_t index = 0; index < dataBreakpoints_.size(); ++index) {
+                    auto& breakpoint = dataBreakpoints_[index];
+                    breakpoint.state = success && index < verified.size() && verified[index]
+                        ? codium::DapBreakpointState::Verified : codium::DapBreakpointState::Rejected;
+                    breakpoint.id = index < ids.size() ? ids[index] : 0;
+                    breakpoint.message = index < messages.size() ? messages[index] : wxString();
+                    if (!success && breakpoint.message.empty()) breakpoint.message = fallback;
+                    if (success && breakpoint.state == codium::DapBreakpointState::Rejected && breakpoint.message.empty()) {
+                        breakpoint.message = wxS("The adapter did not verify this data breakpoint.");
+                    }
+                }
+            }
+            PersistBreakpoints();
+            RefreshBreakpointView();
+            AppendLog(success ? wxS("DAP advanced breakpoint response applied.") : fallback);
         }
     }
 
@@ -4354,10 +4506,11 @@ private:
     wxPoint terminalSelectionActive_;
     bool terminalSelecting_ = false;
     std::map<int, wxString> dapBreakpointRequests_;
-    std::vector<codium::DapFunctionBreakpointRequest> functionBreakpoints_;
-    std::vector<codium::DapDataBreakpointRequest> dataBreakpoints_;
+    std::vector<codium::DapFunctionBreakpoint> functionBreakpoints_;
+    std::vector<codium::DapDataBreakpoint> dataBreakpoints_;
     bool supportsFunctionBreakpoints_ = false;
     bool supportsDataBreakpoints_ = false;
+    std::map<int, DapAdvancedBreakpointRequestKind> dapAdvancedBreakpointRequests_;
     std::vector<std::pair<int, int>> problemLocations_;
     std::vector<wxString> problemPaths_;
     int debugThreadId_ = 1;
