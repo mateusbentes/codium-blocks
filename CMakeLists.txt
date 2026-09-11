@@ -240,6 +240,7 @@ add_executable(codium-blocks
     native/src/lsp_navigation.cpp
     native/src/syntax_highlighting.cpp
     native/src/theme.cpp
+    native/src/localization.cpp
     native/src/main.cpp
     native/src/extension_host_client.cpp
     native/src/vsix_manager.cpp
@@ -409,6 +410,14 @@ add_executable(codium-blocks-theme-smoke
 target_include_directories(codium-blocks-theme-smoke PRIVATE native/include)
 codium_blocks_enable_warnings(codium-blocks-theme-smoke)
 target_link_libraries(codium-blocks-theme-smoke PRIVATE ${wxWidgets_LIBRARIES})
+
+add_executable(codium-blocks-localization-smoke
+    native/src/localization.cpp
+    tests/localization-smoke.cpp
+)
+target_include_directories(codium-blocks-localization-smoke PRIVATE native/include)
+codium_blocks_enable_warnings(codium-blocks-localization-smoke)
+target_link_libraries(codium-blocks-localization-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
 add_executable(codium-blocks-lsp-navigation-smoke
     native/src/lsp_navigation.cpp
@@ -598,6 +607,7 @@ if(TARGET codium-blocks-codeblocks-debuggergdb-provider)
 endif()
 install(DIRECTORY extension-host DESTINATION ${CODIUM_BLOCKS_INSTALL_DATA_DIR})
 install(DIRECTORY extensions DESTINATION ${CODIUM_BLOCKS_INSTALL_DATA_DIR})
+install(DIRECTORY locales DESTINATION ${CODIUM_BLOCKS_INSTALL_DATA_DIR})
 install(FILES README.md LICENSE COPYING DESTINATION ${CODIUM_BLOCKS_INSTALL_DOC_DIR})
 install(DIRECTORY docs protocol DESTINATION ${CODIUM_BLOCKS_INSTALL_DOC_DIR})
 
@@ -663,6 +673,8 @@ if(BUILD_TESTING)
     add_test(NAME syntax-highlighting-smoke COMMAND codium-blocks-syntax-highlighting-smoke)
     add_test(NAME semantic-tokens-smoke COMMAND codium-blocks-semantic-tokens-smoke)
     add_test(NAME theme-smoke COMMAND codium-blocks-theme-smoke)
+    add_test(NAME localization-smoke
+        COMMAND codium-blocks-localization-smoke ${CMAKE_SOURCE_DIR})
     add_test(NAME lsp-navigation-smoke COMMAND codium-blocks-lsp-navigation-smoke)
     add_test(NAME vsix-smoke COMMAND codium-blocks-vsix-smoke)
     add_test(NAME security-smoke COMMAND codium-blocks-security-smoke)

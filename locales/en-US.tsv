@@ -1,0 +1,487 @@
+# Codium::Blocks stable UI catalog
+# Format: stable-key<TAB>English text
+menu.file	&File
+menu.edit	&Edit
+menu.language	&Language
+menu.build	&Build
+menu.terminal	&Terminal
+menu.debug	De&bug
+menu.view	&View
+menu.extensions	E&xtensions
+menu.help	&Help
+menu.commandPalette	Command Palette...	Ctrl+Shift+P
+menu.openWorkspace	Open workspace...
+menu.openFile	Open file	Ctrl+O
+menu.saveFile	Save file	Ctrl+S
+menu.exit	Exit	Ctrl+Q
+menu.find	Find	Ctrl+F
+menu.findNext	Find next	F3
+menu.findPrevious	Find previous	Shift+F3
+menu.replace	Replace	Ctrl+H
+menu.replaceAll	Replace all
+menu.goToLine	Go to Line	Ctrl+G
+menu.goToFile	Go to File	Ctrl+P
+menu.goToSymbol	Go to Symbol	Ctrl+Shift+O
+menu.goToDefinition	Go to Definition	F12
+menu.goToDeclaration	Go to Declaration
+menu.findReferences	Find References	Shift+F12
+menu.renameSymbol	Rename Symbol	F2
+menu.codeActions	Code Actions	Ctrl+.
+menu.nextTab	Next Tab	Ctrl+Tab
+menu.previousTab	Previous Tab	Ctrl+Shift+Tab
+menu.startClangd	Start clangd
+menu.initializeLsp	Initialize language server
+menu.requestHover	Request hover	F1
+menu.requestCompletion	Request completion	Ctrl+Space
+menu.stopLsp	Stop language server
+menu.buildProject	Build project
+menu.rerunBuild	Rerun last build	Ctrl+Shift+B
+menu.runTask	Run selected task
+menu.stopTask	Stop task
+menu.previousProblem	Previous problem	Shift+F8
+menu.nextProblem	Next problem	F8
+menu.startTerminal	Start terminal
+menu.sendTerminal	Send input
+menu.stopTerminal	Stop terminal
+menu.selectShell	Select shell...
+menu.startDebug	Start debug adapter
+menu.initializeDebug	Initialize debug
+menu.launchProgram	Launch program
+menu.continue	Continue
+menu.pause	Pause
+menu.stopDebug	Stop debug
+menu.systemTheme	System theme
+menu.lightTheme	Light theme
+menu.darkTheme	Dark theme
+menu.highContrastTheme	High contrast theme
+menu.startHost	Start Extension Host
+menu.loadDemo	Load demo extension
+menu.runDemo	Run hello.codium
+menu.installVsix	Install VSIX
+menu.listExtensions	List installed extensions
+menu.discoverCodeBlocks	Discover Code::Blocks SDK
+menu.startCodeBlocksAdapter	Start Code::Blocks adapter
+menu.stopCodeBlocksAdapter	Stop Code::Blocks adapter
+menu.about	About Codium::Blocks
+menu.languageSystem	System default
+menu.languageEnglish	English
+menu.languagePortugueseBrazil	Português (Brasil)
+title.main	Codium::Blocks — native classic IDE — no Electron
+title.projectNavigator	PROJECT NAVIGATOR
+button.open	Open
+button.scm	SCM
+button.openFile	Open file
+button.save	Save
+button.build	Build
+button.buildAndRun	Build and Run
+button.runTask	Run task
+button.palette	Palette
+button.previous	Previous
+button.next	Next
+button.rerunBuild	Rerun Build
+button.start	Start
+button.sendInput	Send input
+button.stop	Stop
+button.shell	Shell
+button.startAdapter	Start adapter
+button.initialize	Initialize
+button.launch	Launch
+button.breakpoint	Breakpoint
+button.breakpointOptions	Breakpoint options
+button.functionBreakpoint	Function breakpoint
+button.dataBreakpoint	Data breakpoint
+button.watch	Watch
+button.sourceMap	Source map
+button.cbDebug	CB Debug
+button.cbContinue	CB Continue
+button.cbPause	CB Pause
+button.cbStop	CB Stop
+button.startClangd	Start clangd
+button.initializeLsp	Initialize LSP
+button.hover	Hover
+button.completion	Completion
+button.semanticTokens	Semantic tokens
+button.stopLsp	Stop LSP
+button.startHost	Start Host
+button.loadDemo	Load demo
+button.runDemo	Run demo
+button.installVsix	Install VSIX
+button.searchOpenVsx	Search Open VSX
+button.discoverCodeBlocks	Discover Code::Blocks
+button.startCbAdapter	Start CB adapter
+button.stopCbAdapter	Stop CB adapter
+label.treeViews	Tree Views
+label.sourceControl	Source Control
+label.customEditors	Custom editors
+label.tasks	Tasks
+label.scheme	Scheme
+label.target	Target
+label.toolchain	Toolchain
+label.problems	Problems
+label.severity	Severity
+label.source	Source
+label.build	Build
+label.terminal	Terminal
+label.debug	Debug
+label.output	Output
+label.breakpoints	Breakpoints
+label.threads	Threads
+label.callStack	Call stack
+label.watches	Watches
+label.variables	Variables
+label.capabilities	Capabilities
+label.language	Language
+filter.all	All
+filter.errors	Errors
+filter.warnings	Warnings
+filter.information	Information
+filter.hints	Hints
+filter.allSources	All sources
+status.ready	Ready
+status.noWorkspace	No workspace
+status.utf8	UTF-8
+status.noProjectScheme	No project scheme
+status.noBuildSession	No build session
+status.noProblems	No problems
+status.dapDisconnected	DAP: disconnected
+status.workspaceTrusted	Trusted workspace
+status.workspaceUntrusted	Untrusted workspace
+status.languageChangedRestart	Language preference saved. Restart Codium::Blocks to apply it.
+status.localizationFallback	The selected localization is unavailable; English fallback is active.
+about.title	About Codium::Blocks
+about.body	Codium::Blocks
+about.description	Native, Electron-free, multi-language IDE with a C++/wxWidgets core.
+about.license	Licensed under the GNU GPL-3.0-only.
+about.copyright	Copyright (C) 2026 Codium::Blocks Contributors.
+about.protocol	The product name, license notice, SPDX identifiers, and protocol identifiers are invariant by policy.
+dialog.language	Language
+dialog.about	About
+dialog.error	Error
+dialog.warning	Warning
+dialog.information	Information
+dialog.openDocumentFirst	Open a document before requesting this feature.
+dialog.openFileFirst	Open a file before using this feature.
+dialog.openWorkspaceFirst	Open a workspace before using this feature.
+dialog.trustWorkspace	Trust the workspace '%s'? Trust enables tasks, terminals, debug adapters, and extensions.
+dialog.workspaceUntrusted	Workspace is untrusted; execution features remain restricted.
+dialog.goToLinePositive	Go to Line requires a positive line number.
+dialog.noFileMatch	Go to File found no matching workspace file.
+dialog.noBuildTask	No build task detected in this workspace.
+dialog.noPreviousBuild	No previous Build or Configure task is available.
+dialog.noRunnableTarget	The selected scheme does not provide a runnable target.
+dialog.noHover	No hover information was returned.
+dialog.noVariable	No variable value reported.
+dialog.noWatch	No watch value reported.
+dialog.noFrames	No stack frames reported.
+dialog.noThreads	No threads reported.
+dialog.noCodeBlocksBreakpoints	No Code::Blocks breakpoints.
+dialog.noVsix	No VSIX extensions are installed locally.
+dialog.executionBlocked	Execution blocked: trust the current workspace first.
+dialog.initializeFirst	Initialize the language server before requesting this feature.
+dialog.openDocumentCompletion	Open a document before requesting completion.
+dialog.openDocumentHover	Open a document before requesting hover information.
+dialog.openDocumentSemantic	Open a document before requesting semantic tokens.
+dialog.startAdapterFirst	Wait for the Code::Blocks adapter handshake before starting debug.
+dialog.openSourceBreakpoint	Open a source file before toggling a breakpoint.
+dialog.configureSourceBreakpoint	Open a source file before configuring a breakpoint.
+dialog.toggleBreakpointFirst	Toggle a breakpoint before configuring its options.
+dialog.adapterAlreadyRunning	Debug adapter is already running.
+dialog.extensionHostAlreadyRunning	Extension Host is already running.
+dialog.noExtensions	No VSIX extensions are installed locally.
+dialog.noWorkspaceFile	Open a workspace before using Go to File.
+dialog.noSourceControl	Open a workspace to inspect source control.
+input.findText	Find text
+input.replaceWith	Replace with
+input.lineNumber	Line number
+input.filePath	File name or workspace-relative path
+input.symbolQuery	Symbol query
+input.newSymbolName	New symbol name
+input.expressionEvaluate	Expression to evaluate
+input.expressionWatch	Expression to watch
+input.functionName	Function or method name
+input.functionCondition	Function breakpoint condition
+input.functionHitCount	Function breakpoint hit count
+input.dataId	Data breakpoint access
+input.hitCondition	Hit count expression (optional)
+input.logMessage	Log message (optional; leave empty for a stopping breakpoint)
+message.nativeCoreReady	Ready. The native core does not load Electron.
+message.openFileForTooling	Open a file or start the host to use extensions and language tooling.
+message.workspaceOpened	Workspace opened:\s
+message.themeChanged	Theme changed to\s
+message.languageServerInitialized	Language server initialized.
+message.semanticTokensApplied	Semantic tokens applied: %zu
+message.lspMessageReceived	LSP message received.
+message.lspDiagnosticsUpdated	LSP diagnostics updated.
+message.lspHoverReceived	LSP hover result received.
+message.lspCompletionReceived	LSP completion result received.
+message.lspInitialized	LSP initialized.
+message.lspCompletionResult	LSP completion result received.
+message.buildAndRun	Build and Run
+message.finishedExitCode	Finished with exit code %d.
+message.debugAdapterFinished	Debug adapter finished with exit code %d.
+message.debugAdapterError	Debug adapter error:\s
+message.debugAdapterStarted	Debug adapter started.
+message.debugAdapterStopped	Debug adapter stopped.
+message.dapInitializeSent	DAP initialize request sent.
+message.dapLaunchSent	DAP launch request sent.
+message.dapContinueSent	DAP continue request sent.
+message.dapPauseSent	DAP pause request sent.
+message.dapScopesSent	DAP scopes request sent.
+message.dapThreadsSent	DAP threads request sent.
+message.dapStackTraceSent	DAP stackTrace request sent.
+message.dapVariablesSent	DAP variables request sent.
+message.dapEvaluateSent	DAP evaluate request sent.
+message.dapWatchEvaluateSent	DAP watch evaluate request sent:\s
+message.dapBreakpointSent	DAP setBreakpoints request sent; breakpoints are pending confirmation.
+message.dapFunctionBreakpointSent	DAP setFunctionBreakpoints request sent.
+message.dapDataBreakpointSent	DAP setDataBreakpoints request sent.
+message.lspInitializeFirstSemantic	Initialize the language server before requesting semantic tokens.
+message.lspInitializeFirstFeature	Initialize the language server before requesting\s
+message.adapterRejected	Code::Blocks adapter rejected the host contract.
+message.codeBlocksDetected	Code::Blocks SDK detected at %s (%lu plugin candidate(s)).
+message.codeBlocksDiscovery	Code::Blocks SDK discovery:\s
+message.codeBlocksOpened	Code::Blocks adapter opened\s
+message.nativeTerminalBackend	Native terminal started with backend:\s
+message.taskPrefix	task>\s
+message.hostPrefix	host>\s
+message.dapPrefix	dap>\s
+message.stderrPrefix	[stderr]\s
+message.noVisibleProblems	No visible problems match the current filters.
+message.adapterRejection	The adapter rejected the %s breakpoint request.
+message.adapterDidNotVerify	The adapter did not verify this %s breakpoint.
+message.adapterDidNotAdvertise	The active debug adapter does not advertise %s.
+message.selectedSchemeNoRun	The selected scheme does not provide a runnable target.
+message.languageFallback	The selected localization is unavailable; English fallback is active.
+accessibility.gutterTooltip	Line numbers and diagnostics; click the marker area to toggle a breakpoint.
+accessibility.problemMarker	Problem marker
+accessibility.breakpointMarker	Breakpoint marker
+label.workspace	Workspace
+editor.json	JSON text editor
+editor.markdown	Markdown text editor
+document.untitled	Untitled
+dialog.openSourceFile	Open source file
+dialog.chooseWorkspace	Choose a workspace directory
+dialog.workspaceTrustTitle	Workspace trust
+dialog.selectShell	Select the shell for the next terminal session
+dialog.terminalShell	Terminal shell
+dialog.debugAdapterExecutable	Debug adapter executable (for example codelldb or OpenDebugAD7)
+dialog.debugAdapter	Debug adapter
+dialog.chooseProgram	Choose a program to debug
+dialog.conditionalExpression	Conditional expression (optional)
+dialog.breakpointCondition	Breakpoint condition
+dialog.hitCountExpression	Hit count expression (optional)
+dialog.breakpointHitCondition	Breakpoint hit condition
+dialog.logMessage	Log message (optional; leave empty for a stopping breakpoint)
+dialog.breakpointLogpoint	Breakpoint logpoint
+dialog.functionName	Function or method name
+dialog.functionBreakpoint	Function breakpoint
+dialog.functionCondition	Function breakpoint condition
+dialog.functionHitCount	Function breakpoint hit count
+dialog.dataId	DAP dataId
+dialog.dataBreakpoint	Data breakpoint
+dialog.dataAccess	Access type: read, write, or readWrite
+dialog.dataBreakpointAccess	Data breakpoint access
+dialog.debugEvaluate	Debug evaluate
+dialog.addWatch	Add watch
+dialog.remoteSourceRoot	Remote source root
+dialog.sourceMapping	Source mapping
+dialog.localSourceRoot	Local source root
+dialog.find	Find
+dialog.replace	Replace
+dialog.replaceAll	Replace all
+dialog.goToLine	Go to Line
+dialog.goToFile	Go to File
+dialog.selectFile	Select a file
+dialog.workspaceSymbols	Workspace Symbols
+dialog.renameSymbol	Rename Symbol
+dialog.selectCommand	Select a command
+dialog.commandPalette	Command Palette
+dialog.saveSourceFile	Save source file
+dialog.chooseVsix	Choose a VSIX extension
+dialog.chooseCodeBlocksRoot	Choose a Code::Blocks installation or source root
+dialog.chooseAdapterExecutable	Choose the Code::Blocks adapter executable
+dialog.extensionRegistry	Extension registry
+dialog.searchOpenVsx	Search Open VSX
+status.theme	Theme: %s%s
+status.accessibleContrast	 · accessible contrast
+status.stale	stale
+status.problemSummary	%zu shown / %zu problems  ·  %zu errors  ·  %zu warnings
+status.default	default
+status.buildRunning	Running: %s [%s]
+status.buildLast	Last: %s
+status.buildHeader	=== %s [%s · %s] ===
+status.codeBlocksBuilding	Code::Blocks building
+status.building	Building…
+status.buildSucceeded	Build succeeded
+status.buildFailed	Build failed
+status.terminalRunning	Terminal running
+status.terminalExited	Terminal exited
+status.terminalFailed	Terminal failed
+message.errorPrefix	Error:\s
+message.advancedBreakpointPersistence	Advanced breakpoint persistence unavailable:\s
+message.projectPreferencesUnavailable	Project selection preferences unavailable:\s
+message.buildHistoryUnavailable	Build session history unavailable:\s
+message.detectedToolchain	Detected toolchain:\s
+message.selectedScheme	Selected scheme: %s (%s, target %s)
+message.projectSelectionSaveError	Could not save project selection:\s
+message.buildSessionError	Build session error:\s
+message.codeBlocksBuildStarted	Started Code::Blocks adapter build: %s
+message.codeBlocksBuildRejected	Code::Blocks adapter rejected the build request; falling back to the imported task.
+message.taskStarted	Started task: %s
+message.taskStartedLine	Started %s
+message.taskError	Task error:\s
+message.noRunnableArtifact	Build succeeded, but no runnable artifact was discovered for the selected target.
+message.buildRunningTarget	Build succeeded; running target:\s
+message.buildingSelectedTarget	Building selected target before running it:\s
+message.rerunning	Rerunning:\s
+message.taskStopped	Task stopped.
+message.taskFinished	Task finished with exit code %d.
+message.buildFailedNotRun	Build failed; the selected target was not run.
+message.terminalAlreadyRunning	Terminal is already running.
+message.terminalError	Terminal error:\s
+message.stopTerminalBeforeShell	Stop the terminal before changing its shell.
+message.selectedShell	Selected shell:\s
+message.startTerminalFirst	Start the terminal first.
+message.terminalWriteError	Could not write to terminal.
+message.terminalStopped	Terminal stopped.
+message.terminalFinished	Terminal finished with exit code %d.
+message.breakpointPersistenceError	Could not persist breakpoints:\s
+message.advancedBreakpointPersistenceError	Could not persist advanced breakpoints:\s
+message.sourceMappingAdded	Source mapping added:\s
+message.openEditorFirst	Open an editor before using this command.
+message.searchNotFound	Search text was not found:\s
+message.replacedOne	Replaced one occurrence of '%s'.
+message.replacedAll	Replaced %d occurrence(s) of '%s'.
+message.lspDefinitionSent	Request sent: textDocument/definition.
+message.lspDeclarationSent	Request sent: textDocument/declaration.
+message.lspReferencesSent	Request sent: textDocument/references.
+message.lspDocumentSymbolsSent	Request sent: textDocument/documentSymbol.
+message.lspWorkspaceSymbolsSent	Request sent: workspace/symbol.
+message.lspRenameSent	Request sent: textDocument/rename.
+label.functionBreakpoints	function breakpoints
+label.dataBreakpoints	data breakpoints
+dialog.openEditorFirst	Open an editor before using this command.
+dialog.selectTask	Select a task before running it.
+dialog.codeBlocksDebuggerNotReady	The Code::Blocks debugger is not ready.
+dialog.openWorkspaceAdapter	Open a workspace before starting the Code::Blocks adapter.
+dialog.requireCodeBlocksProject	The Code::Blocks debugger requires an imported .cbp project.
+dialog.startHostFirst	Start the Extension Host first.
+dialog.waitAdapterHandshake	Wait for the Code::Blocks adapter handshake before starting debug.
+message.codeBlocksAdapterError	Code::Blocks adapter error:\s
+message.codeBlocksAdapterStarted	Code::Blocks adapter started; waiting for contract handshake.
+message.codeBlocksAdapterStopped	Code::Blocks adapter stopped.
+message.codeBlocksDebugContinueSent	Code::Blocks debugger continue requested.
+message.codeBlocksDebugLaunchSent	Code::Blocks debugger launch requested.
+message.codeBlocksDebugPauseSent	Code::Blocks debugger pause requested.
+message.codeBlocksDebugStartError	Could not start the Code::Blocks debugger.
+message.codeBlocksDebugStopSent	Code::Blocks debugger stop requested.
+message.codeBlocksHeaders	Code::Blocks SDK headers:\s
+message.codeBlocksPlugin	Code::Blocks plugin: %s — %s (%s)
+message.codeBlocksProjectOpenError	Could not open the Code::Blocks project in the adapter.
+message.codeBlocksRoot	Code::Blocks root: %s
+message.codeBlocksRuntimeIncomplete	Code::Blocks adapter requires resources.zip and a matching Compiler plugin; discovery found neither complete runtime path.
+message.codeBlocksSnapshotParseError	Code::Blocks debugger snapshot parse error:\s
+message.customEditorSelected	Custom editor selected:\s
+message.documentOpened	Opened:\s
+message.documentSaved	Saved:\s
+message.extensionPrefix	Extension:\s
+message.hostAlreadyRunning	Extension Host is already running.
+message.hostStartError	Could not start the Extension Host.
+message.hostStarted	Node.js Extension Host started in a separate process.
+message.initializeLanguageServerSent	Request sent: initialize the language server.
+message.loadDemoSent	Request sent: load hello-codium.
+message.lspCompletionSent	Request sent: textDocument/completion.
+message.lspHoverSent	Request sent: textDocument/hover.
+message.lspSemanticTokensSent	Request sent: textDocument/semanticTokens/full.
+message.noCodeBlocksPlugins	No native Code::Blocks plugin libraries found in discovered directories.
+message.runDemoSent	Request sent: run hello.codium.
+message.snapshotParseError	Snapshot parse error:\s
+message.startClangdSent	Request sent: start clangd through the Extension Host.
+message.stopLanguageServerSent	Request sent: stop the language server.
+message.lspCodeActionsSent	Request sent: textDocument/codeAction.
+label.noHoverInformation	No hover information was returned.
+label.noStackFrames	No stack frames reported.
+label.noThreads	No threads reported.
+message.adapterEvent	adapter> %s: %s
+message.codeActions	Code actions: %zu. Double-click an action to apply it.
+message.codeBlocksBuildRunSkipped	Code::Blocks build failed; the selected target was not run.
+message.codeBlocksContractRejected	Code::Blocks adapter rejected the host contract.
+message.codeBlocksProjectOpened	Code::Blocks adapter opened\s
+message.completionItems	Completion items: %zu. Double-click an item to apply it.
+message.dapAdvancedBreakpointApplied	DAP advanced breakpoint response applied.
+message.dapAdvancedBreakpointMissingRequest	DAP advanced breakpoint response received without a matching request.
+message.dapBreakpointApplied	DAP breakpoint response applied.
+message.dapBreakpointMissingSource	DAP breakpoint response received without a source path.
+message.dapBreakpointParseError	DAP breakpoint response parse error:\s
+message.dapBreakpointResponse	DAP breakpoint response:\s
+message.dataBreakpointRejected	The adapter rejected the data breakpoint request.
+message.dataBreakpointUnverified	The adapter did not verify this data breakpoint.
+message.functionBreakpointRejected	The adapter rejected the function breakpoint request.
+message.functionBreakpointUnverified	The adapter did not verify this function breakpoint.
+message.hostOutputPrefix	host>\s
+message.lspLoadEditError	Could not load LSP edit target:\s
+message.lspLocations	%s results: %zu. Double-click a location to open it.
+message.lspNoTextEdits	The language server returned no applicable text edits.
+message.lspSaveEditError	Could not save LSP edit target:\s
+message.lspTextEditsApplied	Applied %zu LSP text edit(s).
+message.openVsxCatalogReceived	Open VSX catalog received (%lu bytes); cache updated.
+message.openVsxError	Open VSX error:\s
+message.registeredExtensionCommand	Registered extension command:\s
+message.registeredTreeView	Registered extension Tree View:\s
+message.runContributedCommand	Request sent: run contributed command\s
+message.taskOutputPrefix	task>\s
+message.dapOutputPrefix	dap>\s
+status.codeBlocksBuildFailed	Code::Blocks build failed
+status.codeBlocksBuildSucceeded	Code::Blocks build succeeded
+label.dapPrefix	DAP:\s
+label.lineNumber	line %d
+label.noCodeBlocksBreakpoints	No Code::Blocks breakpoints.
+label.noVariableValue	No variable value reported.
+label.noWatchValue	No watch value reported.
+message.codeBlocksSnapshotApplied	Code::Blocks %s snapshot applied to Debug panels.
+status.debugPrefix	Debug\s
+label.dataPrefix	data:\s
+label.functionPrefix	function:\s
+message.finishedWithExitCode	Finished with exit code %d.
+status.codeBlocksAdapterVersion	Code::Blocks adapter %d.%d · SDK %d.%d.%d
+dialog.noVisibleProblems	No visible problems match the current filters.
+dialog.allFilesFilter	All files (*.*)|*.*
+dialog.executableFilter	Executable files (*.*)|*.*
+dialog.vsixFilter	VS Code extensions (*.vsix)|*.vsix
+label.capabilityNo	: no/unknown
+label.capabilityYes	: yes
+label.conditionPrefix	 · if\s
+label.disabled	 [disabled]
+label.enabled	 [enabled]
+label.hitPrefix	 · hit\s
+label.logPrefix	 · log\s
+label.manifestUnavailable	manifest unavailable
+label.runPrefix	Run:\s
+label.stderrPrefix	[stderr]\s
+label.temporary	 [temporary]
+label.unknownFrame	<unknown>
+label.unknownValue	<value>
+label.unnamedThread	<unnamed thread>
+label.valueChanged	 [changed]
+label.valueError	 [error]
+label.valueTruncated	 [truncated]
+message.buildHeader	=== %s [%s] ===
+message.codeBlocksBuildHeader	=== Code::Blocks: %s ===
+status.cursorPosition	%s  Ln %d, Col %d
+label.breakpointDisabled	disabled
+label.breakpointPending	pending
+label.breakpointRejected	rejected
+label.breakpointUnknown	unknown
+label.breakpointVerified	verified
+label.dapDisconnected	disconnected
+label.dapInitialized	initialized
+label.dapInitializing	initializing
+label.dapPaused	paused
+label.dapRunning	running
+label.dapStopped	stopped
+label.dapUnknown	unknown
+label.themeDark	Dark
+label.themeHighContrast	High contrast
+label.themeLight	Light
+label.themeSystem	System
+message.codeBlocksLoadPolicy	Preflight only: Codium::Blocks does not load Code::Blocks shared libraries until a matching SDK host ABI is attached. Native plugins depend on Manager, PluginManager, cbPlugin, and event infrastructure.

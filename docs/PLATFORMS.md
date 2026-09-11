@@ -41,6 +41,8 @@ ctest --test-dir build -C Release --output-on-failure
 
 The default Extension Host state directory is `%APPDATA%\CodiumBlocks`.
 
+The native UI catalogs are installed with the application under `locales/`. The writable language preference is stored below `%APPDATA%\CodiumBlocks`; it is never written beside the executable. `CODIUM_BLOCKS_LANGUAGE=en-US` or `CODIUM_BLOCKS_LANGUAGE=pt-BR` can be set in PowerShell to select a deterministic language for testing.
+
 ## Portable configuration
 
 All platforms support an explicit data directory for testing and portable deployments:
@@ -53,6 +55,7 @@ On Windows PowerShell:
 
 ```powershell
 $env:CODIUM_BLOCKS_DATA = "D:\CodiumBlocksData"
+$env:CODIUM_BLOCKS_LANGUAGE = "pt-BR"
 ```
 
 The platform abstraction must remain in the native core and Extension Host. New features must not assume POSIX paths, `/bin/sh`, Linux-only process signals, or a case-sensitive filesystem.

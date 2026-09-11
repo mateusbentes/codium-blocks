@@ -1,0 +1,487 @@
+# Codium::Blocks Brazilian Portuguese UI catalog
+# Product names, legal notices, SPDX identifiers, and protocol identifiers remain invariant.
+menu.file	&Arquivo
+menu.edit	&Editar
+menu.language	&Idioma
+menu.build	&Compilar
+menu.terminal	&Terminal
+menu.debug	Depurar
+menu.view	&Exibir
+menu.extensions	E&xtensões
+menu.help	&A ajuda
+menu.commandPalette	Paleta de comandos...	Ctrl+Shift+P
+menu.openWorkspace	Abrir espaço de trabalho...
+menu.openFile	Abrir arquivo	Ctrl+O
+menu.saveFile	Salvar arquivo	Ctrl+S
+menu.exit	Sair	Ctrl+Q
+menu.find	Localizar	Ctrl+F
+menu.findNext	Localizar próxima	F3
+menu.findPrevious	Localizar anterior	Shift+F3
+menu.replace	Substituir	Ctrl+H
+menu.replaceAll	Substituir tudo
+menu.goToLine	Ir para a linha	Ctrl+G
+menu.goToFile	Ir para o arquivo	Ctrl+P
+menu.goToSymbol	Ir para o símbolo	Ctrl+Shift+O
+menu.goToDefinition	Ir para a definição	F12
+menu.goToDeclaration	Ir para a declaração
+menu.findReferences	Localizar referências	Shift+F12
+menu.renameSymbol	Renomear símbolo	F2
+menu.codeActions	Ações de código	Ctrl+.
+menu.nextTab	Próxima aba	Ctrl+Tab
+menu.previousTab	Aba anterior	Ctrl+Shift+Tab
+menu.startClangd	Iniciar clangd
+menu.initializeLsp	Inicializar servidor de linguagem
+menu.requestHover	Solicitar informações	F1
+menu.requestCompletion	Solicitar conclusão	Ctrl+Espaço
+menu.stopLsp	Parar servidor de linguagem
+menu.buildProject	Compilar projeto
+menu.rerunBuild	Executar última compilação	Ctrl+Shift+B
+menu.runTask	Executar tarefa selecionada
+menu.stopTask	Parar tarefa
+menu.previousProblem	Problema anterior	Shift+F8
+menu.nextProblem	Próximo problema	F8
+menu.startTerminal	Iniciar terminal
+menu.sendTerminal	Enviar entrada
+menu.stopTerminal	Parar terminal
+menu.selectShell	Selecionar shell...
+menu.startDebug	Iniciar adaptador de depuração
+menu.initializeDebug	Inicializar depuração
+menu.launchProgram	Executar programa
+menu.continue	Continuar
+menu.pause	Pausar
+menu.stopDebug	Parar depuração
+menu.systemTheme	Tema do sistema
+menu.lightTheme	Tema claro
+menu.darkTheme	Tema escuro
+menu.highContrastTheme	Tema de alto contraste
+menu.startHost	Iniciar host de extensões
+menu.loadDemo	Carregar extensão de demonstração
+menu.runDemo	Executar hello.codium
+menu.installVsix	Instalar VSIX
+menu.listExtensions	Listar extensões instaladas
+menu.discoverCodeBlocks	Descobrir SDK do Code::Blocks
+menu.startCodeBlocksAdapter	Iniciar adaptador do Code::Blocks
+menu.stopCodeBlocksAdapter	Parar adaptador do Code::Blocks
+menu.about	Sobre o Codium::Blocks
+menu.languageSystem	Padrão do sistema
+menu.languageEnglish	Inglês
+menu.languagePortugueseBrazil	Português (Brasil)
+title.main	Codium::Blocks — IDE nativa clássica — sem Electron
+title.projectNavigator	NAVEGADOR DO PROJETO
+button.open	Abrir
+button.scm	SCM
+button.openFile	Abrir arquivo
+button.save	Salvar
+button.build	Compilar
+button.buildAndRun	Compilar e executar
+button.runTask	Executar tarefa
+button.palette	Paleta
+button.previous	Anterior
+button.next	Próximo
+button.rerunBuild	Reexecutar compilação
+button.start	Iniciar
+button.sendInput	Enviar entrada
+button.stop	Parar
+button.shell	Shell
+button.startAdapter	Iniciar adaptador
+button.initialize	Inicializar
+button.launch	Executar
+button.breakpoint	Breakpoint
+button.breakpointOptions	Opções do breakpoint
+button.functionBreakpoint	Breakpoint de função
+button.dataBreakpoint	Breakpoint de dados
+button.watch	Watch
+button.sourceMap	Mapa de origem
+button.cbDebug	Depuração CB
+button.cbContinue	Continuar CB
+button.cbPause	Pausar CB
+button.cbStop	Parar CB
+button.startClangd	Iniciar clangd
+button.initializeLsp	Inicializar LSP
+button.hover	Informações
+button.completion	Conclusão
+button.semanticTokens	Tokens semânticos
+button.stopLsp	Parar LSP
+button.startHost	Iniciar host
+button.loadDemo	Carregar demonstração
+button.runDemo	Executar demonstração
+button.installVsix	Instalar VSIX
+button.searchOpenVsx	Pesquisar no Open VSX
+button.discoverCodeBlocks	Descobrir Code::Blocks
+button.startCbAdapter	Iniciar adaptador CB
+button.stopCbAdapter	Parar adaptador CB
+label.treeViews	Árvores de visualização
+label.sourceControl	Controle de código-fonte
+label.customEditors	Editores personalizados
+label.tasks	Tarefas
+label.scheme	Esquema
+label.target	Alvo
+label.toolchain	Toolchain
+label.problems	Problemas
+label.severity	Severidade
+label.source	Origem
+label.build	Compilação
+label.terminal	Terminal
+label.debug	Depuração
+label.output	Saída
+label.breakpoints	Breakpoints
+label.threads	Threads
+label.callStack	Pilha de chamadas
+label.watches	Watches
+label.variables	Variáveis
+label.capabilities	Capacidades
+label.language	Idioma
+filter.all	Todos
+filter.errors	Erros
+filter.warnings	Avisos
+filter.information	Informações
+filter.hints	Dicas
+filter.allSources	Todas as origens
+status.ready	Pronto
+status.noWorkspace	Nenhum espaço de trabalho
+status.utf8	UTF-8
+status.noProjectScheme	Nenhum esquema de projeto
+status.noBuildSession	Nenhuma sessão de compilação
+status.noProblems	Nenhum problema
+status.dapDisconnected	DAP: desconectado
+status.workspaceTrusted	Espaço de trabalho confiável
+status.workspaceUntrusted	Espaço de trabalho não confiável
+status.languageChangedRestart	Preferência de idioma salva. Reinicie o Codium::Blocks para aplicá-la.
+status.localizationFallback	A localização selecionada não está disponível; o fallback em inglês está ativo.
+about.title	Sobre o Codium::Blocks
+about.body	Codium::Blocks
+about.description	IDE nativa, sem Electron, para múltiplas linguagens, com núcleo em C++/wxWidgets.
+about.license	Licenciada sob a GNU GPL-3.0-only.
+about.copyright	Copyright (C) 2026 Codium::Blocks Contributors.
+about.protocol	O nome do produto, avisos de licença, identificadores SPDX e identificadores de protocolo permanecem invariáveis por política.
+dialog.language	Idioma
+dialog.about	Sobre
+dialog.error	Erro
+dialog.warning	Aviso
+dialog.information	Informação
+dialog.openDocumentFirst	Abra um documento antes de solicitar este recurso.
+dialog.openFileFirst	Abra um arquivo antes de usar este recurso.
+dialog.openWorkspaceFirst	Abra um espaço de trabalho antes de usar este recurso.
+dialog.trustWorkspace	Confiar no espaço de trabalho '%s'? A confiança habilita tarefas, terminais, adaptadores de depuração e extensões.
+dialog.workspaceUntrusted	O espaço de trabalho não é confiável; os recursos de execução permanecem restritos.
+dialog.goToLinePositive	Ir para a linha requer um número positivo.
+dialog.noFileMatch	Ir para o arquivo não encontrou um arquivo correspondente no espaço de trabalho.
+dialog.noBuildTask	Nenhuma tarefa de compilação foi detectada neste espaço de trabalho.
+dialog.noPreviousBuild	Nenhuma tarefa anterior de compilação ou configuração está disponível.
+dialog.noRunnableTarget	O esquema selecionado não fornece um alvo executável.
+dialog.noHover	Nenhuma informação foi retornada.
+dialog.noVariable	Nenhum valor de variável foi informado.
+dialog.noWatch	Nenhum valor de watch foi informado.
+dialog.noFrames	Nenhum frame de pilha foi informado.
+dialog.noThreads	Nenhuma thread foi informada.
+dialog.noCodeBlocksBreakpoints	Nenhum breakpoint do Code::Blocks.
+dialog.noVsix	Nenhuma extensão VSIX está instalada localmente.
+dialog.executionBlocked	Execução bloqueada: confie primeiro no espaço de trabalho atual.
+dialog.initializeFirst	Inicialize o servidor de linguagem antes de solicitar este recurso.
+dialog.openDocumentCompletion	Abra um documento antes de solicitar conclusão.
+dialog.openDocumentHover	Abra um documento antes de solicitar informações.
+dialog.openDocumentSemantic	Abra um documento antes de solicitar tokens semânticos.
+dialog.startAdapterFirst	Aguarde o handshake do adaptador Code::Blocks antes de iniciar a depuração.
+dialog.openSourceBreakpoint	Abra um arquivo-fonte antes de alternar um breakpoint.
+dialog.configureSourceBreakpoint	Abra um arquivo-fonte antes de configurar um breakpoint.
+dialog.toggleBreakpointFirst	Alterne um breakpoint antes de configurar suas opções.
+dialog.adapterAlreadyRunning	O adaptador de depuração já está em execução.
+dialog.extensionHostAlreadyRunning	O host de extensões já está em execução.
+dialog.noExtensions	Nenhuma extensão VSIX está instalada localmente.
+dialog.noWorkspaceFile	Abra um espaço de trabalho antes de usar Ir para o arquivo.
+dialog.noSourceControl	Abra um espaço de trabalho para inspecionar o controle de código-fonte.
+input.findText	Texto a localizar
+input.replaceWith	Substituir por
+input.lineNumber	Número da linha
+input.filePath	Nome do arquivo ou caminho relativo ao espaço de trabalho
+input.symbolQuery	Consulta de símbolo
+input.newSymbolName	Novo nome do símbolo
+input.expressionEvaluate	Expressão a avaliar
+input.expressionWatch	Expressão a observar
+input.functionName	Nome da função ou método
+input.functionCondition	Condição do breakpoint de função
+input.functionHitCount	Contagem de acertos do breakpoint de função
+input.dataId	Acesso ao breakpoint de dados
+input.hitCondition	Expressão de contagem de acertos (opcional)
+input.logMessage	Mensagem de log (opcional; deixe vazia para um breakpoint de parada)
+message.nativeCoreReady	Pronto. O núcleo nativo não carrega Electron.
+message.openFileForTooling	Abra um arquivo ou inicie o host para usar extensões e ferramentas de linguagem.
+message.workspaceOpened	Espaço de trabalho aberto:\s
+message.themeChanged	Tema alterado para\s
+message.languageServerInitialized	Servidor de linguagem inicializado.
+message.semanticTokensApplied	Tokens semânticos aplicados: %zu
+message.lspMessageReceived	Mensagem LSP recebida.
+message.lspDiagnosticsUpdated	Diagnósticos LSP atualizados.
+message.lspHoverReceived	Resultado de informações LSP recebido.
+message.lspCompletionReceived	Resultado de conclusão LSP recebido.
+message.lspInitialized	LSP inicializado.
+message.lspCompletionResult	Resultado de conclusão LSP recebido.
+message.buildAndRun	Compilar e executar
+message.finishedExitCode	Finalizado com código de saída %d.
+message.debugAdapterFinished	Adaptador de depuração finalizado com código de saída %d.
+message.debugAdapterError	Erro do adaptador de depuração:\s
+message.debugAdapterStarted	Adaptador de depuração iniciado.
+message.debugAdapterStopped	Adaptador de depuração parado.
+message.dapInitializeSent	Solicitação DAP de inicialização enviada.
+message.dapLaunchSent	Solicitação DAP de execução enviada.
+message.dapContinueSent	Solicitação DAP de continuação enviada.
+message.dapPauseSent	Solicitação DAP de pausa enviada.
+message.dapScopesSent	Solicitação DAP de escopos enviada.
+message.dapThreadsSent	Solicitação DAP de threads enviada.
+message.dapStackTraceSent	Solicitação DAP de stackTrace enviada.
+message.dapVariablesSent	Solicitação DAP de variáveis enviada.
+message.dapEvaluateSent	Solicitação DAP de avaliação enviada.
+message.dapWatchEvaluateSent	Solicitação DAP de avaliação de watch enviada:\s
+message.dapBreakpointSent	Solicitação DAP de setBreakpoints enviada; os breakpoints aguardam confirmação.
+message.dapFunctionBreakpointSent	Solicitação DAP de setFunctionBreakpoints enviada.
+message.dapDataBreakpointSent	Solicitação DAP de setDataBreakpoints enviada.
+message.lspInitializeFirstSemantic	Inicialize o servidor de linguagem antes de solicitar tokens semânticos.
+message.lspInitializeFirstFeature	Inicialize o servidor de linguagem antes de solicitar\s
+message.adapterRejected	O adaptador Code::Blocks rejeitou o contrato do host.
+message.codeBlocksDetected	SDK do Code::Blocks detectado em %s (%lu candidato(s) a plugin).
+message.codeBlocksDiscovery	Descoberta do SDK Code::Blocks:\s
+message.codeBlocksOpened	Adaptador Code::Blocks abriu\s
+message.nativeTerminalBackend	Terminal nativo iniciado com backend:\s
+message.taskPrefix	task>\s
+message.hostPrefix	host>\s
+message.dapPrefix	dap>\s
+message.stderrPrefix	[stderr]\s
+message.noVisibleProblems	Nenhum problema visível corresponde aos filtros atuais.
+message.adapterRejection	O adaptador rejeitou a solicitação de breakpoint de %s.
+message.adapterDidNotVerify	O adaptador não verificou este breakpoint de %s.
+message.adapterDidNotAdvertise	O adaptador de depuração ativo não anuncia %s.
+message.selectedSchemeNoRun	O esquema selecionado não fornece um alvo executável.
+message.languageFallback	A localização selecionada não está disponível; o fallback em inglês está ativo.
+accessibility.gutterTooltip	Números de linha e diagnósticos; clique na área de marcadores para alternar um breakpoint.
+accessibility.problemMarker	Marcador de problema
+accessibility.breakpointMarker	Marcador de breakpoint
+label.workspace	Espaço de trabalho
+editor.json	Editor de texto JSON
+editor.markdown	Editor de texto Markdown
+document.untitled	Sem título
+dialog.openSourceFile	Abrir arquivo-fonte
+dialog.chooseWorkspace	Escolher um diretório de espaço de trabalho
+dialog.workspaceTrustTitle	Confiança do espaço de trabalho
+dialog.selectShell	Selecionar o shell da próxima sessão de terminal
+dialog.terminalShell	Shell do terminal
+dialog.debugAdapterExecutable	Executável do adaptador de depuração (por exemplo, codelldb ou OpenDebugAD7)
+dialog.debugAdapter	Adaptador de depuração
+dialog.chooseProgram	Escolher um programa para depurar
+dialog.conditionalExpression	Expressão condicional (opcional)
+dialog.breakpointCondition	Condição do breakpoint
+dialog.hitCountExpression	Expressão de contagem de acertos (opcional)
+dialog.breakpointHitCondition	Condição de acertos do breakpoint
+dialog.logMessage	Mensagem de log (opcional; deixe vazia para um breakpoint de parada)
+dialog.breakpointLogpoint	Logpoint do breakpoint
+dialog.functionName	Nome da função ou método
+dialog.functionBreakpoint	Breakpoint de função
+dialog.functionCondition	Condição do breakpoint de função
+dialog.functionHitCount	Contagem de acertos do breakpoint de função
+dialog.dataId	DataId DAP
+dialog.dataBreakpoint	Breakpoint de dados
+dialog.dataAccess	Tipo de acesso: read, write ou readWrite
+dialog.dataBreakpointAccess	Acesso do breakpoint de dados
+dialog.debugEvaluate	Avaliação de depuração
+dialog.addWatch	Adicionar watch
+dialog.remoteSourceRoot	Raiz remota das fontes
+dialog.sourceMapping	Mapeamento de origem
+dialog.localSourceRoot	Raiz local das fontes
+dialog.find	Localizar
+dialog.replace	Substituir
+dialog.replaceAll	Substituir tudo
+dialog.goToLine	Ir para a linha
+dialog.goToFile	Ir para o arquivo
+dialog.selectFile	Selecionar um arquivo
+dialog.workspaceSymbols	Símbolos do espaço de trabalho
+dialog.renameSymbol	Renomear símbolo
+dialog.selectCommand	Selecionar um comando
+dialog.commandPalette	Paleta de comandos
+dialog.saveSourceFile	Salvar arquivo-fonte
+dialog.chooseVsix	Escolher uma extensão VSIX
+dialog.chooseCodeBlocksRoot	Escolher uma instalação ou raiz de fontes do Code::Blocks
+dialog.chooseAdapterExecutable	Escolher o executável do adaptador Code::Blocks
+dialog.extensionRegistry	Registro de extensões
+dialog.searchOpenVsx	Pesquisar no Open VSX
+status.theme	Tema: %s%s
+status.accessibleContrast	 · contraste acessível
+status.stale	desatualizado
+status.problemSummary	%zu exibidos / %zu problemas  ·  %zu erros  ·  %zu avisos
+status.default	padrão
+status.buildRunning	Executando: %s [%s]
+status.buildLast	Última: %s
+status.buildHeader	=== %s [%s · %s] ===
+status.codeBlocksBuilding	Compilação pelo Code::Blocks
+status.building	Compilando…
+status.buildSucceeded	Compilação concluída
+status.buildFailed	Falha na compilação
+status.terminalRunning	Terminal em execução
+status.terminalExited	Terminal encerrado
+status.terminalFailed	Falha no terminal
+message.errorPrefix	Erro:\s
+message.advancedBreakpointPersistence	Persistência de breakpoints avançados indisponível:\s
+message.projectPreferencesUnavailable	Preferências de seleção do projeto indisponíveis:\s
+message.buildHistoryUnavailable	Histórico de sessões de compilação indisponível:\s
+message.detectedToolchain	Toolchain detectado:\s
+message.selectedScheme	Scheme selecionada: %s (%s, target %s)
+message.projectSelectionSaveError	Não foi possível salvar a seleção do projeto:\s
+message.buildSessionError	Erro na sessão de compilação:\s
+message.codeBlocksBuildStarted	Compilação iniciada pelo adapter do Code::Blocks: %s
+message.codeBlocksBuildRejected	O adapter do Code::Blocks rejeitou a compilação; usando a task importada.
+message.taskStarted	Task iniciada: %s
+message.taskStartedLine	%s iniciada
+message.taskError	Erro na task:\s
+message.noRunnableArtifact	A compilação foi concluída, mas nenhum artefato executável foi encontrado para o target selecionado.
+message.buildRunningTarget	Compilação concluída; executando o target:\s
+message.buildingSelectedTarget	Compilando o target selecionado antes de executá-lo:\s
+message.rerunning	Executando novamente:\s
+message.taskStopped	Task interrompida.
+message.taskFinished	Task concluída com código de saída %d.
+message.buildFailedNotRun	A compilação falhou; o target selecionado não foi executado.
+message.terminalAlreadyRunning	O terminal já está em execução.
+message.terminalError	Erro do terminal:\s
+message.stopTerminalBeforeShell	Pare o terminal antes de alterar o shell.
+message.selectedShell	Shell selecionado:\s
+message.startTerminalFirst	Inicie o terminal primeiro.
+message.terminalWriteError	Não foi possível escrever no terminal.
+message.terminalStopped	Terminal interrompido.
+message.terminalFinished	Terminal concluído com código de saída %d.
+message.breakpointPersistenceError	Não foi possível persistir os breakpoints:\s
+message.advancedBreakpointPersistenceError	Não foi possível persistir os breakpoints avançados:\s
+message.sourceMappingAdded	Mapeamento de origem adicionado:\s
+message.openEditorFirst	Abra um editor antes de usar este comando.
+message.searchNotFound	Texto não encontrado:\s
+message.replacedOne	Uma ocorrência de '%s' foi substituída.
+message.replacedAll	%d ocorrência(s) de '%s' foram substituídas.
+message.lspDefinitionSent	Requisição enviada: textDocument/definition.
+message.lspDeclarationSent	Requisição enviada: textDocument/declaration.
+message.lspReferencesSent	Requisição enviada: textDocument/references.
+message.lspDocumentSymbolsSent	Requisição enviada: textDocument/documentSymbol.
+message.lspWorkspaceSymbolsSent	Requisição enviada: workspace/symbol.
+message.lspRenameSent	Requisição enviada: textDocument/rename.
+label.functionBreakpoints	function breakpoints
+label.dataBreakpoints	data breakpoints
+dialog.openEditorFirst	Abra um editor antes de usar este comando.
+dialog.selectTask	Selecione uma tarefa antes de executá-la.
+dialog.codeBlocksDebuggerNotReady	O depurador do Code::Blocks não está pronto.
+dialog.openWorkspaceAdapter	Abra um workspace antes de iniciar o adapter do Code::Blocks.
+dialog.requireCodeBlocksProject	O depurador do Code::Blocks requer um projeto .cbp importado.
+dialog.startHostFirst	Inicie primeiro o Extension Host.
+dialog.waitAdapterHandshake	Aguarde o handshake do adapter do Code::Blocks antes de iniciar a depuração.
+message.codeBlocksAdapterError	Erro do adapter do Code::Blocks:\s
+message.codeBlocksAdapterStarted	Adapter do Code::Blocks iniciado; aguardando o handshake do contrato.
+message.codeBlocksAdapterStopped	Adapter do Code::Blocks parado.
+message.codeBlocksDebugContinueSent	Continuação do depurador do Code::Blocks solicitada.
+message.codeBlocksDebugLaunchSent	Inicialização do depurador do Code::Blocks solicitada.
+message.codeBlocksDebugPauseSent	Pausa do depurador do Code::Blocks solicitada.
+message.codeBlocksDebugStartError	Não foi possível iniciar o depurador do Code::Blocks.
+message.codeBlocksDebugStopSent	Parada do depurador do Code::Blocks solicitada.
+message.codeBlocksHeaders	Cabeçalhos do SDK do Code::Blocks:\s
+message.codeBlocksPlugin	Plugin do Code::Blocks: %s — %s (%s)
+message.codeBlocksProjectOpenError	Não foi possível abrir o projeto do Code::Blocks no adapter.
+message.codeBlocksRoot	Raiz do Code::Blocks: %s
+message.codeBlocksRuntimeIncomplete	O adapter do Code::Blocks requer resources.zip e um plugin Compiler compatível; a descoberta não encontrou um caminho de runtime completo.
+message.codeBlocksSnapshotParseError	Erro ao analisar o snapshot do depurador do Code::Blocks:\s
+message.customEditorSelected	Editor personalizado selecionado:\s
+message.documentOpened	Aberto:\s
+message.documentSaved	Salvo:\s
+message.extensionPrefix	Extensão:\s
+message.hostAlreadyRunning	O Extension Host já está em execução.
+message.hostStartError	Não foi possível iniciar o Extension Host.
+message.hostStarted	Extension Host Node.js iniciado em um processo separado.
+message.initializeLanguageServerSent	Requisição enviada: inicializar o servidor de linguagem.
+message.loadDemoSent	Requisição enviada: carregar hello-codium.
+message.lspCompletionSent	Requisição enviada: textDocument/completion.
+message.lspHoverSent	Requisição enviada: textDocument/hover.
+message.lspSemanticTokensSent	Requisição enviada: textDocument/semanticTokens/full.
+message.noCodeBlocksPlugins	Nenhuma biblioteca de plugin nativo do Code::Blocks foi encontrada nos diretórios descobertos.
+message.runDemoSent	Requisição enviada: executar hello.codium.
+message.snapshotParseError	Erro ao analisar o snapshot:\s
+message.startClangdSent	Requisição enviada: iniciar clangd pelo Extension Host.
+message.stopLanguageServerSent	Requisição enviada: parar o servidor de linguagem.
+message.lspCodeActionsSent	Requisição enviada: textDocument/codeAction.
+label.noHoverInformation	Nenhuma informação de hover foi retornada.
+label.noStackFrames	Nenhum frame de stack foi informado.
+label.noThreads	Nenhuma thread foi informada.
+message.adapterEvent	adapter> %s: %s
+message.codeActions	Ações de código: %zu. Clique duas vezes em uma ação para aplicá-la.
+message.codeBlocksBuildRunSkipped	A compilação do Code::Blocks falhou; o target selecionado não foi executado.
+message.codeBlocksContractRejected	O adapter do Code::Blocks rejeitou o contrato do host.
+message.codeBlocksProjectOpened	O adapter do Code::Blocks abriu\s
+message.completionItems	Itens de completion: %zu. Clique duas vezes em um item para aplicá-lo.
+message.dapAdvancedBreakpointApplied	Resposta de breakpoint avançado do DAP aplicada.
+message.dapAdvancedBreakpointMissingRequest	Resposta de breakpoint avançado do DAP recebida sem uma requisição correspondente.
+message.dapBreakpointApplied	Resposta de breakpoint do DAP aplicada.
+message.dapBreakpointMissingSource	Resposta de breakpoint do DAP recebida sem um caminho de origem.
+message.dapBreakpointParseError	Erro ao analisar a resposta de breakpoint do DAP:\s
+message.dapBreakpointResponse	Resposta de breakpoint do DAP:\s
+message.dataBreakpointRejected	O adapter rejeitou a requisição de breakpoint de dados.
+message.dataBreakpointUnverified	O adapter não verificou este breakpoint de dados.
+message.functionBreakpointRejected	O adapter rejeitou a requisição de breakpoint de função.
+message.functionBreakpointUnverified	O adapter não verificou este breakpoint de função.
+message.hostOutputPrefix	host>\s
+message.lspLoadEditError	Não foi possível carregar o alvo da edição LSP:\s
+message.lspLocations	Resultados de %s: %zu. Clique duas vezes em uma localização para abri-la.
+message.lspNoTextEdits	O servidor de linguagem não retornou edições de texto aplicáveis.
+message.lspSaveEditError	Não foi possível salvar o alvo da edição LSP:\s
+message.lspTextEditsApplied	%zu edição(ões) de texto LSP aplicada(s).
+message.openVsxCatalogReceived	Catálogo Open VSX recebido (%lu bytes); cache atualizado.
+message.openVsxError	Erro do Open VSX:\s
+message.registeredExtensionCommand	Comando de extensão registrado:\s
+message.registeredTreeView	Tree View de extensão registrada:\s
+message.runContributedCommand	Requisição enviada: executar comando contribuído\s
+message.taskOutputPrefix	task>\s
+message.dapOutputPrefix	dap>\s
+status.codeBlocksBuildFailed	A compilação do Code::Blocks falhou
+status.codeBlocksBuildSucceeded	A compilação do Code::Blocks foi concluída
+label.dapPrefix	DAP:\s
+label.lineNumber	linha %d
+label.noCodeBlocksBreakpoints	Nenhum breakpoint do Code::Blocks.
+label.noVariableValue	Nenhum valor de variável informado.
+label.noWatchValue	Nenhum valor de watch informado.
+message.codeBlocksSnapshotApplied	Snapshot %s do Code::Blocks aplicado aos painéis de Debug.
+status.debugPrefix	Depuração\s
+label.dataPrefix	dados:\s
+label.functionPrefix	função:\s
+message.finishedWithExitCode	Concluído com código de saída %d.
+status.codeBlocksAdapterVersion	Adapter do Code::Blocks %d.%d · SDK %d.%d.%d
+dialog.noVisibleProblems	Nenhum problema visível corresponde aos filtros atuais.
+dialog.allFilesFilter	Todos os arquivos (*.*)|*.*
+dialog.executableFilter	Arquivos executáveis (*.*)|*.*
+dialog.vsixFilter	Extensões do VS Code (*.vsix)|*.vsix
+label.capabilityNo	: não/desconhecido
+label.capabilityYes	: sim
+label.conditionPrefix	 · se\s
+label.disabled	 [desabilitado]
+label.enabled	 [habilitado]
+label.hitPrefix	 · ocorrências\s
+label.logPrefix	 · log\s
+label.manifestUnavailable	manifesto indisponível
+label.runPrefix	Executar:\s
+label.stderrPrefix	[stderr]\s
+label.temporary	 [temporário]
+label.unknownFrame	<desconhecido>
+label.unknownValue	<valor>
+label.unnamedThread	<thread sem nome>
+label.valueChanged	 [alterado]
+label.valueError	 [erro]
+label.valueTruncated	 [truncado]
+message.buildHeader	=== %s [%s] ===
+message.codeBlocksBuildHeader	=== Code::Blocks: %s ===
+status.cursorPosition	%s  Lin %d, Col %d
+label.breakpointDisabled	desabilitado
+label.breakpointPending	pendente
+label.breakpointRejected	rejeitado
+label.breakpointUnknown	desconhecido
+label.breakpointVerified	verificado
+label.dapDisconnected	desconectado
+label.dapInitialized	inicializado
+label.dapInitializing	inicializando
+label.dapPaused	pausado
+label.dapRunning	executando
+label.dapStopped	parado
+label.dapUnknown	desconhecido
+label.themeDark	Escuro
+label.themeHighContrast	Alto contraste
+label.themeLight	Claro
+label.themeSystem	Sistema
+message.codeBlocksLoadPolicy	Somente pré-verificação: o Codium::Blocks não carrega bibliotecas compartilhadas do Code::Blocks até que um host com ABI de SDK compatível seja conectado. Plugins nativos dependem de Manager, PluginManager, cbPlugin e da infraestrutura de eventos.

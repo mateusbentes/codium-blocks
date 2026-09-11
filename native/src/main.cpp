@@ -18,6 +18,7 @@
 #include "codium/semantic_tokens.hpp"
 #include "codium/syntax_highlighting.hpp"
 #include "codium/theme.hpp"
+#include "codium/localization.hpp"
 #include "codium/vsix_manager.hpp"
 #include "codium/workspace.hpp"
 
@@ -98,6 +99,10 @@ enum : int {
     ID_THEME_LIGHT,
     ID_THEME_DARK,
     ID_THEME_HIGH_CONTRAST,
+    ID_LANGUAGE_SYSTEM,
+    ID_LANGUAGE_ENGLISH,
+    ID_LANGUAGE_PORTUGUESE_BRAZIL,
+    ID_ABOUT,
     ID_TASK_PROCESS = wxID_HIGHEST + 500,
     ID_START_TERMINAL,
     ID_SEND_TERMINAL,
@@ -406,11 +411,11 @@ struct GutterBreakpointMarker final {
 
 class ProblemGutter final : public wxPanel {
 public:
-    explicit ProblemGutter(wxWindow* parent)
+    ProblemGutter(wxWindow* parent, const wxString& tooltip)
         : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(58, -1), wxBORDER_NONE)
     {
         SetBackgroundStyle(wxBG_STYLE_PAINT);
-        SetToolTip(wxS("Line numbers and diagnostics; click the marker area to toggle a breakpoint."));
+        SetToolTip(tooltip);
         Bind(wxEVT_PAINT, &ProblemGutter::OnPaint, this);
         Bind(wxEVT_ERASE_BACKGROUND, [](wxEraseEvent&) {});
     }
@@ -562,14 +567,19 @@ public:
           codeBlocksAdapter_(this),
           timer_(this)
     {
+        wxString localizationError;
+        if (!localization_.Load(projectRoot_, UserDataRoot(), &localizationError) && !localizationError.empty()) {
+            // Keep the native UI usable in an incomplete development tree; the catalog reports the failure.
+            wxLogWarning(wxS("%s"), localizationError);
+        }
         wxString configuredTheme;
         if (wxGetEnv(wxS("CODIUM_BLOCKS_THEME"), &configuredTheme)) {
             themeKind_ = codium::ThemePalette::FromName(configuredTheme);
         }
         BuildMenuBar();
-        treeRegistry_.Register(wxS("workspace"), wxS("Workspace"));
-        customEditors_.Register(wxS("json"), wxS("JSON text editor"));
-        customEditors_.Register(wxS("md"), wxS("Markdown text editor"));
+        treeRegistry_.Register(wxS("workspace"), T(wxS("label.workspace"), wxS("Workspace")));
+        customEditors_.Register(wxS("json"), T(wxS("editor.json"), wxS("JSON text editor")));
+        customEditors_.Register(wxS("md"), T(wxS("editor.markdown"), wxS("Markdown text editor")));
         terminalProfile_ = codium::TerminalProfileStore::Load();
         if (!terminalProfile_.shell.empty()) terminalShell_ = terminalProfile_.shell;
         terminalColumns_ = std::max(20, terminalProfile_.columns);
@@ -577,8 +587,7 @@ public:
         for (const auto& command : terminalProfile_.history) terminalHistory_.push_back(command);
         historyIndex_ = terminalHistory_.size();
         auto* root = new wxBoxSizer(wxVERTICAL);
-        auto* title = new wxStaticText(this, wxID_ANY,
-            wxS("Codium::Blocks — native classic IDE — no Electron"));
+        auto* title = new wxStaticText(this, wxID_ANY, T(wxS("title.main")));
         title->SetFont(title->GetFont().Bold());
         root->Add(title, 0, wxALL | wxEXPAND, 8);
 
@@ -591,63 +600,63 @@ public:
         root->Add(mainSplitter, 1, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
 
         auto* navigatorRoot = new wxBoxSizer(wxVERTICAL);
-        auto* navigatorTitle = new wxStaticText(navigatorPanel, wxID_ANY, wxS("PROJECT NAVIGATOR"));
+        auto* navigatorTitle = new wxStaticText(navigatorPanel, wxID_ANY, T(wxS("title.projectNavigator")));
         navigatorTitle->SetFont(navigatorTitle->GetFont().Bold());
         navigatorRoot->Add(navigatorTitle, 0, wxALL | wxEXPAND, 6);
         auto* workspaceControls = new wxBoxSizer(wxHORIZONTAL);
-        AddButton(workspaceControls, wxS("Open"), [this](wxCommandEvent&) { OpenWorkspace(); }, navigatorPanel);
-        AddButton(workspaceControls, wxS("SCM"), [this](wxCommandEvent&) { RefreshScm(); }, navigatorPanel);
+        AddButton(workspaceControls, T(wxS("button.open")), [this](wxCommandEvent&) { OpenWorkspace(); }, navigatorPanel);
+        AddButton(workspaceControls, T(wxS("button.scm")), [this](wxCommandEvent&) { RefreshScm(); }, navigatorPanel);
         navigatorRoot->Add(workspaceControls, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 6);
         fileTree_ = new wxTreeCtrl(navigatorPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                                    wxTR_DEFAULT_STYLE | wxTR_SINGLE);
         fileTree_->Bind(wxEVT_TREE_ITEM_ACTIVATED, [this](wxTreeEvent& event) { OpenTreeItem(event); });
         navigatorRoot->Add(fileTree_, 1, wxLEFT | wxRIGHT | wxEXPAND, 6);
-        navigatorRoot->Add(new wxStaticText(navigatorPanel, wxID_ANY, wxS("Tree Views")), 0, wxLEFT | wxRIGHT | wxTOP, 6);
+        navigatorRoot->Add(new wxStaticText(navigatorPanel, wxID_ANY, T(wxS("label.treeViews"))), 0, wxLEFT | wxRIGHT | wxTOP, 6);
         treeViewsList_ = new wxListBox(navigatorPanel, wxID_ANY, wxDefaultPosition, wxSize(-1, 50));
         navigatorRoot->Add(treeViewsList_, 0, wxLEFT | wxRIGHT | wxEXPAND, 6);
-        navigatorRoot->Add(new wxStaticText(navigatorPanel, wxID_ANY, wxS("Source Control")), 0, wxLEFT | wxRIGHT | wxTOP, 6);
+        navigatorRoot->Add(new wxStaticText(navigatorPanel, wxID_ANY, T(wxS("label.sourceControl"))), 0, wxLEFT | wxRIGHT | wxTOP, 6);
         scm_ = new wxListBox(navigatorPanel, wxID_ANY, wxDefaultPosition, wxSize(-1, 60));
         navigatorRoot->Add(scm_, 0, wxLEFT | wxRIGHT | wxEXPAND, 6);
-        navigatorRoot->Add(new wxStaticText(navigatorPanel, wxID_ANY, wxS("Custom editors")), 0, wxLEFT | wxRIGHT | wxTOP, 6);
+        navigatorRoot->Add(new wxStaticText(navigatorPanel, wxID_ANY, T(wxS("label.customEditors"))), 0, wxLEFT | wxRIGHT | wxTOP, 6);
         customEditorsView_ = new wxListBox(navigatorPanel, wxID_ANY, wxDefaultPosition, wxSize(-1, 48));
         for (const auto& entry : customEditors_.Entries()) customEditorsView_->Append(entry);
         navigatorRoot->Add(customEditorsView_, 0, wxLEFT | wxRIGHT | wxEXPAND, 6);
-        navigatorRoot->Add(new wxStaticText(navigatorPanel, wxID_ANY, wxS("Tasks")), 0, wxLEFT | wxRIGHT | wxTOP, 6);
+        navigatorRoot->Add(new wxStaticText(navigatorPanel, wxID_ANY, T(wxS("label.tasks"))), 0, wxLEFT | wxRIGHT | wxTOP, 6);
         taskList_ = new wxListBox(navigatorPanel, wxID_ANY, wxDefaultPosition, wxSize(-1, 70));
         navigatorRoot->Add(taskList_, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 6);
         navigatorPanel->SetSizer(navigatorRoot);
 
         auto* centerRoot = new wxBoxSizer(wxVERTICAL);
         auto* schemeBar = new wxBoxSizer(wxHORIZONTAL);
-        schemeBar->Add(new wxStaticText(centerPanel, wxID_ANY, wxS("Scheme")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+        schemeBar->Add(new wxStaticText(centerPanel, wxID_ANY, T(wxS("label.scheme"))), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
         schemeChoice_ = new wxChoice(centerPanel, wxID_ANY);
         schemeChoice_->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { SelectScheme(); });
         schemeBar->Add(schemeChoice_, 0, wxRIGHT, 8);
-        schemeBar->Add(new wxStaticText(centerPanel, wxID_ANY, wxS("Target")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+        schemeBar->Add(new wxStaticText(centerPanel, wxID_ANY, T(wxS("label.target"))), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
         targetChoice_ = new wxChoice(centerPanel, wxID_ANY);
         targetChoice_->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { UpdateSchemeStatus(); UpdateTitle(); });
         schemeBar->Add(targetChoice_, 0, wxRIGHT, 8);
-        schemeBar->Add(new wxStaticText(centerPanel, wxID_ANY, wxS("Toolchain")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+        schemeBar->Add(new wxStaticText(centerPanel, wxID_ANY, T(wxS("label.toolchain"))), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
         toolchainChoice_ = new wxChoice(centerPanel, wxID_ANY);
         toolchainChoice_->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { SelectToolchain(); });
         schemeBar->Add(toolchainChoice_, 0, wxRIGHT, 8);
-        schemeStatus_ = new wxStaticText(centerPanel, wxID_ANY, wxS("No project scheme"));
+        schemeStatus_ = new wxStaticText(centerPanel, wxID_ANY, T(wxS("status.noProjectScheme")));
         schemeBar->Add(schemeStatus_, 1, wxALIGN_CENTER_VERTICAL | wxLEFT, 4);
         centerRoot->Add(schemeBar, 0, wxBOTTOM | wxEXPAND, 6);
 
         auto* commandBar = new wxBoxSizer(wxHORIZONTAL);
-        AddButton(commandBar, wxS("Open file"), [this](wxCommandEvent&) { OpenFile(); }, centerPanel);
-        AddButton(commandBar, wxS("Save"), [this](wxCommandEvent&) { SaveFile(); }, centerPanel);
-        AddButton(commandBar, wxS("Build"), [this](wxCommandEvent&) { BuildProject(); }, centerPanel);
-        AddButton(commandBar, wxS("Build and Run"), [this](wxCommandEvent&) { RunSelectedTarget(); }, centerPanel);
-        AddButton(commandBar, wxS("Run task"), [this](wxCommandEvent&) { RunSelectedTask(); }, centerPanel);
-        AddButton(commandBar, wxS("Palette"), [this](wxCommandEvent&) { ShowCommandPalette(); }, centerPanel);
+        AddButton(commandBar, T(wxS("button.openFile")), [this](wxCommandEvent&) { OpenFile(); }, centerPanel);
+        AddButton(commandBar, T(wxS("button.save")), [this](wxCommandEvent&) { SaveFile(); }, centerPanel);
+        AddButton(commandBar, T(wxS("button.build")), [this](wxCommandEvent&) { BuildProject(); }, centerPanel);
+        AddButton(commandBar, T(wxS("button.buildAndRun")), [this](wxCommandEvent&) { RunSelectedTarget(); }, centerPanel);
+        AddButton(commandBar, T(wxS("button.runTask")), [this](wxCommandEvent&) { RunSelectedTask(); }, centerPanel);
+        AddButton(commandBar, T(wxS("button.palette")), [this](wxCommandEvent&) { ShowCommandPalette(); }, centerPanel);
         centerRoot->Add(commandBar, 0, wxBOTTOM | wxEXPAND, 6);
 
         notebook_ = new wxNotebook(centerPanel, wxID_ANY);
         ProblemGutter* initialGutter = nullptr;
         wxPanel* initialPage = CreateEditorPage(notebook_, wxEmptyString, &editor_, &initialGutter);
-        notebook_->AddPage(initialPage, wxS("Untitled"), true);
+        notebook_->AddPage(initialPage, T(wxS("document.untitled"), wxS("Untitled")), true);
         tabPaths_.push_back(wxEmptyString);
         editorPages_.push_back(editor_);
         editorGutters_.push_back(initialGutter);
@@ -661,46 +670,46 @@ public:
         bottomWorkbench_->SetMinSize(wxSize(-1, 245));
         auto* problemsPage = new wxPanel(bottomWorkbench_);
         auto* problemsRoot = new wxBoxSizer(wxVERTICAL);
-        problemSummary_ = new wxStaticText(problemsPage, wxID_ANY, wxS("No problems"));
+        problemSummary_ = new wxStaticText(problemsPage, wxID_ANY, T(wxS("status.noProblems")));
         problemsRoot->Add(problemSummary_, 0, wxALL | wxEXPAND, 6);
         auto* problemFilters = new wxBoxSizer(wxHORIZONTAL);
-        problemFilters->Add(new wxStaticText(problemsPage, wxID_ANY, wxS("Severity")),
+        problemFilters->Add(new wxStaticText(problemsPage, wxID_ANY, T(wxS("label.severity"))),
                             0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
         problemSeverityChoice_ = new wxChoice(problemsPage, wxID_ANY);
-        problemSeverityChoice_->Append(wxS("All"));
-        problemSeverityChoice_->Append(wxS("Errors"));
-        problemSeverityChoice_->Append(wxS("Warnings"));
-        problemSeverityChoice_->Append(wxS("Information"));
-        problemSeverityChoice_->Append(wxS("Hints"));
+        problemSeverityChoice_->Append(T(wxS("filter.all")));
+        problemSeverityChoice_->Append(T(wxS("filter.errors")));
+        problemSeverityChoice_->Append(T(wxS("filter.warnings")));
+        problemSeverityChoice_->Append(T(wxS("filter.information")));
+        problemSeverityChoice_->Append(T(wxS("filter.hints")));
         problemSeverityChoice_->SetSelection(0);
         problemSeverityChoice_->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { RefreshProblems(); });
         problemFilters->Add(problemSeverityChoice_, 0, wxRIGHT, 8);
-        problemFilters->Add(new wxStaticText(problemsPage, wxID_ANY, wxS("Source")),
+        problemFilters->Add(new wxStaticText(problemsPage, wxID_ANY, T(wxS("label.source"))),
                             0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
         problemSourceChoice_ = new wxChoice(problemsPage, wxID_ANY);
-        problemSourceChoice_->Append(wxS("All sources"));
+        problemSourceChoice_->Append(T(wxS("filter.allSources")));
         problemSourceChoice_->SetSelection(0);
         problemSourceChoice_->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { RefreshProblems(); });
         problemFilters->Add(problemSourceChoice_, 0, wxRIGHT, 8);
-        AddButton(problemFilters, wxS("Previous"), [this](wxCommandEvent&) { SelectAdjacentProblem(-1); }, problemsPage);
-        AddButton(problemFilters, wxS("Next"), [this](wxCommandEvent&) { SelectAdjacentProblem(1); }, problemsPage);
-        AddButton(problemFilters, wxS("Rerun Build"), [this](wxCommandEvent&) { RunLastBuild(); }, problemsPage);
+        AddButton(problemFilters, T(wxS("button.previous")), [this](wxCommandEvent&) { SelectAdjacentProblem(-1); }, problemsPage);
+        AddButton(problemFilters, T(wxS("button.next")), [this](wxCommandEvent&) { SelectAdjacentProblem(1); }, problemsPage);
+        AddButton(problemFilters, T(wxS("button.rerunBuild")), [this](wxCommandEvent&) { RunLastBuild(); }, problemsPage);
         problemsRoot->Add(problemFilters, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 6);
         problems_ = new wxListBox(problemsPage, wxID_ANY);
         problems_->Bind(wxEVT_LISTBOX, [this](wxCommandEvent& event) { GoToProblem(event.GetSelection()); });
         diagnostics_ = problems_;
         problemsRoot->Add(problems_, 1, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 6);
         problemsPage->SetSizer(problemsRoot);
-        bottomWorkbench_->AddPage(problemsPage, wxS("Problems"), true);
+        bottomWorkbench_->AddPage(problemsPage, T(wxS("label.problems")), true);
 
         auto* buildPage = new wxPanel(bottomWorkbench_);
         auto* buildRoot = new wxBoxSizer(wxVERTICAL);
         auto* buildControls = new wxBoxSizer(wxHORIZONTAL);
-        buildSessionStatus_ = new wxStaticText(buildPage, wxID_ANY, wxS("No build session"));
+        buildSessionStatus_ = new wxStaticText(buildPage, wxID_ANY, T(wxS("status.noBuildSession")));
         buildControls->Add(buildSessionStatus_, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
-        AddButton(buildControls, wxS("Build"), [this](wxCommandEvent&) { BuildProject(); }, buildPage);
-        AddButton(buildControls, wxS("Rerun"), [this](wxCommandEvent&) { RunLastBuild(); }, buildPage);
-        AddButton(buildControls, wxS("Stop"), [this](wxCommandEvent&) { StopTask(); }, buildPage);
+        AddButton(buildControls, T(wxS("button.build")), [this](wxCommandEvent&) { BuildProject(); }, buildPage);
+        AddButton(buildControls, T(wxS("button.rerunBuild")), [this](wxCommandEvent&) { RunLastBuild(); }, buildPage);
+        AddButton(buildControls, T(wxS("button.stop")), [this](wxCommandEvent&) { StopTask(); }, buildPage);
         buildRoot->Add(buildControls, 0, wxALL | wxEXPAND, 6);
         buildSessionList_ = new wxListBox(buildPage, wxID_ANY, wxDefaultPosition, wxSize(-1, 74));
         buildSessionList_->Bind(wxEVT_LISTBOX, [this](wxCommandEvent& event) {
@@ -711,15 +720,15 @@ public:
                                       wxTE_MULTILINE | wxTE_READONLY | wxTE_RICH2 | wxHSCROLL);
         buildRoot->Add(buildOutput_, 1, wxALL | wxEXPAND, 6);
         buildPage->SetSizer(buildRoot);
-        bottomWorkbench_->AddPage(buildPage, wxS("Build"));
+        bottomWorkbench_->AddPage(buildPage, T(wxS("label.build")));
 
         auto* terminalPage = new wxPanel(bottomWorkbench_);
         auto* terminalRoot = new wxBoxSizer(wxVERTICAL);
         auto* terminalControls = new wxBoxSizer(wxHORIZONTAL);
-        AddButton(terminalControls, wxS("Start"), [this](wxCommandEvent&) { StartTerminal(); }, terminalPage);
-        AddButton(terminalControls, wxS("Send input"), [this](wxCommandEvent&) { SendTerminalInput(); }, terminalPage);
-        AddButton(terminalControls, wxS("Stop"), [this](wxCommandEvent&) { StopTerminal(); }, terminalPage);
-        AddButton(terminalControls, wxS("Shell"), [this](wxCommandEvent&) { SelectShell(); }, terminalPage);
+        AddButton(terminalControls, T(wxS("button.start")), [this](wxCommandEvent&) { StartTerminal(); }, terminalPage);
+        AddButton(terminalControls, T(wxS("button.sendInput")), [this](wxCommandEvent&) { SendTerminalInput(); }, terminalPage);
+        AddButton(terminalControls, T(wxS("button.stop")), [this](wxCommandEvent&) { StopTerminal(); }, terminalPage);
+        AddButton(terminalControls, T(wxS("button.shell")), [this](wxCommandEvent&) { SelectShell(); }, terminalPage);
         terminalRoot->Add(terminalControls, 0, wxBOTTOM | wxEXPAND, 4);
         terminalInput_ = new wxTextCtrl(terminalPage, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(-1, 28));
         terminalInput_->Bind(wxEVT_KEY_DOWN, [this](wxKeyEvent& event) {
@@ -766,55 +775,55 @@ public:
         terminalOutput_->Bind(wxEVT_MOUSEWHEEL, [this](wxMouseEvent& event) { HandleTerminalWheel(event); });
         terminalRoot->Add(terminalOutput_, 1, wxEXPAND);
         terminalPage->SetSizer(terminalRoot);
-        bottomWorkbench_->AddPage(terminalPage, wxS("Terminal"));
+        bottomWorkbench_->AddPage(terminalPage, T(wxS("label.terminal")));
 
         auto* debugPage = new wxPanel(bottomWorkbench_);
         auto* debugRoot = new wxBoxSizer(wxVERTICAL);
         auto* debugControls = new wxBoxSizer(wxHORIZONTAL);
-        AddButton(debugControls, wxS("Start adapter"), [this](wxCommandEvent&) { StartDebugAdapter(); }, debugPage);
-        AddButton(debugControls, wxS("Initialize"), [this](wxCommandEvent&) { InitializeDebug(); }, debugPage);
-        AddButton(debugControls, wxS("Launch"), [this](wxCommandEvent&) { LaunchDebug(); }, debugPage);
-        AddButton(debugControls, wxS("Breakpoint"), [this](wxCommandEvent&) { ToggleBreakpoint(); }, debugPage);
-        AddButton(debugControls, wxS("Breakpoint options"), [this](wxCommandEvent&) { ConfigureBreakpoint(); }, debugPage);
-        AddButton(debugControls, wxS("Function breakpoint"), [this](wxCommandEvent&) { ConfigureFunctionBreakpoint(); }, debugPage);
-        AddButton(debugControls, wxS("Data breakpoint"), [this](wxCommandEvent&) { ConfigureDataBreakpoint(); }, debugPage);
-        AddButton(debugControls, wxS("Continue"), [this](wxCommandEvent&) { ContinueDebug(); }, debugPage);
-        AddButton(debugControls, wxS("Pause"), [this](wxCommandEvent&) { PauseDebug(); }, debugPage);
-        AddButton(debugControls, wxS("Stop"), [this](wxCommandEvent&) { StopDebug(); }, debugPage);
-        AddButton(debugControls, wxS("Watch"), [this](wxCommandEvent&) { AddWatch(); }, debugPage);
-        AddButton(debugControls, wxS("Source map"), [this](wxCommandEvent&) { ConfigureSourceMap(); }, debugPage);
-        AddButton(debugControls, wxS("CB Debug"), [this](wxCommandEvent&) { StartCodeBlocksDebug(); }, debugPage);
-        AddButton(debugControls, wxS("CB Continue"), [this](wxCommandEvent&) { ContinueCodeBlocksDebug(); }, debugPage);
-        AddButton(debugControls, wxS("CB Pause"), [this](wxCommandEvent&) { PauseCodeBlocksDebug(); }, debugPage);
-        AddButton(debugControls, wxS("CB Stop"), [this](wxCommandEvent&) { StopCodeBlocksDebug(); }, debugPage);
+        AddButton(debugControls, T(wxS("button.startAdapter")), [this](wxCommandEvent&) { StartDebugAdapter(); }, debugPage);
+        AddButton(debugControls, T(wxS("button.initialize")), [this](wxCommandEvent&) { InitializeDebug(); }, debugPage);
+        AddButton(debugControls, T(wxS("button.launch")), [this](wxCommandEvent&) { LaunchDebug(); }, debugPage);
+        AddButton(debugControls, T(wxS("button.breakpoint")), [this](wxCommandEvent&) { ToggleBreakpoint(); }, debugPage);
+        AddButton(debugControls, T(wxS("button.breakpointOptions")), [this](wxCommandEvent&) { ConfigureBreakpoint(); }, debugPage);
+        AddButton(debugControls, T(wxS("button.functionBreakpoint")), [this](wxCommandEvent&) { ConfigureFunctionBreakpoint(); }, debugPage);
+        AddButton(debugControls, T(wxS("button.dataBreakpoint")), [this](wxCommandEvent&) { ConfigureDataBreakpoint(); }, debugPage);
+        AddButton(debugControls, T(wxS("menu.continue")), [this](wxCommandEvent&) { ContinueDebug(); }, debugPage);
+        AddButton(debugControls, T(wxS("menu.pause")), [this](wxCommandEvent&) { PauseDebug(); }, debugPage);
+        AddButton(debugControls, T(wxS("button.stop")), [this](wxCommandEvent&) { StopDebug(); }, debugPage);
+        AddButton(debugControls, T(wxS("button.watch")), [this](wxCommandEvent&) { AddWatch(); }, debugPage);
+        AddButton(debugControls, T(wxS("button.sourceMap")), [this](wxCommandEvent&) { ConfigureSourceMap(); }, debugPage);
+        AddButton(debugControls, T(wxS("button.cbDebug")), [this](wxCommandEvent&) { StartCodeBlocksDebug(); }, debugPage);
+        AddButton(debugControls, T(wxS("button.cbContinue")), [this](wxCommandEvent&) { ContinueCodeBlocksDebug(); }, debugPage);
+        AddButton(debugControls, T(wxS("button.cbPause")), [this](wxCommandEvent&) { PauseCodeBlocksDebug(); }, debugPage);
+        AddButton(debugControls, T(wxS("button.cbStop")), [this](wxCommandEvent&) { StopCodeBlocksDebug(); }, debugPage);
         debugRoot->Add(debugControls, 0, wxBOTTOM | wxEXPAND, 4);
-        debugStatus_ = new wxStaticText(debugPage, wxID_ANY, wxS("DAP: disconnected"));
+        debugStatus_ = new wxStaticText(debugPage, wxID_ANY, T(wxS("status.dapDisconnected")));
         debugRoot->Add(debugStatus_, 0, wxBOTTOM | wxEXPAND, 4);
         auto* debugColumns = new wxBoxSizer(wxHORIZONTAL);
         auto* debugLeft = new wxBoxSizer(wxVERTICAL);
         breakpoints_ = new wxListBox(debugPage, wxID_ANY);
         breakpoints_->Bind(wxEVT_LISTBOX_DCLICK, [this](wxCommandEvent&) { ConfigureBreakpoint(); });
-        debugLeft->Add(new wxStaticText(debugPage, wxID_ANY, wxS("Breakpoints")), 0, wxBOTTOM, 2);
+        debugLeft->Add(new wxStaticText(debugPage, wxID_ANY, T(wxS("label.breakpoints"))), 0, wxBOTTOM, 2);
         debugLeft->Add(breakpoints_, 1, wxEXPAND);
         debugThreads_ = new wxListBox(debugPage, wxID_ANY);
-        debugLeft->Add(new wxStaticText(debugPage, wxID_ANY, wxS("Threads")), 0, wxTOP | wxBOTTOM, 2);
+        debugLeft->Add(new wxStaticText(debugPage, wxID_ANY, T(wxS("label.threads"))), 0, wxTOP | wxBOTTOM, 2);
         debugLeft->Add(debugThreads_, 1, wxEXPAND);
         debugColumns->Add(debugLeft, 1, wxRIGHT | wxEXPAND, 6);
         auto* debugMiddle = new wxBoxSizer(wxVERTICAL);
         callStack_ = new wxListBox(debugPage, wxID_ANY);
         callStack_->Bind(wxEVT_LISTBOX, [this](wxCommandEvent& event) { GoToStackFrame(event.GetSelection()); });
-        debugMiddle->Add(new wxStaticText(debugPage, wxID_ANY, wxS("Call stack")), 0, wxBOTTOM, 2);
+        debugMiddle->Add(new wxStaticText(debugPage, wxID_ANY, T(wxS("label.callStack"))), 0, wxBOTTOM, 2);
         debugMiddle->Add(callStack_, 1, wxEXPAND);
         watches_ = new wxListBox(debugPage, wxID_ANY);
-        debugMiddle->Add(new wxStaticText(debugPage, wxID_ANY, wxS("Watches")), 0, wxTOP | wxBOTTOM, 2);
+        debugMiddle->Add(new wxStaticText(debugPage, wxID_ANY, T(wxS("label.watches"))), 0, wxTOP | wxBOTTOM, 2);
         debugMiddle->Add(watches_, 1, wxEXPAND);
         debugColumns->Add(debugMiddle, 1, wxRIGHT | wxEXPAND, 6);
         auto* debugRight = new wxBoxSizer(wxVERTICAL);
         variables_ = new wxListBox(debugPage, wxID_ANY);
-        debugRight->Add(new wxStaticText(debugPage, wxID_ANY, wxS("Variables")), 0, wxBOTTOM, 2);
+        debugRight->Add(new wxStaticText(debugPage, wxID_ANY, T(wxS("label.variables"))), 0, wxBOTTOM, 2);
         debugRight->Add(variables_, 1, wxEXPAND);
         debugCapabilities_ = new wxListBox(debugPage, wxID_ANY);
-        debugRight->Add(new wxStaticText(debugPage, wxID_ANY, wxS("Capabilities")), 0, wxTOP | wxBOTTOM, 2);
+        debugRight->Add(new wxStaticText(debugPage, wxID_ANY, T(wxS("label.capabilities"))), 0, wxTOP | wxBOTTOM, 2);
         debugRight->Add(debugCapabilities_, 1, wxEXPAND);
         debugColumns->Add(debugRight, 1, wxEXPAND);
         debugRoot->Add(debugColumns, 1, wxEXPAND);
@@ -822,28 +831,28 @@ public:
                                        wxTE_MULTILINE | wxTE_READONLY | wxHSCROLL);
         debugRoot->Add(debugConsole_, 0, wxTOP | wxEXPAND, 4);
         debugPage->SetSizer(debugRoot);
-        bottomWorkbench_->AddPage(debugPage, wxS("Debug"));
+        bottomWorkbench_->AddPage(debugPage, T(wxS("label.debug")));
 
         auto* outputPage = new wxPanel(bottomWorkbench_);
         auto* outputRoot = new wxBoxSizer(wxVERTICAL);
         auto* fileControls = new wxBoxSizer(wxHORIZONTAL);
-        AddButton(fileControls, wxS("Start clangd"), [this](wxCommandEvent&) { StartLanguageServer(); }, outputPage);
-        AddButton(fileControls, wxS("Initialize LSP"), [this](wxCommandEvent&) { InitializeLanguageServer(); }, outputPage);
-        AddButton(fileControls, wxS("Hover"), [this](wxCommandEvent&) { RequestHover(); }, outputPage);
-        AddButton(fileControls, wxS("Completion"), [this](wxCommandEvent&) { RequestCompletion(); }, outputPage);
-        AddButton(fileControls, wxS("Semantic tokens"), [this](wxCommandEvent&) { RequestSemanticTokens(); }, outputPage);
-        AddButton(fileControls, wxS("Stop LSP"), [this](wxCommandEvent&) { StopLanguageServer(); }, outputPage);
+        AddButton(fileControls, T(wxS("button.startClangd")), [this](wxCommandEvent&) { StartLanguageServer(); }, outputPage);
+        AddButton(fileControls, T(wxS("button.initializeLsp")), [this](wxCommandEvent&) { InitializeLanguageServer(); }, outputPage);
+        AddButton(fileControls, T(wxS("button.hover")), [this](wxCommandEvent&) { RequestHover(); }, outputPage);
+        AddButton(fileControls, T(wxS("button.completion")), [this](wxCommandEvent&) { RequestCompletion(); }, outputPage);
+        AddButton(fileControls, T(wxS("button.semanticTokens")), [this](wxCommandEvent&) { RequestSemanticTokens(); }, outputPage);
+        AddButton(fileControls, T(wxS("button.stopLsp")), [this](wxCommandEvent&) { StopLanguageServer(); }, outputPage);
         outputRoot->Add(fileControls, 0, wxBOTTOM | wxEXPAND, 4);
         auto* extensionControls = new wxBoxSizer(wxHORIZONTAL);
         extensionControls_ = extensionControls;
-        AddButton(extensionControls, wxS("Start Host"), [this](wxCommandEvent&) { StartHost(); }, outputPage);
-        AddButton(extensionControls, wxS("Load demo"), [this](wxCommandEvent&) { LoadDemo(); }, outputPage);
-        AddButton(extensionControls, wxS("Run demo"), [this](wxCommandEvent&) { ExecuteDemo(); }, outputPage);
-        AddButton(extensionControls, wxS("Install VSIX"), [this](wxCommandEvent&) { InstallVsix(); }, outputPage);
-        AddButton(extensionControls, wxS("Search Open VSX"), [this](wxCommandEvent&) { SearchOpenVsx(); }, outputPage);
-        AddButton(extensionControls, wxS("Discover Code::Blocks"), [this](wxCommandEvent&) { DiscoverCodeBlocks(); }, outputPage);
-        AddButton(extensionControls, wxS("Start CB adapter"), [this](wxCommandEvent&) { StartCodeBlocksAdapter(); }, outputPage);
-        AddButton(extensionControls, wxS("Stop CB adapter"), [this](wxCommandEvent&) { StopCodeBlocksAdapter(); }, outputPage);
+        AddButton(extensionControls, T(wxS("button.startHost")), [this](wxCommandEvent&) { StartHost(); }, outputPage);
+        AddButton(extensionControls, T(wxS("button.loadDemo")), [this](wxCommandEvent&) { LoadDemo(); }, outputPage);
+        AddButton(extensionControls, T(wxS("button.runDemo")), [this](wxCommandEvent&) { ExecuteDemo(); }, outputPage);
+        AddButton(extensionControls, T(wxS("button.installVsix")), [this](wxCommandEvent&) { InstallVsix(); }, outputPage);
+        AddButton(extensionControls, T(wxS("button.searchOpenVsx")), [this](wxCommandEvent&) { SearchOpenVsx(); }, outputPage);
+        AddButton(extensionControls, T(wxS("button.discoverCodeBlocks")), [this](wxCommandEvent&) { DiscoverCodeBlocks(); }, outputPage);
+        AddButton(extensionControls, T(wxS("button.startCbAdapter")), [this](wxCommandEvent&) { StartCodeBlocksAdapter(); }, outputPage);
+        AddButton(extensionControls, T(wxS("button.stopCbAdapter")), [this](wxCommandEvent&) { StopCodeBlocksAdapter(); }, outputPage);
         outputRoot->Add(extensionControls, 0, wxBOTTOM | wxEXPAND, 4);
         hover_ = new wxTextCtrl(outputPage, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(-1, 60),
                                 wxTE_MULTILINE | wxTE_READONLY | wxHSCROLL);
@@ -855,16 +864,16 @@ public:
                               wxTE_MULTILINE | wxTE_READONLY | wxTE_RICH2 | wxHSCROLL);
         outputRoot->Add(log_, 1, wxEXPAND);
         outputPage->SetSizer(outputRoot);
-        bottomWorkbench_->AddPage(outputPage, wxS("Output"));
+        bottomWorkbench_->AddPage(outputPage, T(wxS("label.output")));
 
         centerRoot->Add(bottomWorkbench_, 0, wxEXPAND | wxTOP, 6);
         centerPanel->SetSizer(centerRoot);
         SetSizer(root);
         CreateStatusBar(3);
         ApplyTheme();
-        SetStatusText(wxS("Ready"), 0);
-        SetStatusText(wxS("No workspace"), 1);
-        SetStatusText(wxS("UTF-8"), 2);
+        SetStatusText(T(wxS("status.ready")), 0);
+        SetStatusText(T(wxS("status.noWorkspace")), 1);
+        SetStatusText(T(wxS("status.utf8")), 2);
         Centre();
 
         Bind(wxEVT_END_PROCESS, [this](wxProcessEvent& event) { OnTaskFinished(event); }, ID_TASK_PROCESS);
@@ -872,105 +881,145 @@ public:
         Bind(wxEVT_END_PROCESS, [this](wxProcessEvent& event) { OnDebugFinished(event); }, ID_DAP_PROCESS);
 
         timer_.Start(50);
-        AppendLog(wxS("Ready. The native core does not load Electron."));
-        AppendLog(wxS("Open a file or start the host to use extensions and language tooling."));
+        AppendLog(T(wxS("message.nativeCoreReady")));
+        AppendLog(T(wxS("message.openFileForTooling")));
         wxString codeBlocksError;
         if (codeBlocksBridge_.Discover(&codeBlocksError)) {
-            AppendLog(wxString::Format(wxS("Code::Blocks SDK detected at %s (%lu plugin candidate(s))."),
+            AppendLog(wxString::Format(T(wxS("message.codeBlocksDetected")),
                                        codeBlocksBridge_.Root(),
                                        static_cast<unsigned long>(codeBlocksBridge_.Plugins().size())));
         } else {
-            AppendLog(wxS("Code::Blocks SDK discovery: ") + codeBlocksError);
+            AppendLog(T(wxS("message.codeBlocksDiscovery")) + codeBlocksError);
         }
     }
 
 private:
+    wxString T(const wxString& key) const
+    {
+        return localization_.Text(key);
+    }
+
+    wxString T(const wxString& key, const wxString& fallback) const
+    {
+        return localization_.Text(key, fallback);
+    }
+
+    void SelectLanguage(codium::UiLanguage language)
+    {
+        wxString error;
+        if (!localization_.SetLanguage(language, &error)) {
+            wxMessageBox(error, T(wxS("dialog.error")), wxOK | wxICON_ERROR, this);
+            return;
+        }
+        wxMessageBox(T(wxS("status.languageChangedRestart")), T(wxS("dialog.language")),
+                     wxOK | wxICON_INFORMATION, this);
+    }
+
+    void ShowAbout()
+    {
+        // Product identity, copyright, license and SPDX wording are intentionally invariant.
+        const wxString about = wxString::Format(
+            wxS("Codium::Blocks %s\n\nNative, Electron-free, multi-language IDE with a C++/wxWidgets core.\n\n"
+                "Licensed under the GNU GPL-3.0-only.\nCopyright (C) 2026 Codium::Blocks Contributors."),
+            CODIUM_BLOCKS_VERSION);
+        wxMessageBox(about, T(wxS("about.title")), wxOK | wxICON_INFORMATION, this);
+    }
+
     void BuildMenuBar()
     {
         auto* menuBar = new wxMenuBar();
 
         auto* fileMenu = new wxMenu();
-        fileMenu->Append(ID_COMMAND_PALETTE, wxS("Command Palette...\tCtrl+Shift+P"));
+        fileMenu->Append(ID_COMMAND_PALETTE, T(wxS("menu.commandPalette")));
         fileMenu->AppendSeparator();
-        fileMenu->Append(ID_OPEN_WORKSPACE, wxS("Open workspace..."));
+        fileMenu->Append(ID_OPEN_WORKSPACE, T(wxS("menu.openWorkspace")));
         fileMenu->AppendSeparator();
-        fileMenu->Append(wxID_OPEN, wxS("Open file\tCtrl+O"));
-        fileMenu->Append(wxID_SAVE, wxS("Save file\tCtrl+S"));
+        fileMenu->Append(wxID_OPEN, T(wxS("menu.openFile")));
+        fileMenu->Append(wxID_SAVE, T(wxS("menu.saveFile")));
         fileMenu->AppendSeparator();
-        fileMenu->Append(wxID_EXIT, wxS("Exit\tCtrl+Q"));
-        menuBar->Append(fileMenu, wxS("&File"));
+        fileMenu->Append(wxID_EXIT, T(wxS("menu.exit")));
+        menuBar->Append(fileMenu, T(wxS("menu.file")));
 
         auto* editMenu = new wxMenu();
-        editMenu->Append(ID_FIND_EDITOR, wxS("Find\tCtrl+F"));
-        editMenu->Append(ID_FIND_NEXT, wxS("Find next\tF3"));
-        editMenu->Append(ID_FIND_PREVIOUS, wxS("Find previous\tShift+F3"));
-        editMenu->Append(ID_REPLACE_EDITOR, wxS("Replace\tCtrl+H"));
-        editMenu->Append(ID_REPLACE_ALL_EDITOR, wxS("Replace all"));
+        editMenu->Append(ID_FIND_EDITOR, T(wxS("menu.find")));
+        editMenu->Append(ID_FIND_NEXT, T(wxS("menu.findNext")));
+        editMenu->Append(ID_FIND_PREVIOUS, T(wxS("menu.findPrevious")));
+        editMenu->Append(ID_REPLACE_EDITOR, T(wxS("menu.replace")));
+        editMenu->Append(ID_REPLACE_ALL_EDITOR, T(wxS("menu.replaceAll")));
         editMenu->AppendSeparator();
-        editMenu->Append(ID_GOTO_LINE, wxS("Go to Line\tCtrl+G"));
-        editMenu->Append(ID_GO_TO_FILE, wxS("Go to File\tCtrl+P"));
-        editMenu->Append(ID_GO_TO_SYMBOL, wxS("Go to Symbol\tCtrl+Shift+O"));
-        editMenu->Append(ID_GO_TO_DEFINITION, wxS("Go to Definition\tF12"));
-        editMenu->Append(ID_GO_TO_DECLARATION, wxS("Go to Declaration"));
-        editMenu->Append(ID_FIND_REFERENCES, wxS("Find References\tShift+F12"));
-        editMenu->Append(ID_RENAME_SYMBOL, wxS("Rename Symbol\tF2"));
-        editMenu->Append(ID_CODE_ACTIONS, wxS("Code Actions\tCtrl+."));
+        editMenu->Append(ID_GOTO_LINE, T(wxS("menu.goToLine")));
+        editMenu->Append(ID_GO_TO_FILE, T(wxS("menu.goToFile")));
+        editMenu->Append(ID_GO_TO_SYMBOL, T(wxS("menu.goToSymbol")));
+        editMenu->Append(ID_GO_TO_DEFINITION, T(wxS("menu.goToDefinition")));
+        editMenu->Append(ID_GO_TO_DECLARATION, T(wxS("menu.goToDeclaration")));
+        editMenu->Append(ID_FIND_REFERENCES, T(wxS("menu.findReferences")));
+        editMenu->Append(ID_RENAME_SYMBOL, T(wxS("menu.renameSymbol")));
+        editMenu->Append(ID_CODE_ACTIONS, T(wxS("menu.codeActions")));
         editMenu->AppendSeparator();
-        editMenu->Append(ID_NEXT_TAB, wxS("Next Tab\tCtrl+Tab"));
-        editMenu->Append(ID_PREVIOUS_TAB, wxS("Previous Tab\tCtrl+Shift+Tab"));
-        menuBar->Append(editMenu, wxS("&Edit"));
+        editMenu->Append(ID_NEXT_TAB, T(wxS("menu.nextTab")));
+        editMenu->Append(ID_PREVIOUS_TAB, T(wxS("menu.previousTab")));
+        menuBar->Append(editMenu, T(wxS("menu.edit")));
 
         auto* languageMenu = new wxMenu();
-        languageMenu->Append(ID_START_CLANGD, wxS("Start clangd"));
-        languageMenu->Append(ID_INITIALIZE_LSP, wxS("Initialize language server"));
-        languageMenu->Append(ID_HOVER, wxS("Request hover\tF1"));
-        languageMenu->Append(ID_COMPLETION, wxS("Request completion\tCtrl+Space"));
-        languageMenu->Append(ID_STOP_LSP, wxS("Stop language server"));
-        menuBar->Append(languageMenu, wxS("&Language"));
+        languageMenu->Append(ID_START_CLANGD, T(wxS("menu.startClangd")));
+        languageMenu->Append(ID_INITIALIZE_LSP, T(wxS("menu.initializeLsp")));
+        languageMenu->Append(ID_HOVER, T(wxS("menu.requestHover")));
+        languageMenu->Append(ID_COMPLETION, T(wxS("menu.requestCompletion")));
+        languageMenu->Append(ID_STOP_LSP, T(wxS("menu.stopLsp")));
+        menuBar->Append(languageMenu, T(wxS("menu.language")));
 
         auto* buildMenu = new wxMenu();
-        buildMenu->Append(ID_BUILD_PROJECT, wxS("Build project"));
-        buildMenu->Append(ID_RERUN_BUILD, wxS("Rerun last build\tCtrl+Shift+B"));
-        buildMenu->Append(ID_RUN_TASK, wxS("Run selected task"));
-        buildMenu->Append(ID_STOP_TASK, wxS("Stop task"));
+        buildMenu->Append(ID_BUILD_PROJECT, T(wxS("menu.buildProject")));
+        buildMenu->Append(ID_RERUN_BUILD, T(wxS("menu.rerunBuild")));
+        buildMenu->Append(ID_RUN_TASK, T(wxS("menu.runTask")));
+        buildMenu->Append(ID_STOP_TASK, T(wxS("menu.stopTask")));
         buildMenu->AppendSeparator();
-        buildMenu->Append(ID_PREVIOUS_PROBLEM, wxS("Previous problem\tShift+F8"));
-        buildMenu->Append(ID_NEXT_PROBLEM, wxS("Next problem\tF8"));
-        menuBar->Append(buildMenu, wxS("&Build"));
+        buildMenu->Append(ID_PREVIOUS_PROBLEM, T(wxS("menu.previousProblem")));
+        buildMenu->Append(ID_NEXT_PROBLEM, T(wxS("menu.nextProblem")));
+        menuBar->Append(buildMenu, T(wxS("menu.build")));
 
         auto* terminalMenu = new wxMenu();
-        terminalMenu->Append(ID_START_TERMINAL, wxS("Start terminal"));
-        terminalMenu->Append(ID_SEND_TERMINAL, wxS("Send input"));
-        terminalMenu->Append(ID_STOP_TERMINAL, wxS("Stop terminal"));
-        terminalMenu->Append(ID_SELECT_SHELL, wxS("Select shell..."));
-        menuBar->Append(terminalMenu, wxS("&Terminal"));
+        terminalMenu->Append(ID_START_TERMINAL, T(wxS("menu.startTerminal")));
+        terminalMenu->Append(ID_SEND_TERMINAL, T(wxS("menu.sendTerminal")));
+        terminalMenu->Append(ID_STOP_TERMINAL, T(wxS("menu.stopTerminal")));
+        terminalMenu->Append(ID_SELECT_SHELL, T(wxS("menu.selectShell")));
+        menuBar->Append(terminalMenu, T(wxS("menu.terminal")));
 
         auto* debugMenu = new wxMenu();
-        debugMenu->Append(ID_START_DEBUG, wxS("Start debug adapter"));
-        debugMenu->Append(ID_DEBUG_INITIALIZE, wxS("Initialize debug"));
-        debugMenu->Append(ID_DEBUG_LAUNCH, wxS("Launch program"));
-        debugMenu->Append(ID_DEBUG_CONTINUE, wxS("Continue"));
-        debugMenu->Append(ID_DEBUG_PAUSE, wxS("Pause"));
-        debugMenu->Append(ID_STOP_DEBUG, wxS("Stop debug"));
-        menuBar->Append(debugMenu, wxS("De&bug"));
+        debugMenu->Append(ID_START_DEBUG, T(wxS("menu.startDebug")));
+        debugMenu->Append(ID_DEBUG_INITIALIZE, T(wxS("menu.initializeDebug")));
+        debugMenu->Append(ID_DEBUG_LAUNCH, T(wxS("menu.launchProgram")));
+        debugMenu->Append(ID_DEBUG_CONTINUE, T(wxS("menu.continue")));
+        debugMenu->Append(ID_DEBUG_PAUSE, T(wxS("menu.pause")));
+        debugMenu->Append(ID_STOP_DEBUG, T(wxS("menu.stopDebug")));
+        menuBar->Append(debugMenu, T(wxS("menu.debug")));
 
         auto* viewMenu = new wxMenu();
-        viewMenu->AppendRadioItem(ID_THEME_SYSTEM, wxS("System theme"));
-        viewMenu->AppendRadioItem(ID_THEME_LIGHT, wxS("Light theme"));
-        viewMenu->AppendRadioItem(ID_THEME_DARK, wxS("Dark theme"));
-        viewMenu->AppendRadioItem(ID_THEME_HIGH_CONTRAST, wxS("High contrast theme"));
-        menuBar->Append(viewMenu, wxS("&View"));
+        viewMenu->AppendRadioItem(ID_THEME_SYSTEM, T(wxS("menu.systemTheme")));
+        viewMenu->AppendRadioItem(ID_THEME_LIGHT, T(wxS("menu.lightTheme")));
+        viewMenu->AppendRadioItem(ID_THEME_DARK, T(wxS("menu.darkTheme")));
+        viewMenu->AppendRadioItem(ID_THEME_HIGH_CONTRAST, T(wxS("menu.highContrastTheme")));
+        auto* uiLanguageMenu = new wxMenu();
+        uiLanguageMenu->AppendRadioItem(ID_LANGUAGE_SYSTEM, T(wxS("menu.languageSystem")));
+        uiLanguageMenu->AppendRadioItem(ID_LANGUAGE_ENGLISH, T(wxS("menu.languageEnglish")));
+        uiLanguageMenu->AppendRadioItem(ID_LANGUAGE_PORTUGUESE_BRAZIL, T(wxS("menu.languagePortugueseBrazil")));
+        viewMenu->AppendSubMenu(uiLanguageMenu, T(wxS("menu.language")));
+        menuBar->Append(viewMenu, T(wxS("menu.view")));
 
         auto* extensionMenu = new wxMenu();
-        extensionMenu->Append(ID_START_HOST, wxS("Start Extension Host"));
-        extensionMenu->Append(ID_LOAD_DEMO, wxS("Load demo extension"));
-        extensionMenu->Append(ID_RUN_DEMO, wxS("Run hello.codium"));
-        extensionMenu->Append(ID_INSTALL_VSIX, wxS("Install VSIX"));
-        extensionMenu->Append(ID_LIST_EXTENSIONS, wxS("List installed extensions"));
-        extensionMenu->Append(ID_DISCOVER_CODEBLOCKS, wxS("Discover Code::Blocks SDK"));
-        extensionMenu->Append(ID_START_CODEBLOCKS_ADAPTER, wxS("Start Code::Blocks adapter"));
-        extensionMenu->Append(ID_STOP_CODEBLOCKS_ADAPTER, wxS("Stop Code::Blocks adapter"));
-        menuBar->Append(extensionMenu, wxS("E&xtensions"));
+        extensionMenu->Append(ID_START_HOST, T(wxS("menu.startHost")));
+        extensionMenu->Append(ID_LOAD_DEMO, T(wxS("menu.loadDemo")));
+        extensionMenu->Append(ID_RUN_DEMO, T(wxS("menu.runDemo")));
+        extensionMenu->Append(ID_INSTALL_VSIX, T(wxS("menu.installVsix")));
+        extensionMenu->Append(ID_LIST_EXTENSIONS, T(wxS("menu.listExtensions")));
+        extensionMenu->Append(ID_DISCOVER_CODEBLOCKS, T(wxS("menu.discoverCodeBlocks")));
+        extensionMenu->Append(ID_START_CODEBLOCKS_ADAPTER, T(wxS("menu.startCodeBlocksAdapter")));
+        extensionMenu->Append(ID_STOP_CODEBLOCKS_ADAPTER, T(wxS("menu.stopCodeBlocksAdapter")));
+        menuBar->Append(extensionMenu, T(wxS("menu.extensions")));
+
+        auto* helpMenu = new wxMenu();
+        helpMenu->Append(ID_ABOUT, T(wxS("menu.about")));
+        menuBar->Append(helpMenu, T(wxS("menu.help")));
 
         SetMenuBar(menuBar);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { OpenFile(); }, wxID_OPEN);
@@ -1018,6 +1067,10 @@ private:
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { SetTheme(codium::ThemeKind::Light); }, ID_THEME_LIGHT);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { SetTheme(codium::ThemeKind::Dark); }, ID_THEME_DARK);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { SetTheme(codium::ThemeKind::HighContrast); }, ID_THEME_HIGH_CONTRAST);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { SelectLanguage(codium::UiLanguage::System); }, ID_LANGUAGE_SYSTEM);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { SelectLanguage(codium::UiLanguage::English); }, ID_LANGUAGE_ENGLISH);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { SelectLanguage(codium::UiLanguage::PortugueseBrazil); }, ID_LANGUAGE_PORTUGUESE_BRAZIL);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { ShowAbout(); }, ID_ABOUT);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StartHost(); }, ID_START_HOST);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { LoadDemo(); }, ID_LOAD_DEMO);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { ExecuteDemo(); }, ID_RUN_DEMO);
@@ -1061,7 +1114,7 @@ private:
     {
         auto* page = new wxPanel(parent);
         auto* layout = new wxBoxSizer(wxHORIZONTAL);
-        auto* gutter = new ProblemGutter(page);
+        auto* gutter = new ProblemGutter(page, T(wxS("accessibility.gutterTooltip")));
         auto* editor = new wxTextCtrl(page, wxID_ANY, text, wxDefaultPosition, wxDefaultSize,
                                       wxTE_MULTILINE | wxTE_RICH2 | wxHSCROLL);
         editor->SetFont(wxFont(11, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
@@ -1291,15 +1344,15 @@ private:
                 if (wxMenuItem* item = GetMenuBar()->FindItem(ids[index])) item->Check(index == selected);
             }
         }
-        SetStatusText(wxString::Format(wxS("Theme: %s%s"), codium::ThemePalette::Name(themeKind_),
-                                       themePalette_.highContrast ? wxS(" · accessible contrast") : wxEmptyString), 0);
+        SetStatusText(wxString::Format(T(wxS("status.theme")), LocalizedThemeName(themeKind_),
+                                       themePalette_.highContrast ? T(wxS("status.accessibleContrast")) : wxString(wxEmptyString)), 0);
     }
 
     void SetTheme(codium::ThemeKind kind)
     {
         themeKind_ = kind;
         ApplyTheme();
-        AppendLog(wxS("Theme changed to ") + codium::ThemePalette::Name(themeKind_) + wxS("."));
+        AppendLog(T(wxS("message.themeChanged")) + LocalizedThemeName(themeKind_) + wxS("."));
     }
 
     wxColour ProblemColour(codium::ProblemSeverity severity) const
@@ -1433,7 +1486,7 @@ private:
             }
             problemSourceChoice_->Freeze();
             problemSourceChoice_->Clear();
-            problemSourceChoice_->Append(wxS("All sources"));
+            problemSourceChoice_->Append(T(wxS("filter.allSources")));
             for (const auto& source : sources) problemSourceChoice_->Append(source);
             if (!selectedSource.empty() && problemSourceChoice_->FindString(selectedSource) != wxNOT_FOUND) {
                 problemSourceChoice_->SetStringSelection(selectedSource);
@@ -1451,7 +1504,7 @@ private:
         for (size_t index = 0; index < values.size(); ++index) {
             const auto& problem = values[index];
             if (!ProblemMatchesFilter(problem)) continue;
-            const wxString stale = problem.stale ? wxS(" [stale]") : wxEmptyString;
+            const wxString stale = problem.stale ? wxString(wxS(" [")) + T(wxS("status.stale")) + wxS("]") : wxString(wxEmptyString);
             const wxString text = wxString::Format(wxS("%s%s  %s:%d:%d  %s"),
                                                    codium::ProblemParser::SeverityName(problem.severity), stale,
                                                    problem.path, problem.line + 1, problem.column + 1, problem.message);
@@ -1462,7 +1515,7 @@ private:
         }
         problems_->Thaw();
         if (problemSummary_) {
-            problemSummary_->SetLabel(wxString::Format(wxS("%zu shown / %zu problems  ·  %zu errors  ·  %zu warnings"),
+            problemSummary_->SetLabel(wxString::Format(T(wxS("status.problemSummary")),
                                                        problemIndices_.size(), values.size(),
                                                        problemStore_.Count(codium::ProblemSeverity::Error),
                                                        problemStore_.Count(codium::ProblemSeverity::Warning)));
@@ -1523,22 +1576,22 @@ private:
                                   name, document_.IsDirty() ? wxS(" *") : wxEmptyString,
                                   CODIUM_BLOCKS_VERSION));
         if (GetStatusBar()) {
-            SetStatusText(document_.IsUntitled() ? wxS("Untitled") : document_.Path(), 0);
-            wxString workspaceStatus = workspace_.IsOpen() ? (workspace_.IsTrusted() ? wxS("Trusted workspace") : wxS("Untrusted workspace"))
-                                                             : wxS("No workspace");
+            SetStatusText(document_.IsUntitled() ? T(wxS("document.untitled")) : document_.Path(), 0);
+            wxString workspaceStatus = workspace_.IsOpen() ? (workspace_.IsTrusted() ? T(wxS("status.workspaceTrusted")) : T(wxS("status.workspaceUntrusted")))
+                                                             : T(wxS("status.noWorkspace"));
             if (selectedSchemeIndex_ >= 0 && selectedSchemeIndex_ < static_cast<int>(projectConfig_.Schemes().size())) {
                 workspaceStatus += wxS(" · ") + projectConfig_.Schemes()[static_cast<size_t>(selectedSchemeIndex_)].name;
             }
             SetStatusText(workspaceStatus, 1);
-            SetStatusText(wxString::Format(wxS("%s  Ln %d, Col %d"), languageId_,
+            SetStatusText(wxString::Format(T(wxS("status.cursorPosition")), languageId_,
                                            CurrentEditorLine() + 1, CurrentEditorCharacter() + 1), 2);
         }
     }
 
     void OpenFile()
     {
-        wxFileDialog dialog(this, wxS("Open source file"), wxEmptyString, wxEmptyString,
-                            wxS("All files (*.*)|*.*"), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+        wxFileDialog dialog(this, T(wxS("dialog.openSourceFile")), wxEmptyString, wxEmptyString,
+                            T(wxS("dialog.allFilesFilter")), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
         if (dialog.ShowModal() != wxID_OK) {
             return;
         }
@@ -1548,21 +1601,21 @@ private:
 
     void OpenWorkspace()
     {
-        wxDirDialog dialog(this, wxS("Choose a workspace directory"), wxEmptyString,
+        wxDirDialog dialog(this, T(wxS("dialog.chooseWorkspace")), wxEmptyString,
                            wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
         if (dialog.ShowModal() != wxID_OK) return;
 
         wxString error;
         if (!workspace_.Open(dialog.GetPath(), &error)) {
-            AppendLog(wxS("Error: ") + error);
+            AppendLog(T(wxS("message.errorPrefix")) + error);
             return;
         }
         if (!workspace_.IsTrusted()) {
             const int answer = wxMessageBox(
-                wxString::Format(wxS("Trust the workspace '%s'? Trust enables tasks, terminals, debug adapters, and extensions."), workspace_.RootPath()),
-                wxS("Workspace trust"), wxYES_NO | wxICON_WARNING, this);
-            if (answer == wxYES && workspace_.SetTrusted(true, &error)) AppendLog(wxS("Workspace trusted."));
-            else AppendLog(wxS("Workspace is untrusted; execution features remain restricted."));
+                wxString::Format(T(wxS("dialog.trustWorkspace")), workspace_.RootPath()),
+                T(wxS("dialog.workspaceTrustTitle")), wxYES_NO | wxICON_WARNING, this);
+            if (answer == wxYES && workspace_.SetTrusted(true, &error)) AppendLog(T(wxS("status.workspaceTrusted")) + wxS("."));
+            else AppendLog(T(wxS("status.workspaceUntrusted")) + wxS("; execution features remain restricted."));
         }
         watchExpressions_ = codium::WatchStore::Load(workspace_.RootPath());
         RefreshWatchView();
@@ -1570,7 +1623,7 @@ private:
         wxString breakpointError;
         if (!codium::DapAdvancedBreakpointStore::Load(workspace_.RootPath(), &functionBreakpoints_,
                                                       &dataBreakpoints_, &breakpointError)) {
-            AppendLog(wxS("Advanced breakpoint persistence unavailable: ") + breakpointError);
+            AppendLog(T(wxS("message.advancedBreakpointPersistence")) + breakpointError);
         }
         RefreshBreakpointView();
         PopulateFileTree();
@@ -1578,7 +1631,7 @@ private:
         LoadProjectConfig();
         SetTitle(wxString::Format(wxS("%s — Codium::Blocks %s"), workspace_.RootPath(), CODIUM_BLOCKS_VERSION));
         UpdateTitle();
-        AppendLog(wxS("Workspace opened: ") + workspace_.RootPath());
+        AppendLog(T(wxS("message.workspaceOpened")) + workspace_.RootPath());
     }
 
     void RefreshNativeContributions()
@@ -1600,7 +1653,7 @@ private:
         if (!scm_) return;
         scm_->Clear();
         if (!workspace_.IsOpen()) {
-            scm_->Append(wxS("Open a workspace to inspect source control."));
+            scm_->Append(T(wxS("dialog.noSourceControl")));
             return;
         }
         wxString error;
@@ -1616,17 +1669,17 @@ private:
         taskList_->Clear();
         wxString error;
         if (!projectConfig_.Load(workspace_.RootPath(), &error)) {
-            AppendLog(wxS("Error: ") + error);
+            AppendLog(T(wxS("message.errorPrefix")) + error);
             return;
         }
         if (!projectConfig_.LoadPreferences(workspace_.RootPath(), &projectPreferences_, &error)) {
-            AppendLog(wxS("Project selection preferences unavailable: ") + error);
+            AppendLog(T(wxS("message.projectPreferencesUnavailable")) + error);
         }
         if (!buildSessions_.Load(workspace_.RootPath(), &error)) {
-            AppendLog(wxS("Build session history unavailable: ") + error);
+            AppendLog(T(wxS("message.buildHistoryUnavailable")) + error);
         }
         for (const auto& toolchain : projectConfig_.Toolchains()) {
-            AppendLog(wxS("Detected toolchain: ") + toolchain);
+            AppendLog(T(wxS("message.detectedToolchain")) + toolchain);
         }
         for (const auto& task : projectConfig_.Tasks()) taskList_->Append(task.name);
         if (!projectConfig_.Tasks().empty()) taskList_->SetSelection(0);
@@ -1646,7 +1699,7 @@ private:
             if (toolchainChoice_->FindString(scheme.toolchain) == wxNOT_FOUND) toolchainChoice_->Append(scheme.toolchain);
         }
         if (schemeChoice_->GetCount() == 0) {
-            if (schemeStatus_) schemeStatus_->SetLabel(wxS("Open a project with a detected toolchain"));
+            if (schemeStatus_) schemeStatus_->SetLabel(T(wxS("status.noProjectScheme")));
             RefreshBuildSessions();
             return;
         }
@@ -1688,7 +1741,7 @@ private:
         toolchainChoice_->SetStringSelection(selected.toolchain);
         UpdateSchemeStatus();
         UpdateTitle();
-        AppendLog(wxString::Format(wxS("Selected scheme: %s (%s, target %s)"), selected.name,
+        AppendLog(wxString::Format(T(wxS("message.selectedScheme")), selected.name,
                                    selected.configuration, selected.target));
     }
 
@@ -1730,7 +1783,7 @@ private:
             projectPreferences_.toolchain = toolchain;
             wxString error;
             if (!projectConfig_.SavePreferences(workspace_.RootPath(), projectPreferences_, &error)) {
-                AppendLog(wxS("Could not save project selection: ") + error);
+                AppendLog(T(wxS("message.projectSelectionSaveError")) + error);
             }
         }
     }
@@ -1750,10 +1803,10 @@ private:
         const codium::BuildSession* current = buildSessions_.Current();
         if (buildSessionStatus_) {
             buildSessionStatus_->SetLabel(current
-                ? wxString::Format(wxS("Running: %s [%s]"), current->taskName,
-                                   current->configuration.empty() ? wxS("default") : current->configuration)
-                : sessions.empty() ? wxS("No build session") :
-                  wxString::Format(wxS("Last: %s"), codium::BuildSessionStore::DisplayLabel(sessions.back())));
+                ? wxString::Format(T(wxS("status.buildRunning")), current->taskName,
+                                   current->configuration.empty() ? T(wxS("status.default")) : current->configuration)
+                : sessions.empty() ? T(wxS("status.noBuildSession")) :
+                  wxString::Format(T(wxS("status.buildLast")), codium::BuildSessionStore::DisplayLabel(sessions.back())));
         }
     }
 
@@ -1766,9 +1819,9 @@ private:
         if (buildSessionStatus_) buildSessionStatus_->SetLabel(codium::BuildSessionStore::DisplayLabel(session));
         if (buildOutput_) {
             buildOutput_->Clear();
-            buildOutput_->AppendText(wxString::Format(wxS("=== %s [%s · %s] ===\n"), session.taskName,
-                                                      session.configuration.empty() ? wxS("default") : session.configuration,
-                                                      session.target.empty() ? wxS("default") : session.target));
+            buildOutput_->AppendText(wxString::Format(T(wxS("status.buildHeader")), session.taskName,
+                                                      session.configuration.empty() ? T(wxS("status.default")) : session.configuration,
+                                                      session.target.empty() ? T(wxS("status.default")) : session.target));
             for (const auto& line : session.output) buildOutput_->AppendText(line + wxS("\n"));
         }
     }
@@ -1794,7 +1847,7 @@ private:
         specification.workingDirectory = task.workingDirectory;
         wxString error;
         activeBuildSessionId_ = buildSessions_.Begin(specification, &error);
-        if (activeBuildSessionId_.empty() && !error.empty()) AppendLog(wxS("Build session error: ") + error);
+        if (activeBuildSessionId_.empty() && !error.empty()) AppendLog(T(wxS("message.buildSessionError")) + error);
         RefreshBuildSessions();
     }
 
@@ -1863,24 +1916,25 @@ private:
                 if (bottomWorkbench_) bottomWorkbench_->SetSelection(1);
                 if (buildOutput_) buildOutput_->AppendText(wxString::Format(
                     wxS("\n=== Code::Blocks adapter: %s [%s] ===\n"), selectedTarget, selected->configuration));
-                AppendLog(wxString::Format(wxS("Started Code::Blocks adapter build: %s"), selectedTarget));
-                SetStatusText(wxS("Code::Blocks building"), 1);
+                AppendLog(wxString::Format(T(wxS("message.codeBlocksBuildStarted")), selectedTarget));
+                SetStatusText(T(wxS("status.codeBlocksBuilding")), 1);
                 return;
             }
-            AppendLog(wxS("Code::Blocks adapter rejected the build request; falling back to the imported task."));
+            AppendLog(T(wxS("message.codeBlocksBuildRejected")));
         }
         const wxString problemSource = effectiveTask.name;
         problemStore_.Clear(problemSource);
-        if (buildOutput_) buildOutput_->AppendText(wxString::Format(wxS("\n=== %s [%s] ===\n"), effectiveTask.name,
-                                                                      selected ? selected->name : wxS("default")));
+        if (buildOutput_) buildOutput_->AppendText(wxS("\n") +
+            wxString::Format(T(wxS("message.buildHeader")), effectiveTask.name,
+                             selected ? selected->name : T(wxS("status.default"))) + wxS("\n"));
         wxString error;
         if (taskRunner_.Run(effectiveTask, &error)) {
-            AppendLog(wxString::Format(wxS("Started task: %s"), effectiveTask.name));
-            if (buildOutput_) buildOutput_->AppendText(wxString::Format(wxS("Started %s\n"), effectiveTask.name));
-            if (GetStatusBar()) SetStatusText(wxS("Building…"), 1);
+            AppendLog(wxString::Format(T(wxS("message.taskStarted")), effectiveTask.name));
+            if (buildOutput_) buildOutput_->AppendText(wxString::Format(T(wxS("message.taskStartedLine")), effectiveTask.name) + wxS("\n"));
+            if (GetStatusBar()) SetStatusText(T(wxS("status.building")), 1);
         } else {
-            AppendLog(wxS("Task error: ") + error);
-            if (buildOutput_) buildOutput_->AppendText(wxS("Task error: ") + error + wxS("\n"));
+            AppendLog(T(wxS("message.taskError")) + error);
+            if (buildOutput_) buildOutput_->AppendText(T(wxS("message.taskError")) + error + wxS("\n"));
             FinishBuildSession(-1);
             pendingRunAfterBuild_ = false;
         }
@@ -1890,7 +1944,7 @@ private:
     bool EnsureWorkspaceTrusted()
     {
         if (!workspace_.IsOpen() || workspace_.IsTrusted()) return true;
-        AppendLog(wxS("Execution blocked: trust the current workspace first."));
+        AppendLog(T(wxS("dialog.executionBlocked")));
         return false;
     }
 
@@ -1898,7 +1952,7 @@ private:
     {
         if (!EnsureWorkspaceTrusted()) return;
         if (!workspace_.IsOpen()) {
-            AppendLog(wxS("Open a workspace before building."));
+            AppendLog(T(wxS("dialog.openWorkspaceFirst")));
             return;
         }
         wxString preferredToolchain;
@@ -1946,7 +2000,7 @@ private:
                 return;
             }
         }
-        AppendLog(wxS("No build task detected in this workspace."));
+        AppendLog(T(wxS("dialog.noBuildTask")));
     }
 
     const codium::ProjectTarget* SelectedProjectTarget() const
@@ -1968,7 +2022,7 @@ private:
         const wxString artifact = codium::ProjectConfig::DiscoverArtifact(target, configuration,
                                                                             pendingRunArtifactOverride_);
         codium::ProjectTask task;
-        task.name = wxS("Run: ") + target.name;
+        task.name = T(wxS("label.runPrefix")) + target.name;
         task.kind = codium::ProjectTaskKind::Run;
         task.toolchain = target.toolchain;
         task.workingDirectory = target.workingDirectory;
@@ -1996,10 +2050,10 @@ private:
         pendingRunConfiguration_.clear();
         pendingRunArtifactOverride_.clear();
         if (task.program.empty()) {
-            AppendLog(wxS("Build succeeded, but no runnable artifact was discovered for the selected target."));
+            AppendLog(T(wxS("message.noRunnableArtifact")));
             return;
         }
-        AppendLog(wxS("Build succeeded; running target: ") + task.program);
+        AppendLog(T(wxS("message.buildRunningTarget")) + task.program);
         if (bottomWorkbench_) bottomWorkbench_->SetSelection(1);
         RunTask(task, false);
     }
@@ -2009,7 +2063,7 @@ private:
         if (!EnsureWorkspaceTrusted()) return;
         const codium::ProjectTarget* target = SelectedProjectTarget();
         if (!target || !target->supportsRun) {
-            AppendLog(wxS("The selected scheme does not provide a runnable target."));
+            AppendLog(T(wxS("dialog.noRunnableTarget")));
             return;
         }
         const codium::ProjectScheme* scheme = selectedSchemeIndex_ >= 0 &&
@@ -2027,7 +2081,7 @@ private:
                 if (task.name == buildTaskName ||
                     (task.targetName == target->name && IsBuildLikeTask(task))) {
                     pendingRunAfterBuild_ = true;
-                    AppendLog(wxS("Building selected target before running it: ") + target->name);
+                    AppendLog(T(wxS("message.buildingSelectedTarget")) + target->name);
                     RunTask(task);
                     return;
                 }
@@ -2041,10 +2095,10 @@ private:
     {
         if (!EnsureWorkspaceTrusted()) return;
         if (!hasLastBuildTask_) {
-            AppendLog(wxS("No previous Build or Configure task is available."));
+            AppendLog(T(wxS("dialog.noPreviousBuild")));
             return;
         }
-        AppendLog(wxS("Rerunning: ") + lastBuildTask_.name);
+        AppendLog(T(wxS("message.rerunning")) + lastBuildTask_.name);
         RunTask(lastBuildTask_, false);
     }
 
@@ -2053,7 +2107,7 @@ private:
         if (!EnsureWorkspaceTrusted()) return;
         const int selection = taskList_ ? taskList_->GetSelection() : wxNOT_FOUND;
         if (selection == wxNOT_FOUND || selection >= static_cast<int>(projectConfig_.Tasks().size())) {
-            AppendLog(wxS("Select a task before running it."));
+            AppendLog(T(wxS("dialog.selectTask")));
             return;
         }
         RunTask(projectConfig_.Tasks()[selection]);
@@ -2065,7 +2119,7 @@ private:
             taskRunner_.Stop();
             FinishBuildSession(-1, true);
             pendingRunAfterBuild_ = false;
-            AppendLog(wxS("Task stopped."));
+            AppendLog(T(wxS("message.taskStopped")));
         }
     }
 
@@ -2073,9 +2127,9 @@ private:
     {
         taskRunner_.HandleProcessExit(event.GetPid(), event.GetExitCode());
         FinishBuildSession(event.GetExitCode());
-        AppendLog(wxString::Format(wxS("Task finished with exit code %d."), event.GetExitCode()));
-        if (buildOutput_) buildOutput_->AppendText(wxString::Format(wxS("Finished with exit code %d.\n"), event.GetExitCode()));
-        if (GetStatusBar()) SetStatusText(event.GetExitCode() == 0 ? wxS("Build succeeded") : wxS("Build failed"), 1);
+        AppendLog(wxString::Format(T(wxS("message.taskFinished")), event.GetExitCode()));
+        if (buildOutput_) buildOutput_->AppendText(wxString::Format(T(wxS("message.finishedWithExitCode")), event.GetExitCode()) + wxS("\n"));
+        if (GetStatusBar()) SetStatusText(event.GetExitCode() == 0 ? T(wxS("status.buildSucceeded")) : T(wxS("status.buildFailed")), 1);
         RefreshProblems();
         if (pendingRunAfterBuild_) {
             if (event.GetExitCode() == 0) LaunchPendingRun();
@@ -2084,7 +2138,7 @@ private:
                 pendingRunTaskName_.clear();
                 pendingRunConfiguration_.clear();
                 pendingRunArtifactOverride_.clear();
-                AppendLog(wxS("Build failed; the selected target was not run."));
+                AppendLog(T(wxS("message.buildFailedNotRun")));
             }
         }
     }
@@ -2110,7 +2164,7 @@ private:
     {
         if (!EnsureWorkspaceTrusted()) return;
         if (terminal_.IsRunning()) {
-            AppendLog(wxS("Terminal is already running."));
+            AppendLog(T(wxS("message.terminalAlreadyRunning")));
             return;
         }
         wxArrayString arguments;
@@ -2121,8 +2175,8 @@ private:
 #endif
         wxString error;
         if (terminal_.Start(terminalShell_, arguments, WorkspaceDirectory(), &error)) {
-            AppendLog(wxS("Native terminal started with backend: ") + terminal_.BackendName());
-            if (GetStatusBar()) SetStatusText(wxS("Terminal running"), 1);
+            AppendLog(T(wxS("message.nativeTerminalBackend")) + terminal_.BackendName());
+            if (GetStatusBar()) SetStatusText(T(wxS("status.terminalRunning")), 1);
             terminalScreen_.Reset();
             if (terminalOutput_) {
                 const wxSize size = terminalOutput_->GetClientSize();
@@ -2136,14 +2190,14 @@ private:
                 terminalOutput_->SetFocus();
             }
         } else {
-            AppendLog(wxS("Terminal error: ") + error);
+            AppendLog(T(wxS("message.terminalError")) + error);
         }
     }
 
     void SelectShell()
     {
         if (terminal_.IsRunning()) {
-            AppendLog(wxS("Stop the terminal before changing its shell."));
+            AppendLog(T(wxS("message.stopTerminalBeforeShell")));
             return;
         }
         wxArrayString choices;
@@ -2157,20 +2211,20 @@ private:
         choices.Add(wxS("/bin/zsh"));
         choices.Add(wxS("/usr/bin/fish"));
 #endif
-        wxSingleChoiceDialog dialog(this, wxS("Select the shell for the next terminal session"),
-                                    wxS("Terminal shell"), choices);
+        wxSingleChoiceDialog dialog(this, T(wxS("dialog.selectShell")),
+                                    T(wxS("dialog.terminalShell")), choices);
         if (dialog.ShowModal() == wxID_OK) {
             terminalShell_ = choices[dialog.GetSelection()];
             terminalProfile_.shell = terminalShell_;
             SaveTerminalProfile();
-            AppendLog(wxS("Selected shell: ") + terminalShell_);
+            AppendLog(T(wxS("message.selectedShell")) + terminalShell_);
         }
     }
 
     void SendTerminalInput()
     {
         if (!terminal_.IsRunning()) {
-            AppendLog(wxS("Start the terminal first."));
+            AppendLog(T(wxS("message.startTerminalFirst")));
             return;
         }
         wxString input = terminalInput_ ? terminalInput_->GetValue() : wxString(wxEmptyString);
@@ -2184,7 +2238,7 @@ private:
             if (terminalInput_) terminalInput_->Clear();
             SaveTerminalProfile();
         } else {
-            AppendLog(wxS("Could not write to terminal."));
+            AppendLog(T(wxS("message.terminalWriteError")));
         }
     }
 
@@ -2424,26 +2478,26 @@ private:
     {
         if (terminal_.IsRunning()) {
             terminal_.Stop();
-            AppendLog(wxS("Terminal stopped."));
+            AppendLog(T(wxS("message.terminalStopped")));
         }
     }
 
     void OnTerminalFinished(wxProcessEvent& event)
     {
         terminal_.HandleProcessExit(event.GetPid(), event.GetExitCode());
-        AppendLog(wxString::Format(wxS("Terminal finished with exit code %d."), event.GetExitCode()));
-        if (GetStatusBar()) SetStatusText(event.GetExitCode() == 0 ? wxS("Terminal exited") : wxS("Terminal failed"), 1);
+        AppendLog(wxString::Format(T(wxS("message.terminalFinished")), event.GetExitCode()));
+        if (GetStatusBar()) SetStatusText(event.GetExitCode() == 0 ? T(wxS("status.terminalExited")) : T(wxS("status.terminalFailed")), 1);
     }
 
     void StartDebugAdapter()
     {
         if (!EnsureWorkspaceTrusted()) return;
         if (dap_.IsRunning()) {
-            AppendLog(wxS("Debug adapter is already running."));
+            AppendLog(T(wxS("dialog.adapterAlreadyRunning")));
             return;
         }
-        wxTextEntryDialog dialog(this, wxS("Debug adapter executable (for example codelldb or OpenDebugAD7)"),
-                                 wxS("Start debug adapter"), wxS("codelldb"));
+        wxTextEntryDialog dialog(this, T(wxS("dialog.debugAdapterExecutable")),
+                                 T(wxS("dialog.debugAdapter")), wxS("codelldb"));
         if (dialog.ShowModal() != wxID_OK || dialog.GetValue().empty()) return;
         wxArrayString arguments;
         wxString error;
@@ -2466,30 +2520,30 @@ private:
             UpdateDapStatus();
             RefreshBreakpointView();
             RefreshGutters();
-            AppendLog(wxS("Debug adapter started."));
+            AppendLog(T(wxS("message.debugAdapterStarted")));
         } else {
-            AppendLog(wxS("Debug adapter error: ") + error);
+            AppendLog(T(wxS("message.debugAdapterError")) + error);
         }
     }
 
     void InitializeDebug()
     {
         if (!dap_.IsRunning()) {
-            AppendLog(wxS("Start a debug adapter first."));
+            AppendLog(T(wxS("dialog.startAdapterFirst")));
             return;
         }
         dapSession_.MarkInitializing();
         UpdateDapStatus();
         if (dap_.SendRequest(wxS("initialize"),
                              wxS("{\"clientID\":\"codium-blocks\",\"adapterID\":\"codium-blocks\",\"linesStartAt1\":true,\"columnsStartAt1\":true}"))) {
-            AppendLog(wxS("DAP initialize request sent."));
+            AppendLog(T(wxS("message.dapInitializeSent")));
         }
     }
 
     void LaunchDebug()
     {
         if (!dap_.IsRunning()) {
-            AppendLog(wxS("Start a debug adapter first."));
+            AppendLog(T(wxS("dialog.startAdapterFirst")));
             return;
         }
         wxString program;
@@ -2497,17 +2551,52 @@ private:
             program = target->runProgram;
         }
         if (program.empty()) {
-            wxFileDialog dialog(this, wxS("Choose a program to debug"), wxEmptyString, wxEmptyString,
-                                wxS("Executable files (*.*)|*.*"), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+            wxFileDialog dialog(this, T(wxS("dialog.chooseProgram")), wxEmptyString, wxEmptyString,
+                                T(wxS("dialog.executableFilter")), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
             if (dialog.ShowModal() != wxID_OK) return;
             program = dialog.GetPath();
         }
         wxString launchArguments = wxString::Format(wxS("{\"program\":\"%s\",\"cwd\":\"%s\",\"sourceFileMap\":%s}"),
                                                     JsonEscape(program), JsonEscape(WorkspaceDirectory()), SourceMapArguments());
         if (dap_.SendRequest(wxS("launch"), launchArguments)) {
-            AppendLog(wxS("DAP launch request sent."));
+            AppendLog(T(wxS("message.dapLaunchSent")));
             SendAllBreakpoints();
         }
+    }
+
+    wxString LocalizedDapBreakpointState(codium::DapBreakpointState state) const
+    {
+        switch (state) {
+        case codium::DapBreakpointState::Pending: return T(wxS("label.breakpointPending"));
+        case codium::DapBreakpointState::Verified: return T(wxS("label.breakpointVerified"));
+        case codium::DapBreakpointState::Rejected: return T(wxS("label.breakpointRejected"));
+        case codium::DapBreakpointState::Disabled: return T(wxS("label.breakpointDisabled"));
+        }
+        return T(wxS("label.breakpointUnknown"));
+    }
+
+    wxString LocalizedDapRunState(codium::DapRunState state) const
+    {
+        switch (state) {
+        case codium::DapRunState::Disconnected: return T(wxS("label.dapDisconnected"));
+        case codium::DapRunState::Initializing: return T(wxS("label.dapInitializing"));
+        case codium::DapRunState::Initialized: return T(wxS("label.dapInitialized"));
+        case codium::DapRunState::Running: return T(wxS("label.dapRunning"));
+        case codium::DapRunState::Paused: return T(wxS("label.dapPaused"));
+        case codium::DapRunState::Stopped: return T(wxS("label.dapStopped"));
+        }
+        return T(wxS("label.dapUnknown"));
+    }
+
+    wxString LocalizedThemeName(codium::ThemeKind kind) const
+    {
+        switch (kind) {
+        case codium::ThemeKind::System: return T(wxS("label.themeSystem"));
+        case codium::ThemeKind::Light: return T(wxS("label.themeLight"));
+        case codium::ThemeKind::Dark: return T(wxS("label.themeDark"));
+        case codium::ThemeKind::HighContrast: return T(wxS("label.themeHighContrast"));
+        }
+        return T(wxS("label.themeSystem"));
     }
 
     void RefreshBreakpointView()
@@ -2518,24 +2607,24 @@ private:
         for (const auto& breakpoint : breakpoints) {
             const int line = breakpoint.actualLine > 0 ? breakpoint.actualLine : breakpoint.requestedLine;
             wxString label = wxString::Format(wxS("%s:%d [%s]"), document_.Path(), line,
-                                              codium::DapDebugSessionModel::BreakpointStateName(breakpoint.state));
+                                              LocalizedDapBreakpointState(breakpoint.state));
             if (!breakpoint.message.empty()) label += wxS(" — ") + breakpoint.message;
-            if (!breakpoint.condition.empty()) label += wxS(" · if ") + breakpoint.condition;
-            if (!breakpoint.hitCondition.empty()) label += wxS(" · hit ") + breakpoint.hitCondition;
-            if (!breakpoint.logMessage.empty()) label += wxS(" · log ") + breakpoint.logMessage;
+            if (!breakpoint.condition.empty()) label += T(wxS("label.conditionPrefix")) + breakpoint.condition;
+            if (!breakpoint.hitCondition.empty()) label += T(wxS("label.hitPrefix")) + breakpoint.hitCondition;
+            if (!breakpoint.logMessage.empty()) label += T(wxS("label.logPrefix")) + breakpoint.logMessage;
             breakpoints_->Append(label);
         }
         for (const auto& breakpoint : functionBreakpoints_) {
-            wxString label = wxS("function: ") + breakpoint.name + wxS(" [") +
-                             codium::DapDebugSessionModel::BreakpointStateName(breakpoint.state) + wxS("]");
-            if (!breakpoint.condition.empty()) label += wxS(" · if ") + breakpoint.condition;
-            if (!breakpoint.hitCondition.empty()) label += wxS(" · hit ") + breakpoint.hitCondition;
+            wxString label = T(wxS("label.functionPrefix")) + breakpoint.name + wxS(" [") +
+                             LocalizedDapBreakpointState(breakpoint.state) + wxS("]");
+            if (!breakpoint.condition.empty()) label += T(wxS("label.conditionPrefix")) + breakpoint.condition;
+            if (!breakpoint.hitCondition.empty()) label += T(wxS("label.hitPrefix")) + breakpoint.hitCondition;
             if (!breakpoint.message.empty()) label += wxS(" — ") + breakpoint.message;
             breakpoints_->Append(label);
         }
         for (const auto& breakpoint : dataBreakpoints_) {
-            wxString label = wxS("data: ") + breakpoint.dataId + wxS(" (") + breakpoint.accessType + wxS(") [") +
-                             codium::DapDebugSessionModel::BreakpointStateName(breakpoint.state) + wxS("]");
+            wxString label = T(wxS("label.dataPrefix")) + breakpoint.dataId + wxS(" (") + breakpoint.accessType + wxS(") [") +
+                             LocalizedDapBreakpointState(breakpoint.state) + wxS("]");
             if (!breakpoint.message.empty()) label += wxS(" — ") + breakpoint.message;
             breakpoints_->Append(label);
         }
@@ -2546,12 +2635,12 @@ private:
         if (!workspace_.IsOpen()) return;
         wxString error;
         if (!codium::DapBreakpointStore::Save(workspace_.RootPath(), dapSession_.AllRequestedBreakpoints(), &error)) {
-            AppendLog(wxS("Could not persist breakpoints: ") + error);
+            AppendLog(T(wxS("message.breakpointPersistenceError")) + error);
         }
         error.clear();
         if (!codium::DapAdvancedBreakpointStore::Save(workspace_.RootPath(), functionBreakpoints_,
                                                       dataBreakpoints_, &error)) {
-            AppendLog(wxS("Could not persist advanced breakpoints: ") + error);
+            AppendLog(T(wxS("message.advancedBreakpointPersistenceError")) + error);
         }
     }
 
@@ -2567,7 +2656,7 @@ private:
         }
         if (!dap_.SetBreakpoints(sourcePath, requests)) return false;
         dapBreakpointRequests_[dap_.LastRequestSequence()] = sourcePath;
-        AppendLog(wxS("DAP setBreakpoints request sent; breakpoints are pending confirmation."));
+        AppendLog(T(wxS("message.dapBreakpointSent")));
         return true;
     }
 
@@ -2624,7 +2713,7 @@ private:
     void ToggleBreakpointAt(int line)
     {
         if (document_.IsUntitled()) {
-            AppendLog(wxS("Open a source file before toggling a breakpoint."));
+            AppendLog(T(wxS("dialog.openSourceBreakpoint")));
             return;
         }
         if (line <= 0) return;
@@ -2638,7 +2727,7 @@ private:
     void ConfigureBreakpoint()
     {
         if (document_.IsUntitled()) {
-            AppendLog(wxS("Open a source file before configuring a breakpoint."));
+            AppendLog(T(wxS("dialog.configureSourceBreakpoint")));
             return;
         }
         int line = CurrentEditorLine() + 1;
@@ -2654,14 +2743,14 @@ private:
             });
         }
         if (found == requested.end()) {
-            AppendLog(wxS("Toggle a breakpoint before configuring its options."));
+            AppendLog(T(wxS("dialog.toggleBreakpointFirst")));
             return;
         }
-        wxTextEntryDialog condition(this, wxS("Conditional expression (optional)"), wxS("Breakpoint condition"), found->condition);
+        wxTextEntryDialog condition(this, T(wxS("dialog.conditionalExpression")), T(wxS("dialog.breakpointCondition")), found->condition);
         if (condition.ShowModal() != wxID_OK) return;
-        wxTextEntryDialog hitCondition(this, wxS("Hit count expression (optional)"), wxS("Breakpoint hit condition"), found->hitCondition);
+        wxTextEntryDialog hitCondition(this, T(wxS("dialog.hitCountExpression")), T(wxS("dialog.breakpointHitCondition")), found->hitCondition);
         if (hitCondition.ShowModal() != wxID_OK) return;
-        wxTextEntryDialog logMessage(this, wxS("Log message (optional; leave empty for a stopping breakpoint)"), wxS("Breakpoint logpoint"), found->logMessage);
+        wxTextEntryDialog logMessage(this, T(wxS("dialog.logMessage")), T(wxS("dialog.breakpointLogpoint")), found->logMessage);
         if (logMessage.ShowModal() != wxID_OK) return;
         dapSession_.UpdateBreakpointOptions(document_.Path(), line, condition.GetValue(),
                                              hitCondition.GetValue(), logMessage.GetValue());
@@ -2674,14 +2763,14 @@ private:
     void ConfigureFunctionBreakpoint()
     {
         if (!dap_.IsRunning() || !supportsFunctionBreakpoints_) {
-            AppendLog(wxS("The active debug adapter does not advertise function breakpoints."));
+            AppendLog(wxString::Format(T(wxS("message.adapterDidNotAdvertise")), T(wxS("label.functionBreakpoints"))));
             return;
         }
-        wxTextEntryDialog name(this, wxS("Function or method name"), wxS("Function breakpoint"), wxEmptyString);
+        wxTextEntryDialog name(this, T(wxS("dialog.functionName")), T(wxS("dialog.functionBreakpoint")), wxEmptyString);
         if (name.ShowModal() != wxID_OK || name.GetValue().empty()) return;
-        wxTextEntryDialog condition(this, wxS("Conditional expression (optional)"), wxS("Function breakpoint condition"));
+        wxTextEntryDialog condition(this, T(wxS("dialog.conditionalExpression")), T(wxS("dialog.functionCondition")));
         if (condition.ShowModal() != wxID_OK) return;
-        wxTextEntryDialog hit(this, wxS("Hit count expression (optional)"), wxS("Function breakpoint hit count"));
+        wxTextEntryDialog hit(this, T(wxS("dialog.hitCountExpression")), T(wxS("dialog.functionHitCount")));
         if (hit.ShowModal() != wxID_OK) return;
         codium::DapFunctionBreakpoint configured;
         configured.name = name.GetValue();
@@ -2691,19 +2780,19 @@ private:
         PersistBreakpoints();
         if (SendFunctionBreakpoints()) {
             RefreshBreakpointView();
-            AppendLog(wxS("DAP setFunctionBreakpoints request sent."));
+            AppendLog(T(wxS("message.dapFunctionBreakpointSent")));
         }
     }
 
     void ConfigureDataBreakpoint()
     {
         if (!dap_.IsRunning() || !supportsDataBreakpoints_) {
-            AppendLog(wxS("The active debug adapter does not advertise data breakpoints."));
+            AppendLog(wxString::Format(T(wxS("message.adapterDidNotAdvertise")), T(wxS("label.dataBreakpoints"))));
             return;
         }
-        wxTextEntryDialog dataId(this, wxS("DAP dataId"), wxS("Data breakpoint"), wxEmptyString);
+        wxTextEntryDialog dataId(this, T(wxS("dialog.dataId")), T(wxS("dialog.dataBreakpoint")), wxEmptyString);
         if (dataId.ShowModal() != wxID_OK || dataId.GetValue().empty()) return;
-        wxTextEntryDialog access(this, wxS("Access type: read, write, or readWrite"), wxS("Data breakpoint access"), wxS("write"));
+        wxTextEntryDialog access(this, T(wxS("dialog.dataAccess")), T(wxS("dialog.dataBreakpointAccess")), wxS("write"));
         if (access.ShowModal() != wxID_OK) return;
         codium::DapDataBreakpoint configured;
         configured.dataId = dataId.GetValue();
@@ -2712,30 +2801,30 @@ private:
         PersistBreakpoints();
         if (SendDataBreakpoints()) {
             RefreshBreakpointView();
-            AppendLog(wxS("DAP setDataBreakpoints request sent."));
+            AppendLog(T(wxS("message.dapDataBreakpointSent")));
         }
     }
 
     void RequestDebugThreads()
     {
-        if (dap_.RequestThreads()) AppendLog(wxS("DAP threads request sent."));
-        else AppendLog(wxS("Start and initialize a debug adapter first."));
+        if (dap_.RequestThreads()) AppendLog(T(wxS("message.dapThreadsSent")));
+        else AppendLog(T(wxS("dialog.startAdapterFirst")));
     }
 
     void RequestStackTrace()
     {
-        if (dap_.RequestStackTrace(debugThreadId_)) AppendLog(wxS("DAP stackTrace request sent."));
-        else AppendLog(wxS("Start and initialize a debug adapter first."));
+        if (dap_.RequestStackTrace(debugThreadId_)) AppendLog(T(wxS("message.dapStackTraceSent")));
+        else AppendLog(T(wxS("dialog.startAdapterFirst")));
     }
 
     void RequestDebugScopes()
     {
-        if (dap_.RequestScopes(debugFrameId_)) AppendLog(wxS("DAP scopes request sent."));
+        if (dap_.RequestScopes(debugFrameId_)) AppendLog(T(wxS("message.dapScopesSent")));
     }
 
     void RequestDebugVariables()
     {
-        if (dap_.RequestVariables(debugVariablesReference_)) AppendLog(wxS("DAP variables request sent."));
+        if (dap_.RequestVariables(debugVariablesReference_)) AppendLog(T(wxS("message.dapVariablesSent")));
     }
 
     void RequestDebugWatches()
@@ -2743,16 +2832,16 @@ private:
         if (!dap_.IsRunning() || dapSession_.State() != codium::DapRunState::Paused) return;
         for (const auto& expression : watchExpressions_) {
             if (dap_.Evaluate(expression, debugFrameId_)) {
-                AppendLog(wxS("DAP watch evaluate request sent: ") + expression);
+                AppendLog(T(wxS("message.dapWatchEvaluateSent")) + expression);
             }
         }
     }
 
     void EvaluateDebugExpression()
     {
-        wxTextEntryDialog dialog(this, wxS("Expression to evaluate"), wxS("Debug evaluate"), wxEmptyString);
+        wxTextEntryDialog dialog(this, T(wxS("input.expressionEvaluate")), T(wxS("dialog.debugEvaluate")), wxEmptyString);
         if (dialog.ShowModal() != wxID_OK || dialog.GetValue().empty()) return;
-        if (dap_.Evaluate(dialog.GetValue(), debugFrameId_)) AppendLog(wxS("DAP evaluate request sent."));
+        if (dap_.Evaluate(dialog.GetValue(), debugFrameId_)) AppendLog(T(wxS("message.dapEvaluateSent")));
     }
 
     void RefreshWatchView()
@@ -2764,25 +2853,25 @@ private:
 
     void AddWatch()
     {
-        wxTextEntryDialog dialog(this, wxS("Expression to watch"), wxS("Add watch"), wxEmptyString);
+        wxTextEntryDialog dialog(this, T(wxS("input.expressionWatch")), T(wxS("dialog.addWatch")), wxEmptyString);
         if (dialog.ShowModal() != wxID_OK || dialog.GetValue().empty()) return;
         if (watchExpressions_.Index(dialog.GetValue()) == wxNOT_FOUND) watchExpressions_.Add(dialog.GetValue());
         RefreshWatchView();
         wxString error;
         if (workspace_.IsOpen() && !codium::WatchStore::Save(workspace_.RootPath(), watchExpressions_, &error)) AppendLog(error);
         if (dap_.IsRunning()) {
-            if (dap_.Evaluate(dialog.GetValue(), debugFrameId_)) AppendLog(wxS("DAP watch evaluate request sent."));
+            if (dap_.Evaluate(dialog.GetValue(), debugFrameId_)) AppendLog(T(wxS("message.dapWatchEvaluateSent")));
         }
     }
 
     void ConfigureSourceMap()
     {
-        wxTextEntryDialog remote(this, wxS("Remote source root"), wxS("Source mapping"), wxEmptyString);
+        wxTextEntryDialog remote(this, T(wxS("dialog.remoteSourceRoot")), T(wxS("dialog.sourceMapping")), wxEmptyString);
         if (remote.ShowModal() != wxID_OK || remote.GetValue().empty()) return;
-        wxTextEntryDialog local(this, wxS("Local source root"), wxS("Source mapping"), WorkspaceDirectory());
+        wxTextEntryDialog local(this, T(wxS("dialog.localSourceRoot")), T(wxS("dialog.sourceMapping")), WorkspaceDirectory());
         if (local.ShowModal() != wxID_OK || local.GetValue().empty()) return;
         sourceMapper_.Add(remote.GetValue(), local.GetValue());
-        AppendLog(wxS("Source mapping added: ") + remote.GetValue() + wxS(" -> ") + local.GetValue());
+        AppendLog(T(wxS("message.sourceMappingAdded")) + remote.GetValue() + wxS(" -> ") + local.GetValue());
     }
 
     wxString SourceMapArguments() const
@@ -2792,12 +2881,12 @@ private:
 
     void ContinueDebug()
     {
-        if (dap_.SendRequest(wxS("continue"), wxS("{\"threadId\":1}"))) AppendLog(wxS("DAP continue request sent."));
+        if (dap_.SendRequest(wxS("continue"), wxS("{\"threadId\":1}"))) AppendLog(T(wxS("message.dapContinueSent")));
     }
 
     void PauseDebug()
     {
-        if (dap_.SendRequest(wxS("pause"), wxS("{\"threadId\":1}"))) AppendLog(wxS("DAP pause request sent."));
+        if (dap_.SendRequest(wxS("pause"), wxS("{\"threadId\":1}"))) AppendLog(T(wxS("message.dapPauseSent")));
     }
 
     void StopDebug()
@@ -2807,7 +2896,7 @@ private:
             dapAdvancedBreakpointRequests_.clear();
             dapSession_.MarkDisconnected();
             UpdateDapStatus();
-            AppendLog(wxS("Debug adapter stopped."));
+            AppendLog(T(wxS("message.debugAdapterStopped")));
         }
     }
 
@@ -2817,13 +2906,13 @@ private:
         dapAdvancedBreakpointRequests_.clear();
         dapSession_.MarkDisconnected();
         UpdateDapStatus();
-        AppendLog(wxString::Format(wxS("Debug adapter finished with exit code %d."), event.GetExitCode()));
+        AppendLog(wxString::Format(T(wxS("message.debugAdapterFinished")), event.GetExitCode()));
     }
 
     bool EnsureEditorAvailable()
     {
         if (editor_) return true;
-        AppendLog(wxS("Open an editor before using this command."));
+        AppendLog(T(wxS("dialog.openEditorFirst")));
         return false;
     }
 
@@ -2846,7 +2935,7 @@ private:
         if (selectionFrom != selectionTo) {
             initial = editor_->GetStringSelection();
         }
-        wxTextEntryDialog dialog(this, wxS("Find text"), wxS("Find"), initial);
+        wxTextEntryDialog dialog(this, T(wxS("input.findText")), T(wxS("dialog.find")), initial);
         if (dialog.ShowModal() != wxID_OK || dialog.GetValue().empty()) return;
         lastSearchQuery_ = dialog.GetValue();
         FindNextInEditor(backwards);
@@ -2872,7 +2961,7 @@ private:
                 text, lastSearchQuery_, backwards ? text.length() : 0, backwards, lastSearchMatchCase_);
         }
         if (!match.Found()) {
-            AppendLog(wxS("Search text was not found: ") + lastSearchQuery_);
+            AppendLog(T(wxS("message.searchNotFound")) + lastSearchQuery_);
             return;
         }
         SelectEditorMatch(match);
@@ -2881,10 +2970,10 @@ private:
     void ReplaceInEditor()
     {
         if (!EnsureEditorAvailable()) return;
-        wxTextEntryDialog findDialog(this, wxS("Find text"), wxS("Replace"), lastSearchQuery_);
+        wxTextEntryDialog findDialog(this, T(wxS("input.findText")), T(wxS("dialog.replace")), lastSearchQuery_);
         if (findDialog.ShowModal() != wxID_OK || findDialog.GetValue().empty()) return;
         lastSearchQuery_ = findDialog.GetValue();
-        wxTextEntryDialog replacementDialog(this, wxS("Replace with"), wxS("Replace"), lastReplacement_);
+        wxTextEntryDialog replacementDialog(this, T(wxS("input.replaceWith")), T(wxS("dialog.replace")), lastReplacement_);
         if (replacementDialog.ShowModal() != wxID_OK) return;
         lastReplacement_ = replacementDialog.GetValue();
 
@@ -2896,24 +2985,24 @@ private:
         auto match = codium::EditorActions::Find(text, lastSearchQuery_, start, false, lastSearchMatchCase_);
         if (!match.Found()) match = codium::EditorActions::Find(text, lastSearchQuery_, 0, false, lastSearchMatchCase_);
         if (!match.Found()) {
-            AppendLog(wxS("Search text was not found: ") + lastSearchQuery_);
+            AppendLog(T(wxS("message.searchNotFound")) + lastSearchQuery_);
             return;
         }
         editor_->Replace(match.start, match.start + match.length, lastReplacement_);
         editor_->SetSelection(match.start, match.start + lastReplacement_.length());
         editor_->ShowPosition(match.start);
         editor_->SetFocus();
-        AppendLog(wxString::Format(wxS("Replaced one occurrence of '%s'."), lastSearchQuery_));
+        AppendLog(wxString::Format(T(wxS("message.replacedOne")), lastSearchQuery_));
         UpdateTitle();
     }
 
     void ReplaceAllInEditor()
     {
         if (!EnsureEditorAvailable()) return;
-        wxTextEntryDialog findDialog(this, wxS("Find text"), wxS("Replace all"), lastSearchQuery_);
+        wxTextEntryDialog findDialog(this, T(wxS("input.findText")), T(wxS("dialog.replaceAll")), lastSearchQuery_);
         if (findDialog.ShowModal() != wxID_OK || findDialog.GetValue().empty()) return;
         lastSearchQuery_ = findDialog.GetValue();
-        wxTextEntryDialog replacementDialog(this, wxS("Replace with"), wxS("Replace all"), lastReplacement_);
+        wxTextEntryDialog replacementDialog(this, T(wxS("input.replaceWith")), T(wxS("dialog.replaceAll")), lastReplacement_);
         if (replacementDialog.ShowModal() != wxID_OK) return;
         lastReplacement_ = replacementDialog.GetValue();
 
@@ -2921,13 +3010,13 @@ private:
         const wxString replaced = codium::EditorActions::ReplaceAll(
             editor_->GetValue(), lastSearchQuery_, lastReplacement_, lastSearchMatchCase_, &replacements);
         if (replacements == 0) {
-            AppendLog(wxS("Search text was not found: ") + lastSearchQuery_);
+            AppendLog(T(wxS("message.searchNotFound")) + lastSearchQuery_);
             return;
         }
         editor_->SetValue(replaced);
         editor_->SetInsertionPointEnd();
         editor_->SetFocus();
-        AppendLog(wxString::Format(wxS("Replaced %d occurrence(s) of '%s'."), replacements, lastSearchQuery_));
+        AppendLog(wxString::Format(T(wxS("message.replacedAll")), replacements, lastSearchQuery_));
         UpdateTitle();
     }
 
@@ -2936,12 +3025,12 @@ private:
         if (!EnsureEditorAvailable()) return;
         const int currentLine = codium::EditorActions::LineColumnForPosition(
             editor_->GetValue(), editor_->GetInsertionPoint()).line + 1;
-        wxTextEntryDialog dialog(this, wxS("Line number"), wxS("Go to Line"),
+        wxTextEntryDialog dialog(this, T(wxS("input.lineNumber")), T(wxS("dialog.goToLine")),
                                  wxString::Format(wxS("%d"), currentLine));
         if (dialog.ShowModal() != wxID_OK) return;
         long line = 0;
         if (!dialog.GetValue().ToLong(&line) || line < 1) {
-            AppendLog(wxS("Go to Line requires a positive line number."));
+            AppendLog(T(wxS("dialog.goToLinePositive")));
             return;
         }
         const long position = codium::EditorActions::PositionForLineColumn(
@@ -2955,10 +3044,10 @@ private:
     void GoToFile()
     {
         if (!workspace_.IsOpen()) {
-            AppendLog(wxS("Open a workspace before using Go to File."));
+            AppendLog(T(wxS("dialog.noWorkspaceFile")));
             return;
         }
-        wxTextEntryDialog queryDialog(this, wxS("File name or workspace-relative path"), wxS("Go to File"));
+        wxTextEntryDialog queryDialog(this, T(wxS("input.filePath")), T(wxS("dialog.goToFile")), wxEmptyString);
         if (queryDialog.ShowModal() != wxID_OK) return;
         const wxString query = queryDialog.GetValue().Lower();
         if (query.empty()) return;
@@ -2971,21 +3060,21 @@ private:
             paths.Add(path);
         }
         if (choices.IsEmpty()) {
-            AppendLog(wxS("Go to File found no matching workspace file."));
+            AppendLog(T(wxS("dialog.noFileMatch")));
             return;
         }
-        wxSingleChoiceDialog choice(this, wxS("Select a file"), wxS("Go to File"), choices);
+        wxSingleChoiceDialog choice(this, T(wxS("dialog.selectFile")), T(wxS("dialog.goToFile")), choices);
         if (choice.ShowModal() == wxID_OK) OpenDocumentPath(paths[choice.GetSelection()]);
     }
 
     bool EnsureLanguageRequest(const wxString& action)
     {
         if (document_.IsUntitled()) {
-            AppendLog(wxS("Open a document before requesting ") + action + wxS("."));
+            AppendLog(T(wxS("dialog.openDocumentFirst")) + action + wxS("."));
             return false;
         }
         if (!languageServerInitialized_) {
-            AppendLog(wxS("Initialize the language server before requesting ") + action + wxS("."));
+            AppendLog(T(wxS("dialog.initializeFirst")) + action + wxS("."));
             return false;
         }
         return true;
@@ -2996,7 +3085,7 @@ private:
         if (EnsureLanguageRequest(wxS("definition")) &&
             host_.RequestLanguageDefinition(DocumentUri(), CurrentEditorLine(), CurrentEditorCharacter())) {
             lspResultMode_ = LspResultMode::Locations;
-            AppendLog(wxS("Request sent: textDocument/definition."));
+            AppendLog(T(wxS("message.lspDefinitionSent")));
         }
     }
 
@@ -3005,7 +3094,7 @@ private:
         if (EnsureLanguageRequest(wxS("declaration")) &&
             host_.RequestLanguageDeclaration(DocumentUri(), CurrentEditorLine(), CurrentEditorCharacter())) {
             lspResultMode_ = LspResultMode::Locations;
-            AppendLog(wxS("Request sent: textDocument/declaration."));
+            AppendLog(T(wxS("message.lspDeclarationSent")));
         }
     }
 
@@ -3014,7 +3103,7 @@ private:
         if (EnsureLanguageRequest(wxS("references")) &&
             host_.RequestLanguageReferences(DocumentUri(), CurrentEditorLine(), CurrentEditorCharacter())) {
             lspResultMode_ = LspResultMode::Locations;
-            AppendLog(wxS("Request sent: textDocument/references."));
+            AppendLog(T(wxS("message.lspReferencesSent")));
         }
     }
 
@@ -3022,29 +3111,29 @@ private:
     {
         if (EnsureLanguageRequest(wxS("document symbols")) && host_.RequestLanguageDocumentSymbols(DocumentUri())) {
             lspResultMode_ = LspResultMode::Locations;
-            AppendLog(wxS("Request sent: textDocument/documentSymbol."));
+            AppendLog(T(wxS("message.lspDocumentSymbolsSent")));
         }
     }
 
     void RequestWorkspaceSymbols()
     {
         if (!EnsureLanguageRequest(wxS("workspace symbols"))) return;
-        wxTextEntryDialog dialog(this, wxS("Symbol query"), wxS("Workspace Symbols"), lastSymbolQuery_);
+        wxTextEntryDialog dialog(this, T(wxS("input.symbolQuery")), T(wxS("dialog.workspaceSymbols")), lastSymbolQuery_);
         if (dialog.ShowModal() != wxID_OK) return;
         lastSymbolQuery_ = dialog.GetValue();
         if (host_.RequestLanguageWorkspaceSymbols(lastSymbolQuery_)) {
             lspResultMode_ = LspResultMode::Locations;
-            AppendLog(wxS("Request sent: workspace/symbol."));
+            AppendLog(T(wxS("message.lspWorkspaceSymbolsSent")));
         }
     }
 
     void RenameSymbol()
     {
         if (!EnsureLanguageRequest(wxS("rename"))) return;
-        wxTextEntryDialog dialog(this, wxS("New symbol name"), wxS("Rename Symbol"));
+        wxTextEntryDialog dialog(this, T(wxS("input.newSymbolName")), T(wxS("dialog.renameSymbol")));
         if (dialog.ShowModal() != wxID_OK || dialog.GetValue().empty()) return;
         if (host_.RequestLanguageRename(DocumentUri(), CurrentEditorLine(), CurrentEditorCharacter(), dialog.GetValue())) {
-            AppendLog(wxS("Request sent: textDocument/rename."));
+            AppendLog(T(wxS("message.lspRenameSent")));
         }
     }
 
@@ -3053,34 +3142,34 @@ private:
         if (EnsureLanguageRequest(wxS("code actions")) &&
             host_.RequestLanguageCodeActions(DocumentUri(), CurrentEditorLine(), CurrentEditorCharacter())) {
             lspResultMode_ = LspResultMode::CodeActions;
-            AppendLog(wxS("Request sent: textDocument/codeAction."));
+            AppendLog(T(wxS("message.lspCodeActionsSent")));
         }
     }
 
     void ShowCommandPalette()
     {
         const wxArrayString commands = {
-            wxS("Open workspace"), wxS("Open file"), wxS("Save file"),
-            wxS("Start clangd"), wxS("Initialize language server"),
-            wxS("Request hover"), wxS("Request completion"),
-            wxS("Build project"), wxS("Rerun last build"), wxS("Run selected task"), wxS("Stop task"),
-            wxS("Start terminal"), wxS("Send terminal input"), wxS("Stop terminal"), wxS("Select shell"),
-            wxS("Start debug adapter"), wxS("Initialize debug"), wxS("Continue debug"),
-            wxS("Launch debug program"), wxS("Pause debug"), wxS("Stop debug"),
-            wxS("Start Extension Host"), wxS("Load demo extension"),
-            wxS("Run hello.codium"), wxS("Stop language server"),
-            wxS("Install VSIX"), wxS("List installed extensions"), wxS("Discover Code::Blocks SDK"),
-            wxS("Start Code::Blocks adapter"), wxS("Stop Code::Blocks adapter"),
-            wxS("Previous problem"), wxS("Next problem"),
-            wxS("Start Code::Blocks debug"), wxS("Continue Code::Blocks debug"),
-            wxS("Pause Code::Blocks debug"), wxS("Stop Code::Blocks debug"), wxS("Build and Run selected target"),
-            wxS("Find"), wxS("Find next"), wxS("Find previous"), wxS("Replace"),
-            wxS("Replace all"), wxS("Go to Line")
-            , wxS("Go to File"), wxS("Go to Symbol"), wxS("Go to Definition"),
-            wxS("Go to Declaration"), wxS("Find References"), wxS("Rename Symbol"),
-            wxS("Code Actions"), wxS("Workspace Symbols")
+            T(wxS("menu.openWorkspace")), T(wxS("menu.openFile")), T(wxS("menu.saveFile")),
+            T(wxS("menu.startClangd")), T(wxS("menu.initializeLsp")),
+            T(wxS("menu.requestHover")), T(wxS("menu.requestCompletion")),
+            T(wxS("menu.buildProject")), T(wxS("menu.rerunBuild")), T(wxS("menu.runTask")), T(wxS("menu.stopTask")),
+            T(wxS("menu.startTerminal")), T(wxS("menu.sendTerminal")), T(wxS("menu.stopTerminal")), T(wxS("menu.selectShell")),
+            T(wxS("menu.startDebug")), T(wxS("menu.initializeDebug")), T(wxS("menu.continue")),
+            T(wxS("menu.launchProgram")), T(wxS("menu.pause")), T(wxS("menu.stopDebug")),
+            T(wxS("menu.startHost")), T(wxS("menu.loadDemo")),
+            T(wxS("menu.runDemo")), T(wxS("menu.stopLsp")),
+            T(wxS("menu.installVsix")), T(wxS("menu.listExtensions")), T(wxS("menu.discoverCodeBlocks")),
+            T(wxS("menu.startCodeBlocksAdapter")), T(wxS("menu.stopCodeBlocksAdapter")),
+            T(wxS("menu.previousProblem")), T(wxS("menu.nextProblem")),
+            T(wxS("button.cbDebug")), T(wxS("button.cbContinue")),
+            T(wxS("button.cbPause")), T(wxS("button.cbStop")), T(wxS("button.buildAndRun")),
+            T(wxS("menu.find")), T(wxS("menu.findNext")), T(wxS("menu.findPrevious")), T(wxS("menu.replace")),
+            T(wxS("menu.replaceAll")), T(wxS("menu.goToLine")),
+            T(wxS("menu.goToFile")), T(wxS("menu.goToSymbol")), T(wxS("menu.goToDefinition")),
+            T(wxS("menu.goToDeclaration")), T(wxS("menu.findReferences")), T(wxS("menu.renameSymbol")),
+            T(wxS("menu.codeActions")), T(wxS("dialog.workspaceSymbols"))
         };
-        wxSingleChoiceDialog dialog(this, wxS("Select a command"), wxS("Command Palette"), commands);
+        wxSingleChoiceDialog dialog(this, T(wxS("dialog.selectCommand")), T(wxS("dialog.commandPalette")), commands);
         if (dialog.ShowModal() != wxID_OK) return;
         switch (dialog.GetSelection()) {
         case 0: OpenWorkspace(); break;
@@ -3189,7 +3278,7 @@ private:
         codium::Document loaded;
         wxString error;
         if (!loaded.Load(path, &error)) {
-            AppendLog(wxS("Error: ") + error);
+            AppendLog(T(wxS("message.errorPrefix")) + error);
             return;
         }
 
@@ -3203,8 +3292,8 @@ private:
         notebook_->AddPage(page, wxFileName(path).GetFullName(), true);
         SwitchToTab(tabPaths_.size() - 1);
         const wxString customEditor = customEditors_.Resolve(path);
-        if (!customEditor.empty()) AppendLog(wxS("Custom editor selected: ") + customEditor);
-        AppendLog(wxS("Opened: ") + path);
+        if (!customEditor.empty()) AppendLog(T(wxS("message.customEditorSelected")) + customEditor);
+        AppendLog(T(wxS("message.documentOpened")) + path);
         NotifyLanguageDocumentOpened();
     }
 
@@ -3279,8 +3368,8 @@ private:
     void SaveFile()
     {
         if (document_.IsUntitled()) {
-            wxFileDialog dialog(this, wxS("Save source file"), wxEmptyString, wxEmptyString,
-                                wxS("All files (*.*)|*.*"), wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+            wxFileDialog dialog(this, T(wxS("dialog.saveSourceFile")), wxEmptyString, wxEmptyString,
+                                T(wxS("dialog.allFilesFilter")), wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
             if (dialog.ShowModal() != wxID_OK) {
                 return;
             }
@@ -3298,12 +3387,12 @@ private:
         document_.SetText(editor_->GetValue());
         wxString error;
         if (!document_.Save(&error)) {
-            AppendLog(wxS("Error: ") + error);
+            AppendLog(T(wxS("message.errorPrefix")) + error);
             return;
         }
         document_.MarkClean();
         UpdateTitle();
-        AppendLog(wxS("Saved: ") + document_.Path());
+        AppendLog(T(wxS("message.documentSaved")) + document_.Path());
         NotifyLanguageDocumentChanged();
         if (host_.IsRunning() && !document_.IsUntitled()) {
             host_.NotifyDocumentSaved(DocumentUri(), languageId_, documentVersion_, document_.Text());
@@ -3324,35 +3413,35 @@ private:
     {
         if (!EnsureWorkspaceTrusted()) return;
         if (host_.IsRunning()) {
-            AppendLog(wxS("Extension Host is already running."));
+            AppendLog(T(wxS("message.hostAlreadyRunning")));
             return;
         }
         if (host_.Start(HostScript())) {
-            AppendLog(wxS("Node.js Extension Host started in a separate process."));
+            AppendLog(T(wxS("message.hostStarted")));
         } else {
-            AppendLog(wxS("Could not start the Extension Host."));
+            AppendLog(T(wxS("message.hostStartError")));
         }
     }
 
     void LoadDemo()
     {
         if (!host_.IsRunning()) {
-            AppendLog(wxS("Start the Extension Host first."));
+            AppendLog(T(wxS("dialog.startHostFirst")));
             return;
         }
         if (host_.LoadExtension(DemoExtension())) {
-            AppendLog(wxS("Request sent: load hello-codium."));
+            AppendLog(T(wxS("message.loadDemoSent")));
         }
     }
 
     void ExecuteDemo()
     {
         if (!host_.IsRunning()) {
-            AppendLog(wxS("Start the Extension Host first."));
+            AppendLog(T(wxS("dialog.startHostFirst")));
             return;
         }
         if (host_.ExecuteCommand(wxS("hello.codium"))) {
-            AppendLog(wxS("Request sent: run hello.codium."));
+            AppendLog(T(wxS("message.runDemoSent")));
         }
     }
 
@@ -3364,7 +3453,7 @@ private:
         semanticTokensSupported_ = false;
         semanticTokens_.clear();
         if (host_.StartLanguageServer(wxS("clangd"))) {
-            AppendLog(wxS("Request sent: start clangd through the Extension Host."));
+            AppendLog(T(wxS("message.startClangdSent")));
         }
     }
 
@@ -3375,7 +3464,7 @@ private:
         }
         if (host_.InitializeLanguageServer(ProjectRootUri())) {
             languageServerInitialized_ = true;
-            AppendLog(wxS("Request sent: initialize the language server."));
+            AppendLog(T(wxS("message.initializeLanguageServerSent")));
             NotifyLanguageDocumentOpened();
         }
     }
@@ -3440,37 +3529,37 @@ private:
     void RequestHover()
     {
         if (document_.IsUntitled()) {
-            AppendLog(wxS("Open a document before requesting hover information."));
+            AppendLog(T(wxS("dialog.openDocumentHover")));
             return;
         }
         if (host_.RequestLanguageHover(DocumentUri(), CurrentEditorLine(), CurrentEditorCharacter())) {
-            AppendLog(wxS("Request sent: textDocument/hover."));
+            AppendLog(T(wxS("message.lspHoverSent")));
         }
     }
 
     void RequestCompletion()
     {
         if (document_.IsUntitled()) {
-            AppendLog(wxS("Open a document before requesting completion."));
+            AppendLog(T(wxS("dialog.openDocumentCompletion")));
             return;
         }
         if (host_.RequestLanguageCompletion(DocumentUri(), CurrentEditorLine(), CurrentEditorCharacter())) {
-            AppendLog(wxS("Request sent: textDocument/completion."));
+            AppendLog(T(wxS("message.lspCompletionSent")));
         }
     }
 
     void RequestSemanticTokens()
     {
         if (document_.IsUntitled()) {
-            AppendLog(wxS("Open a document before requesting semantic tokens."));
+            AppendLog(T(wxS("dialog.openDocumentSemantic")));
             return;
         }
         if (!languageServerInitialized_) {
-            AppendLog(wxS("Initialize the language server before requesting semantic tokens."));
+            AppendLog(T(wxS("message.lspInitializeFirstSemantic")));
             return;
         }
         if (host_.RequestLanguageSemanticTokens(DocumentUri())) {
-            AppendLog(wxS("Request sent: textDocument/semanticTokens/full."));
+            AppendLog(T(wxS("message.lspSemanticTokensSent")));
         }
     }
 
@@ -3479,15 +3568,15 @@ private:
         semanticTokensSupported_ = false;
         semanticTokens_.clear();
         if (host_.StopLanguageServer()) {
-            AppendLog(wxS("Request sent: stop the language server."));
+            AppendLog(T(wxS("message.stopLanguageServerSent")));
         }
     }
 
     void InstallVsix()
     {
         if (!EnsureWorkspaceTrusted()) return;
-        wxFileDialog dialog(this, wxS("Choose a VSIX extension"), wxEmptyString, wxEmptyString,
-                            wxS("VS Code extensions (*.vsix)|*.vsix"), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+        wxFileDialog dialog(this, T(wxS("dialog.chooseVsix")), wxEmptyString, wxEmptyString,
+                            T(wxS("dialog.vsixFilter")), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
         if (dialog.ShowModal() != wxID_OK) {
             return;
         }
@@ -3496,7 +3585,7 @@ private:
         if (extensions_.Install(dialog.GetPath(), &message)) {
             AppendLog(message);
         } else {
-            AppendLog(wxS("Error: ") + message);
+            AppendLog(T(wxS("message.errorPrefix")) + message);
         }
     }
 
@@ -3504,11 +3593,11 @@ private:
     {
         const wxArrayString installed = extensions_.ListInstalled();
         if (installed.IsEmpty()) {
-            AppendLog(wxS("No VSIX extensions are installed locally."));
+            AppendLog(T(wxS("dialog.noVsix")));
             return;
         }
         for (const auto& name : installed) {
-            AppendLog(wxS("Extension: ") + name);
+            AppendLog(T(wxS("message.extensionPrefix")) + name);
         }
     }
 
@@ -3517,30 +3606,30 @@ private:
         if (bottomWorkbench_) bottomWorkbench_->SetSelection(4);
         wxString error;
         if (!codeBlocksBridge_.Discover(&error)) {
-            AppendLog(wxS("Code::Blocks SDK discovery: ") + error);
-            wxDirDialog dialog(this, wxS("Choose a Code::Blocks installation or source root"), wxEmptyString,
+            AppendLog(T(wxS("message.codeBlocksDiscovery")) + error);
+            wxDirDialog dialog(this, T(wxS("dialog.chooseCodeBlocksRoot")), wxEmptyString,
                                wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
             if (dialog.ShowModal() != wxID_OK) return;
             codeBlocksBridge_ = codium::CodeBlocksBridge(dialog.GetPath());
             if (!codeBlocksBridge_.Discover(&error)) {
-                AppendLog(wxS("Code::Blocks SDK discovery: ") + error);
+                AppendLog(T(wxS("message.codeBlocksDiscovery")) + error);
                 return;
             }
         }
-        AppendLog(wxString::Format(wxS("Code::Blocks root: %s"), codeBlocksBridge_.Root()));
+        AppendLog(wxString::Format(T(wxS("message.codeBlocksRoot")), codeBlocksBridge_.Root()));
         if (!codeBlocksBridge_.SdkIncludeDirectory().empty()) {
-            AppendLog(wxS("Code::Blocks SDK headers: ") + codeBlocksBridge_.SdkIncludeDirectory());
+            AppendLog(T(wxS("message.codeBlocksHeaders")) + codeBlocksBridge_.SdkIncludeDirectory());
         }
         if (codeBlocksBridge_.Plugins().empty()) {
-            AppendLog(wxS("No native Code::Blocks plugin libraries found in discovered directories."));
+            AppendLog(T(wxS("message.noCodeBlocksPlugins")));
         } else {
             for (const auto& plugin : codeBlocksBridge_.Plugins()) {
-                AppendLog(wxString::Format(wxS("Code::Blocks plugin: %s — %s (%s)"),
+                AppendLog(wxString::Format(T(wxS("message.codeBlocksPlugin")),
                                            plugin.title, plugin.filePath,
-                                           plugin.manifestValid ? plugin.status : wxS("manifest unavailable")));
+                                           plugin.manifestValid ? plugin.status : T(wxS("label.manifestUnavailable"))));
             }
         }
-        AppendLog(codeBlocksBridge_.LoadPolicy());
+        AppendLog(T(wxS("message.codeBlocksLoadPolicy")));
     }
 
     wxString CodeBlocksProjectFile() const
@@ -3560,14 +3649,14 @@ private:
     {
         if (!EnsureWorkspaceTrusted()) return;
         if (!workspace_.IsOpen()) {
-            AppendLog(wxS("Open a workspace before starting the Code::Blocks adapter."));
+            AppendLog(T(wxS("dialog.openWorkspaceAdapter")));
             return;
         }
         wxString executable;
         wxGetEnv(wxS("CODIUM_BLOCKS_CODEBLOCKS_ADAPTER"), &executable);
         if (executable.empty()) {
-            wxFileDialog dialog(this, wxS("Choose the Code::Blocks adapter executable"), wxEmptyString, wxEmptyString,
-                                wxS("Executables (*.*)|*.*"), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+            wxFileDialog dialog(this, T(wxS("dialog.chooseAdapterExecutable")), wxEmptyString, wxEmptyString,
+                                T(wxS("dialog.executableFilter")), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
             if (dialog.ShowModal() != wxID_OK) return;
             executable = dialog.GetPath();
         }
@@ -3581,7 +3670,7 @@ private:
         const wxString debuggerPlugin = FindCodeBlocksDebuggerPlugin(codeBlocksBridge_);
         const wxString debuggerProvider = FindCodeBlocksDebuggerProvider(executable);
         if (dataDirectory.empty() || compilerPlugin.empty()) {
-            AppendLog(wxS("Code::Blocks adapter requires resources.zip and a matching Compiler plugin; discovery found neither complete runtime path."));
+            AppendLog(T(wxS("message.codeBlocksRuntimeIncomplete")));
             return;
         }
         arguments.Add(wxS("--data-dir=") + dataDirectory);
@@ -3589,19 +3678,19 @@ private:
         if (!debuggerPlugin.empty()) arguments.Add(wxS("--debugger-plugin=") + debuggerPlugin);
         if (!debuggerProvider.empty()) arguments.Add(wxS("--debugger-provider=") + debuggerProvider);
         if (!codeBlocksAdapter_.Start(executable, arguments, workspace_.RootPath(), configuration, &error)) {
-            AppendLog(wxS("Code::Blocks adapter error: ") + error);
+            AppendLog(T(wxS("message.codeBlocksAdapterError")) + error);
             return;
         }
         adapterProjectOpened_ = false;
         bottomWorkbench_->SetSelection(4);
-        AppendLog(wxS("Code::Blocks adapter started; waiting for contract handshake."));
+        AppendLog(T(wxS("message.codeBlocksAdapterStarted")));
     }
 
     void StopCodeBlocksAdapter()
     {
         if (codeBlocksAdapter_.IsRunning()) {
             codeBlocksAdapter_.Stop();
-            AppendLog(wxS("Code::Blocks adapter stopped."));
+            AppendLog(T(wxS("message.codeBlocksAdapterStopped")));
         }
     }
 
@@ -3623,55 +3712,55 @@ private:
         if (!EnsureWorkspaceTrusted()) return;
         if (!codeBlocksAdapter_.IsRunning()) StartCodeBlocksAdapter();
         if (!codeBlocksAdapter_.IsReady()) {
-            AppendLog(wxS("Wait for the Code::Blocks adapter handshake before starting debug."));
+            AppendLog(T(wxS("dialog.waitAdapterHandshake")));
             return;
         }
         const wxString projectFile = CodeBlocksProjectFile();
         if (projectFile.empty()) {
-            AppendLog(wxS("The Code::Blocks debugger requires an imported .cbp project."));
+            AppendLog(T(wxS("dialog.requireCodeBlocksProject")));
             return;
         }
         if (!adapterProjectOpened_ && !codeBlocksAdapter_.OpenProject(projectFile)) {
-            AppendLog(wxS("Could not open the Code::Blocks project in the adapter."));
+            AppendLog(T(wxS("message.codeBlocksProjectOpenError")));
             return;
         }
         adapterProjectOpened_ = true;
         if (!codeBlocksAdapter_.DebugProject(projectFile, CodeBlocksTargetSelection(), true)) {
-            AppendLog(wxS("Could not start the Code::Blocks debugger."));
+            AppendLog(T(wxS("message.codeBlocksDebugStartError")));
             return;
         }
-        AppendLog(wxS("Code::Blocks debugger launch requested."));
+        AppendLog(T(wxS("message.codeBlocksDebugLaunchSent")));
     }
 
     void ContinueCodeBlocksDebug()
     {
-        if (codeBlocksAdapter_.ContinueDebug()) AppendLog(wxS("Code::Blocks debugger continue requested."));
-        else AppendLog(wxS("The Code::Blocks debugger is not ready."));
+        if (codeBlocksAdapter_.ContinueDebug()) AppendLog(T(wxS("message.codeBlocksDebugContinueSent")));
+        else AppendLog(T(wxS("dialog.codeBlocksDebuggerNotReady")));
     }
 
     void PauseCodeBlocksDebug()
     {
-        if (codeBlocksAdapter_.PauseDebug()) AppendLog(wxS("Code::Blocks debugger pause requested."));
-        else AppendLog(wxS("The Code::Blocks debugger is not ready."));
+        if (codeBlocksAdapter_.PauseDebug()) AppendLog(T(wxS("message.codeBlocksDebugPauseSent")));
+        else AppendLog(T(wxS("dialog.codeBlocksDebuggerNotReady")));
     }
 
     void StopCodeBlocksDebug()
     {
-        if (codeBlocksAdapter_.StopDebug()) AppendLog(wxS("Code::Blocks debugger stop requested."));
-        else AppendLog(wxS("The Code::Blocks debugger is not ready."));
+        if (codeBlocksAdapter_.StopDebug()) AppendLog(T(wxS("message.codeBlocksDebugStopSent")));
+        else AppendLog(T(wxS("dialog.codeBlocksDebuggerNotReady")));
     }
 
     wxString FormatCodeBlocksValue(const codium::CodeBlocksDebugValue& value, int depth = 0) const
     {
         wxString label = value.symbol.empty() ? value.full : value.symbol;
-        if (label.empty()) label = wxS("<value>");
+        if (label.empty()) label = T(wxS("label.unknownValue"));
         wxString result(static_cast<size_t>(std::max(0, depth)) * 2, wxChar(' '));
         result += label;
         if (!value.type.empty()) result += wxS(" : ") + value.type;
         if (!value.value.empty()) result += wxS(" = ") + value.value;
-        if (value.valueError) result += wxS(" [error]");
-        if (value.changed) result += wxS(" [changed]");
-        if (value.truncated) result += wxS(" [truncated]");
+        if (value.valueError) result += T(wxS("label.valueError"));
+        if (value.changed) result += T(wxS("label.valueChanged"));
+        if (value.truncated) result += T(wxS("label.valueTruncated"));
         for (const auto& child : value.children) result += wxS("\n") + FormatCodeBlocksValue(child, depth + 1);
         return result;
     }
@@ -3703,8 +3792,8 @@ private:
         codium::CodeBlocksDebugSnapshot snapshot;
         wxString error;
         if (!codium::CodeBlocksDebugSnapshot::Parse(json, &snapshot, &error)) {
-            AppendLog(wxS("Code::Blocks debugger snapshot parse error: ") + error);
-            if (debugConsole_) debugConsole_->AppendText(wxS("Snapshot parse error: ") + error + wxS("\n"));
+            AppendLog(T(wxS("message.codeBlocksSnapshotParseError")) + error);
+            if (debugConsole_) debugConsole_->AppendText(T(wxS("message.snapshotParseError")) + error + wxS("\n"));
             return;
         }
 
@@ -3720,7 +3809,7 @@ private:
                 debugFrameLocations_.push_back(location);
                 if (callStack_) {
                     wxString label = wxString::Format(wxS("#%d %s"), frame.number,
-                                                      frame.function.empty() ? wxS("<unknown>") : frame.function);
+                                                      frame.function.empty() ? T(wxS("label.unknownFrame")) : frame.function);
                     if (!frame.file.empty()) {
                         label += wxString::Format(wxS(" — %s"), location.path.empty() ? frame.file : location.path);
                     }
@@ -3728,7 +3817,7 @@ private:
                     callStack_->Append(label);
                 }
             }
-            if (callStack_ && callStack_->IsEmpty()) callStack_->Append(wxS("No stack frames reported."));
+            if (callStack_ && callStack_->IsEmpty()) callStack_->Append(T(wxS("label.noStackFrames")));
             if (snapshot.activeFrame >= 0 && static_cast<size_t>(snapshot.activeFrame) < callStack_->GetCount()) {
                 callStack_->SetSelection(snapshot.activeFrame);
             }
@@ -3739,39 +3828,39 @@ private:
                     debugThreads_->Append(wxString::Format(wxS("%s #%d — %s"),
                                                            thread.active ? wxS("●") : wxS("○"),
                                                            thread.number,
-                                                           thread.info.empty() ? wxS("<unnamed thread>") : thread.info));
+                                                           thread.info.empty() ? T(wxS("label.unnamedThread")) : thread.info));
                 }
-                if (debugThreads_->IsEmpty()) debugThreads_->Append(wxS("No threads reported."));
+                if (debugThreads_->IsEmpty()) debugThreads_->Append(T(wxS("label.noThreads")));
             }
         } else if (snapshot.dataKind == wxS("breakpoints")) {
             if (breakpoints_) {
                 breakpoints_->Clear();
                 for (const auto& breakpoint : snapshot.breakpoints) {
                     wxString label = breakpoint.location;
-                    if (label.empty()) label = wxString::Format(wxS("line %d"), breakpoint.line);
-                    label += breakpoint.enabled ? wxS(" [enabled]") : wxS(" [disabled]");
-                    if (breakpoint.temporary) label += wxS(" [temporary]");
+                    if (label.empty()) label = wxString::Format(T(wxS("label.lineNumber")), breakpoint.line);
+                    label += breakpoint.enabled ? T(wxS("label.enabled")) : T(wxS("label.disabled"));
+                    if (breakpoint.temporary) label += T(wxS("label.temporary"));
                     if (!breakpoint.info.empty()) label += wxS(" — ") + breakpoint.info;
                     breakpoints_->Append(label);
                 }
-                if (breakpoints_->IsEmpty()) breakpoints_->Append(wxS("No Code::Blocks breakpoints."));
+                if (breakpoints_->IsEmpty()) breakpoints_->Append(T(wxS("label.noCodeBlocksBreakpoints")));
             }
         } else if (snapshot.dataKind == wxS("watches")) {
             if (watches_) {
                 watches_->Clear();
                 if (snapshot.hasValue) watches_->Append(FormatCodeBlocksValue(snapshot.value));
-                else watches_->Append(wxS("No watch value reported."));
+                else watches_->Append(T(wxS("label.noWatchValue")));
             }
         } else if (snapshot.dataKind == wxS("variables")) {
             if (variables_) {
                 variables_->Clear();
                 if (snapshot.hasValue) variables_->Append(FormatCodeBlocksValue(snapshot.value));
-                else variables_->Append(wxS("No variable value reported."));
+                else variables_->Append(T(wxS("label.noVariableValue")));
             }
         }
 
         if (debugConsole_) {
-            debugConsole_->AppendText(wxString::Format(wxS("Code::Blocks %s snapshot applied to Debug panels.\n"),
+            debugConsole_->AppendText(wxString::Format(T(wxS("message.codeBlocksSnapshotApplied")),
                                                        snapshot.dataKind.empty() ? event.dataKind : snapshot.dataKind));
         }
     }
@@ -3802,14 +3891,15 @@ private:
         }
         case codium::CodeBlocksEventKind::BuildStarted:
             problemStore_.Clear(source);
-            if (buildOutput_) buildOutput_->AppendText(wxString::Format(wxS("\n=== Code::Blocks: %s ===\n"), event.target));
-            SetStatusText(wxS("Code::Blocks building"), 1);
+            if (buildOutput_) buildOutput_->AppendText(wxS("\n") +
+                wxString::Format(T(wxS("message.codeBlocksBuildHeader")), event.target) + wxS("\n"));
+            SetStatusText(T(wxS("status.codeBlocksBuilding")), 1);
             break;
         case codium::CodeBlocksEventKind::BuildFinished:
             if (buildOutput_) buildOutput_->AppendText(event.message + wxS("\n"));
             AppendBuildSessionOutput(event.message);
             FinishBuildSession(event.exitCode);
-            SetStatusText(event.exitCode == 0 ? wxS("Code::Blocks build succeeded") : wxS("Code::Blocks build failed"), 1);
+            SetStatusText(event.exitCode == 0 ? T(wxS("status.codeBlocksBuildSucceeded")) : T(wxS("status.codeBlocksBuildFailed")), 1);
             if (pendingRunAfterBuild_) {
                 if (event.exitCode == 0) LaunchPendingRun();
                 else {
@@ -3817,14 +3907,14 @@ private:
                     pendingRunTaskName_.clear();
                     pendingRunConfiguration_.clear();
                     pendingRunArtifactOverride_.clear();
-                    AppendLog(wxS("Code::Blocks build failed; the selected target was not run."));
+                    AppendLog(T(wxS("message.codeBlocksBuildRunSkipped")));
                 }
             }
             break;
         case codium::CodeBlocksEventKind::CompilerOutput: {
             if (buildOutput_) buildOutput_->AppendText(event.message + wxS("\n"));
             AppendBuildSessionOutput(event.message);
-            const wxString problemLine = event.isError ? wxS("[stderr] ") + event.message : event.message;
+            const wxString problemLine = event.isError ? T(wxS("label.stderrPrefix")) + event.message : event.message;
             const wxString root = event.projectPath.empty()
                 ? WorkspaceDirectory()
                 : wxFileName(event.projectPath).GetPath();
@@ -3869,21 +3959,21 @@ private:
             }
             break;
         }
-        AppendLog(wxString::Format(wxS("adapter> %s: %s"), codium::CodeBlocksEventKindName(event.kind), event.message));
+        AppendLog(wxString::Format(T(wxS("message.adapterEvent")), codium::CodeBlocksEventKindName(event.kind), event.message));
     }
 
     void SearchOpenVsx()
     {
         if (!EnsureWorkspaceTrusted()) return;
-        wxTextEntryDialog dialog(this, wxS("Search Open VSX"), wxS("Extension registry"), wxEmptyString);
+        wxTextEntryDialog dialog(this, T(wxS("dialog.searchOpenVsx")), T(wxS("dialog.extensionRegistry")), wxEmptyString);
         if (dialog.ShowModal() != wxID_OK || dialog.GetValue().empty()) return;
         wxString catalog;
         wxString error;
         if (extensionRegistry_.SearchOpenVsx(wxS("https://open-vsx.org"), dialog.GetValue(), &catalog, &error)) {
-            AppendLog(wxString::Format(wxS("Open VSX catalog received (%lu bytes); cache updated."),
+            AppendLog(wxString::Format(T(wxS("message.openVsxCatalogReceived")),
                                        static_cast<unsigned long>(catalog.length())));
         } else {
-            AppendLog(wxS("Open VSX error: ") + error);
+            AppendLog(T(wxS("message.openVsxError")) + error);
         }
     }
 
@@ -3897,12 +3987,12 @@ private:
 
         AddButton(extensionControls_, title, [this, command](wxCommandEvent&) {
             if (host_.ExecuteCommand(command)) {
-                AppendLog(wxS("Request sent: run contributed command ") + command + wxS("."));
+                AppendLog(T(wxS("message.runContributedCommand")) + command + wxS("."));
             }
         });
         extensionControls_->Layout();
         Layout();
-        AppendLog(wxS("Registered extension command: ") + command);
+        AppendLog(T(wxS("message.registeredExtensionCommand")) + command);
     }
 
     void RegisterContributedView(const wxString& line)
@@ -3912,7 +4002,7 @@ private:
         if (viewId.empty() || title.empty()) return;
         treeRegistry_.Register(viewId, title);
         RefreshNativeContributions();
-        AppendLog(wxS("Registered extension Tree View: ") + title);
+        AppendLog(T(wxS("message.registeredTreeView")) + title);
     }
 
     void UpdateContributedView(const wxString& line)
@@ -3953,7 +4043,7 @@ private:
     void SelectAdjacentProblem(int direction)
     {
         if (!problems_ || problems_->GetCount() == 0) {
-            AppendLog(wxS("No visible problems match the current filters."));
+            AppendLog(T(wxS("dialog.noVisibleProblems")));
             return;
         }
         int selection = problems_->GetSelection();
@@ -3970,13 +4060,13 @@ private:
 
     void UpdateDapStatus()
     {
-        const wxString state = codium::DapDebugSessionModel::StateName(dapSession_.State());
-        wxString label = wxS("DAP: ") + state;
+        const wxString state = LocalizedDapRunState(dapSession_.State());
+        wxString label = T(wxS("label.dapPrefix")) + state;
         if (activeDebugFrameLine_ > 0) {
             label += wxString::Format(wxS(" · frame %d:%d"), activeDebugFrameLine_, activeDebugFrameCharacter_);
         }
         if (debugStatus_) debugStatus_->SetLabel(label);
-        if (GetStatusBar()) SetStatusText(wxS("Debug ") + label, 1);
+        if (GetStatusBar()) SetStatusText(T(wxS("status.debugPrefix")) + label, 1);
     }
 
     void ClearDapTransientViews()
@@ -3990,11 +4080,11 @@ private:
         debugVariablesReference_ = 0;
         if (debugThreads_) {
             debugThreads_->Clear();
-            debugThreads_->Append(wxS("No threads reported."));
+            debugThreads_->Append(T(wxS("label.noThreads")));
         }
         if (callStack_) {
             callStack_->Clear();
-            callStack_->Append(wxS("No stack frames reported."));
+            callStack_->Append(T(wxS("label.noStackFrames")));
         }
         if (variables_) variables_->Clear();
         RefreshWatchView();
@@ -4031,7 +4121,8 @@ private:
                     wxS("supportsFunctionBreakpoints"), wxS("supportsDataBreakpoints")};
                 for (const auto& capability : capabilities) {
                     const wxString marker = wxString::Format(wxS("\"%s\":true"), capability);
-                    debugCapabilities_->Append(capability + (line.Find(marker) != wxNOT_FOUND ? wxS(": yes") : wxS(": no/unknown")));
+                    debugCapabilities_->Append(capability + (line.Find(marker) != wxNOT_FOUND
+                        ? T(wxS("label.capabilityYes")) : T(wxS("label.capabilityNo"))));
                 }
             }
             supportsFunctionBreakpoints_ = line.Find(wxS("\"supportsFunctionBreakpoints\":true")) != wxNOT_FOUND;
@@ -4091,30 +4182,30 @@ private:
             if (!sourcePath.empty()) {
                 wxString error;
                 if (!dapSession_.ApplyBreakpointResponse(sourcePath, line, &error)) {
-                    AppendLog(wxS("DAP breakpoint response parse error: ") + error);
+                    AppendLog(T(wxS("message.dapBreakpointParseError")) + error);
                 } else if (!error.empty()) {
-                    AppendLog(wxS("DAP breakpoint response: ") + error);
+                    AppendLog(T(wxS("message.dapBreakpointResponse")) + error);
                 } else {
-                    AppendLog(wxS("DAP breakpoint response applied."));
+                    AppendLog(T(wxS("message.dapBreakpointApplied")));
                 }
                 RefreshBreakpointView();
                 RefreshGutters();
             } else {
-                AppendLog(wxS("DAP breakpoint response received without a source path."));
+                AppendLog(T(wxS("message.dapBreakpointMissingSource")));
             }
         } else if (command == wxS("setFunctionBreakpoints") || command == wxS("setDataBreakpoints")) {
             const int requestSequence = JsonIntField(line, wxS("request_seq"));
             const auto pending = dapAdvancedBreakpointRequests_.find(requestSequence);
             if (pending == dapAdvancedBreakpointRequests_.end()) {
-                AppendLog(wxS("DAP advanced breakpoint response received without a matching request."));
+                AppendLog(T(wxS("message.dapAdvancedBreakpointMissingRequest")));
                 return;
             }
             const bool isFunction = pending->second == DapAdvancedBreakpointRequestKind::Function;
             dapAdvancedBreakpointRequests_.erase(pending);
             const auto messages = JsonStringFields(line, wxS("message"));
             const bool success = JsonBoolField(line, wxS("success"), true);
-            const wxString fallback = isFunction ? wxS("The adapter rejected the function breakpoint request.")
-                                                 : wxS("The adapter rejected the data breakpoint request.");
+            const wxString fallback = isFunction ? T(wxS("message.functionBreakpointRejected"))
+                                                 : T(wxS("message.dataBreakpointRejected"));
             if (isFunction) {
                 const auto verified = JsonBoolFields(line, wxS("verified"));
                 const auto ids = JsonIntFields(line, wxS("id"));
@@ -4126,7 +4217,7 @@ private:
                     breakpoint.message = index < messages.size() ? messages[index] : wxString();
                     if (!success && breakpoint.message.empty()) breakpoint.message = fallback;
                     if (success && breakpoint.state == codium::DapBreakpointState::Rejected && breakpoint.message.empty()) {
-                        breakpoint.message = wxS("The adapter did not verify this function breakpoint.");
+                        breakpoint.message = T(wxS("message.functionBreakpointUnverified"));
                     }
                 }
             } else {
@@ -4140,13 +4231,13 @@ private:
                     breakpoint.message = index < messages.size() ? messages[index] : wxString();
                     if (!success && breakpoint.message.empty()) breakpoint.message = fallback;
                     if (success && breakpoint.state == codium::DapBreakpointState::Rejected && breakpoint.message.empty()) {
-                        breakpoint.message = wxS("The adapter did not verify this data breakpoint.");
+                        breakpoint.message = T(wxS("message.dataBreakpointUnverified"));
                     }
                 }
             }
             PersistBreakpoints();
             RefreshBreakpointView();
-            AppendLog(success ? wxS("DAP advanced breakpoint response applied.") : fallback);
+            AppendLog(success ? T(wxS("message.dapAdvancedBreakpointApplied")) : fallback);
         }
     }
 
@@ -4208,7 +4299,7 @@ private:
     void ApplyWorkspaceEdits(const std::vector<codium::LspTextEdit>& edits)
     {
         if (edits.empty()) {
-            AppendLog(wxS("The language server returned no applicable text edits."));
+            AppendLog(T(wxS("message.lspNoTextEdits")));
             return;
         }
         std::map<wxString, std::vector<codium::LspTextEdit>> grouped;
@@ -4231,15 +4322,15 @@ private:
             codium::Document document;
             wxString error;
             if (!document.Load(path, &error)) {
-                AppendLog(wxS("Could not load LSP edit target: ") + error);
+                AppendLog(T(wxS("message.lspLoadEditError")) + error);
                 continue;
             }
             document.SetText(codium::LspNavigation::ApplyTextEdits(document.Text(), fileEdits));
-            if (!document.Save(&error)) AppendLog(wxS("Could not save LSP edit target: ") + error);
+            if (!document.Save(&error)) AppendLog(T(wxS("message.lspSaveEditError")) + error);
             else if (documents_.find(path) != documents_.end()) documents_[path] = document;
         }
         ApplyInlineProblems();
-        AppendLog(wxString::Format(wxS("Applied %zu LSP text edit(s)."), edits.size()));
+        AppendLog(wxString::Format(T(wxS("message.lspTextEditsApplied")), edits.size()));
     }
 
     void ApplyCompletionItem(const codium::LspCompletionItem& item)
@@ -4287,7 +4378,7 @@ private:
         const wxString method = JsonStringField(line, wxS("method"));
         if (method == wxS("textDocument/hover")) {
             const wxString value = codium::LspNavigation::HoverTextFromResult(line);
-            hover_->SetValue(value.empty() ? wxS("No hover information was returned.") : value);
+            hover_->SetValue(value.empty() ? T(wxS("label.noHoverInformation")) : value);
         } else if (method == wxS("textDocument/completion")) {
             lspCompletionItems_ = codium::LspNavigation::CompletionItemsFromResult(line);
             lspResultMode_ = LspResultMode::Completion;
@@ -4297,7 +4388,7 @@ private:
                     completion_->Append(item.detail.empty() ? item.label : item.label + wxS(" — ") + item.detail);
                 }
             }
-            hover_->SetValue(wxString::Format(wxS("Completion items: %zu. Double-click an item to apply it."),
+            hover_->SetValue(wxString::Format(T(wxS("message.completionItems")),
                                               lspCompletionItems_.size()));
         } else if (method == wxS("textDocument/definition") || method == wxS("textDocument/declaration") ||
                    method == wxS("textDocument/references") || method == wxS("textDocument/documentSymbol") ||
@@ -4312,7 +4403,7 @@ private:
                 completion_->Clear();
                 for (const auto& location : lspLocations_) completion_->Append(LspLocationLabel(location));
             }
-            hover_->SetValue(wxString::Format(wxS("%s results: %zu. Double-click a location to open it."),
+            hover_->SetValue(wxString::Format(T(wxS("message.lspLocations")),
                                               method, lspLocations_.size()));
             if ((method == wxS("textDocument/definition") || method == wxS("textDocument/declaration")) &&
                 lspLocations_.size() == 1) {
@@ -4328,7 +4419,7 @@ private:
                 for (const auto& action : lspCodeActions_) completion_->Append(
                     action.kind.empty() ? action.title : action.title + wxS(" [") + action.kind + wxS("]"));
             }
-            hover_->SetValue(wxString::Format(wxS("Code actions: %zu. Double-click an action to apply it."),
+            hover_->SetValue(wxString::Format(T(wxS("message.codeActions")),
                                               lspCodeActions_.size()));
         } else if (method == wxS("initialize")) {
             semanticTokenTypes_ = codium::SemanticTokenDecoder::TokenTypesFromInitialize(line);
@@ -4336,13 +4427,13 @@ private:
             if (semanticTokensSupported_ && !document_.IsUntitled()) {
                 host_.RequestLanguageSemanticTokens(DocumentUri());
             }
-            hover_->SetValue(wxS("Language server initialized."));
+            hover_->SetValue(T(wxS("message.languageServerInitialized")));
         } else if (method == wxS("textDocument/semanticTokens/full")) {
             semanticTokens_ = codium::SemanticTokenDecoder::DecodeFullResponse(
                 line, semanticTokenTypes_, document_.Text());
             semanticTokensSupported_ = true;
             ApplyInlineProblems();
-            hover_->SetValue(wxString::Format(wxS("Semantic tokens applied: %zu"), semanticTokens_.size()));
+            hover_->SetValue(wxString::Format(T(wxS("message.semanticTokensApplied")), semanticTokens_.size()));
         }
     }
 
@@ -4350,7 +4441,7 @@ private:
     {
         bool problemsChanged = false;
         for (const auto& line : taskRunner_.Poll()) {
-            AppendLog(wxS("task> ") + line);
+            AppendLog(T(wxS("message.taskOutputPrefix")) + line);
             if (buildOutput_) buildOutput_->AppendText(line + wxS("\n"));
             AppendBuildSessionOutput(line);
             problemStore_.AddCompilerLine(line, taskRunner_.CurrentTask().name, WorkspaceDirectory(), activeBuildSessionId_);
@@ -4366,27 +4457,27 @@ private:
             }
         }
         for (const auto& message : dap_.Poll()) {
-            AppendLog(wxS("dap> ") + message);
+            AppendLog(T(wxS("message.dapOutputPrefix")) + message);
             ShowDebugMessage(message);
         }
         for (const auto& line : host_.Poll()) {
-            AppendLog(wxS("host> ") + line);
+            AppendLog(T(wxS("message.hostOutputPrefix")) + line);
             if (line.Find(wxS("\"event\":\"languageServerMessage\"")) != wxNOT_FOUND) {
-                AppendLog(wxS("LSP message received."));
+                AppendLog(T(wxS("message.lspMessageReceived")));
             }
             if (line.Find(wxS("\"event\":\"diagnostics\"")) != wxNOT_FOUND) {
-                AppendLog(wxS("LSP diagnostics updated."));
+                AppendLog(T(wxS("message.lspDiagnosticsUpdated")));
                 ShowDiagnostics(line);
                 problemsChanged = true;
             }
             if (line.Find(wxS("\"event\":\"languageServerResult\"")) != wxNOT_FOUND) {
                 ShowLanguageResult(line);
                 if (line.Find(wxS("\"method\":\"textDocument/hover\"")) != wxNOT_FOUND) {
-                    AppendLog(wxS("LSP hover result received."));
+                    AppendLog(T(wxS("message.lspHoverReceived")));
                 } else if (line.Find(wxS("\"method\":\"textDocument/completion\"")) != wxNOT_FOUND) {
-                    AppendLog(wxS("LSP completion result received."));
+                    AppendLog(T(wxS("message.lspCompletionReceived")));
                 } else if (line.Find(wxS("\"method\":\"initialize\"")) != wxNOT_FOUND) {
-                    AppendLog(wxS("LSP initialized."));
+                    AppendLog(T(wxS("message.lspInitialized")));
                 }
             }
             if (line.Find(wxS("\"event\":\"contribution\"")) != wxNOT_FOUND &&
@@ -4404,7 +4495,7 @@ private:
         if (codeBlocksAdapter_.IsRunning()) {
             for (const auto& event : codeBlocksAdapter_.PollEvents()) {
                 if (!codeBlocksAdapter_.IsReady()) {
-                    AppendLog(wxS("Code::Blocks adapter rejected the host contract."));
+                    AppendLog(T(wxS("message.codeBlocksContractRejected")));
                     codeBlocksAdapter_.Stop();
                     break;
                 }
@@ -4414,7 +4505,7 @@ private:
                                   event.kind == codium::CodeBlocksEventKind::BuildStarted;
             }
             if (codeBlocksAdapter_.HandshakeReceived() && !codeBlocksAdapter_.IsReady()) {
-                AppendLog(wxS("Code::Blocks adapter rejected the host contract."));
+                AppendLog(T(wxS("message.codeBlocksContractRejected")));
                 codeBlocksAdapter_.Stop();
                 adapterProjectOpened_ = false;
             }
@@ -4423,10 +4514,10 @@ private:
                     const wxString projectFile = CodeBlocksProjectFile();
                     if (!projectFile.empty() && codeBlocksAdapter_.OpenProject(projectFile)) {
                         adapterProjectOpened_ = true;
-                        AppendLog(wxS("Code::Blocks adapter opened ") + projectFile);
+                        AppendLog(T(wxS("message.codeBlocksProjectOpened")) + projectFile);
                     }
                 }
-                SetStatusText(wxString::Format(wxS("Code::Blocks adapter %d.%d · SDK %d.%d.%d"),
+                SetStatusText(wxString::Format(T(wxS("status.codeBlocksAdapterVersion")),
                                                codeBlocksAdapter_.ContractMajor(), codeBlocksAdapter_.ContractMinor(),
                                                codeBlocksAdapter_.SdkMajor(), codeBlocksAdapter_.SdkMinor(),
                                                codeBlocksAdapter_.SdkRelease()), 2);
@@ -4449,6 +4540,7 @@ private:
     }
 
     wxString projectRoot_;
+    codium::Localization localization_;
     codium::Workspace workspace_;
     codium::ExtensionHostClient host_;
     codium::ProjectConfig projectConfig_;

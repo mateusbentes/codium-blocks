@@ -22,6 +22,12 @@ The primary design rule is **information density without visual noise**. The use
 
 The default layout should be comfortable at 1280×800 and remain usable at smaller sizes. Every secondary region must be collapsible. The application must not require a permanent right-side panel or a large welcome surface.
 
+## Localization and text layout
+
+The native workbench is localized through stable UTF-8 catalogs rather than hard-coded language branches. English and Brazilian Portuguese cover menus, command-palette entries, controls, dialogs, status text, terminal and Debug actions, LSP/extension actions, and accessibility descriptions. Product identity, license wording, SPDX identifiers, protocol names, paths, commands, and user-provided technical values remain invariant.
+
+Translated labels must be allowed to grow. Toolbars and scheme controls should use sizers, minimum widths, and natural ellipsization instead of clipping a translation to the English width. Dialogs should expand vertically when a translated prompt wraps, accelerator markers must remain meaningful, and keyboard traversal must not depend on the visual order of a language. The language preference is persisted outside the source tree and the complete native workbench is rebuilt on the next launch so native menu bindings and accessibility metadata remain coherent.
+
 ## Visual language
 
 The default System theme uses the restrained, high-contrast appearance associated with traditional native IDEs: a neutral window background, clear separators, compact toolbars, readable labels, and restrained accent colors. Light, Dark, and High contrast palettes are also available. Each palette preserves the same information hierarchy rather than becoming a separate visual product.
