@@ -6,6 +6,7 @@
 #include <wx/utils.h>
 
 #include <cctype>
+#include <algorithm>
 #include <vector>
 
 namespace codium {
@@ -26,6 +27,19 @@ wxString JsonEscape(const wxString& value)
         }
     }
     return escaped;
+}
+
+bool WriteAll(wxOutputStream* output, const void* data, size_t length)
+{
+    const auto* bytes = static_cast<const char*>(data);
+    size_t written = 0;
+    while (written < length) {
+        output->Write(bytes + written, length - written);
+        const size_t count = output->LastWrite();
+        if (count == 0 || !output->IsOk()) return false;
+        written += count;
+    }
+    return true;
 }
 
 } // namespace
@@ -69,6 +83,7 @@ bool DapClient::Start(const wxString& program, const wxArrayString& arguments,
         return false;
     }
     inputBuffer_.clear();
+    lastError_.clear();
     nextSequence_ = 1;
     lastRequestSequence_ = 0;
     return true;
@@ -82,8 +97,11 @@ bool DapClient::WriteMessage(const wxString& json)
                                              static_cast<unsigned long>(body.length()));
     const wxScopedCharBuffer headerUtf8 = header.utf8_str();
     wxOutputStream* output = process_->GetOutputStream();
-    output->Write(headerUtf8.data(), headerUtf8.length());
-    output->Write(body.data(), body.length());
+    if (!WriteAll(output, headerUtf8.data(), headerUtf8.length()) ||
+        !WriteAll(output, body.data(), body.length())) {
+        lastError_ = wxS("Could not write the complete DAP message.");
+        return false;
+    }
     output->Sync();
     return output->IsOk();
 }
@@ -230,28 +248,45 @@ void DapClient::HandleProcessExit(long pid, int)
 void DapClient::ParseFrames(wxArrayString& messages)
 {
     constexpr size_t kMaximumFrameSize = 16U * 1024U * 1024U;
+    constexpr size_t kMaximumHeaderSize = 64U * 1024U;
+    const auto protocolError = [this](const wxString& error) {
+        lastError_ = error;
+        inputBuffer_.clear();
+    };
     while (true) {
         const size_t headerEnd = inputBuffer_.find("\r\n\r\n");
-        if (headerEnd == std::string::npos) return;
+        if (headerEnd == std::string::npos) {
+            if (inputBuffer_.size() > kMaximumHeaderSize) {
+                protocolError(wxS("DAP header exceeded the maximum size."));
+            }
+            return;
+        }
+        if (headerEnd > kMaximumHeaderSize) {
+            protocolError(wxS("DAP header exceeded the maximum size."));
+            return;
+        }
         const std::string headers = inputBuffer_.substr(0, headerEnd);
-        const std::string marker = "Content-Length:";
-        const size_t markerStart = headers.find(marker);
+        std::string normalizedHeaders = headers;
+        std::transform(normalizedHeaders.begin(), normalizedHeaders.end(), normalizedHeaders.begin(),
+                       [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+        const std::string marker = "content-length:";
+        const size_t markerStart = normalizedHeaders.find(marker);
         if (markerStart == std::string::npos) {
-            inputBuffer_.erase(0, headerEnd + 4);
-            continue;
+            protocolError(wxS("DAP frame did not contain Content-Length."));
+            return;
         }
         size_t numberStart = markerStart + marker.size();
-        while (numberStart < headers.size() && std::isspace(static_cast<unsigned char>(headers[numberStart]))) ++numberStart;
+        while (numberStart < normalizedHeaders.size() && std::isspace(static_cast<unsigned char>(normalizedHeaders[numberStart]))) ++numberStart;
         size_t numberEnd = numberStart;
-        while (numberEnd < headers.size() && std::isdigit(static_cast<unsigned char>(headers[numberEnd]))) ++numberEnd;
+        while (numberEnd < normalizedHeaders.size() && std::isdigit(static_cast<unsigned char>(normalizedHeaders[numberEnd]))) ++numberEnd;
         if (numberStart == numberEnd) {
-            inputBuffer_.erase(0, headerEnd + 4);
-            continue;
+            protocolError(wxS("DAP Content-Length is not a decimal integer."));
+            return;
         }
         size_t length = 0;
         bool validLength = true;
         for (size_t index = numberStart; index < numberEnd; ++index) {
-            const size_t digit = static_cast<size_t>(headers[index] - '0');
+            const size_t digit = static_cast<size_t>(normalizedHeaders[index] - '0');
             if (length > (kMaximumFrameSize - digit) / 10U) {
                 validLength = false;
                 break;
@@ -259,8 +294,8 @@ void DapClient::ParseFrames(wxArrayString& messages)
             length = length * 10U + digit;
         }
         if (!validLength || length > kMaximumFrameSize) {
-            inputBuffer_.erase(0, headerEnd + 4);
-            continue;
+            protocolError(wxS("DAP Content-Length exceeds the maximum frame size."));
+            return;
         }
         const size_t bodyStart = headerEnd + 4;
         if (bodyStart > inputBuffer_.size() || length > inputBuffer_.size() - bodyStart) return;

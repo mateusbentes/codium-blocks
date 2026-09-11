@@ -5,11 +5,12 @@
 
 import { createRequire } from 'node:module';
 import { createInterface } from 'node:readline';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { once } from 'node:events';
 import Module from 'node:module';
 
 const originalLoad = Module._load;
@@ -33,6 +34,29 @@ const defaultDataRoot = process.platform === 'win32'
     : join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'codium-blocks');
 const dataRoot = process.env.CODIUM_BLOCKS_DATA ?? defaultDataRoot;
 const configurationFile = join(dataRoot, 'settings.json');
+const extensionHostRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+const extensionRoots = [
+  join(dirname(extensionHostRoot), 'extensions'),
+  join(extensionHostRoot, 'extensions'),
+  join(dataRoot, 'extensions'),
+  ...(process.env.CODIUM_BLOCKS_EXTENSION_ROOTS ?? '')
+    .split(process.platform === 'win32' ? ';' : ':')
+    .filter(Boolean),
+].map((root) => resolve(root));
+const maximumLanguageServerHeader = 64 * 1024;
+const maximumLanguageServerFrame = 16 * 1024 * 1024;
+const maximumBrokerLine = 4 * 1024 * 1024;
+
+function isPathWithin(candidate, parent) {
+  const child = resolve(candidate);
+  const root = resolve(parent);
+  const suffix = relative(root, child);
+  return suffix === '' || (!suffix.startsWith('..') && !isAbsolute(suffix));
+}
+
+function isAllowedExtensionRoot(extensionPath) {
+  return extensionRoots.some((root) => isPathWithin(extensionPath, root));
+}
 
 async function loadConfiguration() {
   try {
@@ -45,7 +69,9 @@ async function loadConfiguration() {
 
 async function persistConfiguration() {
   await mkdir(dataRoot, { recursive: true });
-  await writeFile(configurationFile, `${JSON.stringify(Object.fromEntries(configuration), null, 2)}\n`, 'utf8');
+  const temporaryFile = `${configurationFile}.tmp-${process.pid}`;
+  await writeFile(temporaryFile, `${JSON.stringify(Object.fromEntries(configuration), null, 2)}\n`, 'utf8');
+  await rename(temporaryFile, configurationFile);
 }
 
 function send(message) {
@@ -265,18 +291,41 @@ Module._load = function patchedLoad(request, parent, isMain) {
 };
 
 function parseLanguageServerFrames(state, chunk) {
+  if (state.buffer.length + chunk.length > maximumLanguageServerFrame + maximumLanguageServerHeader) {
+    state.protocolError = 'Language server input exceeded the maximum buffered frame size.';
+    state.child.kill();
+    return;
+  }
   state.buffer = Buffer.concat([state.buffer, chunk]);
   while (true) {
     const separator = state.buffer.indexOf(Buffer.from('\r\n\r\n'));
-    if (separator < 0) return;
+    if (separator < 0) {
+      if (state.buffer.length > maximumLanguageServerHeader) {
+        state.protocolError = 'Language server header exceeded the maximum size.';
+        state.child.kill();
+      }
+      return;
+    }
+    if (separator > maximumLanguageServerHeader) {
+      state.protocolError = 'Language server header exceeded the maximum size.';
+      state.child.kill();
+      return;
+    }
     const header = state.buffer.subarray(0, separator).toString('ascii');
     const match = header.match(/Content-Length:\s*(\d+)/i);
     if (!match) {
-      state.buffer = state.buffer.subarray(separator + 4);
-      continue;
+      state.protocolError = 'Language server frame did not contain Content-Length.';
+      state.child.kill();
+      return;
     }
     const bodyStart = separator + 4;
-    const length = Number(match[1]);
+    const lengthText = match[1];
+    const length = Number(lengthText);
+    if (!Number.isSafeInteger(length) || length < 0 || length > maximumLanguageServerFrame) {
+      state.protocolError = 'Language server Content-Length is outside the allowed range.';
+      state.child.kill();
+      return;
+    }
     if (state.buffer.length < bodyStart + length) return;
     const body = state.buffer.subarray(bodyStart, bodyStart + length).toString('utf8');
     state.buffer = state.buffer.subarray(bodyStart + length);
@@ -299,8 +348,9 @@ function parseLanguageServerFrames(state, chunk) {
           sendLanguageServerMessage({ jsonrpc: '2.0', method: 'initialized', params: {} });
         }
       }
-    } catch {
-      send({ type: 'event', event: 'languageServerMessage', message: body });
+    } catch (error) {
+      send({ type: 'event', event: 'languageServerError', message: `Invalid JSON from language server: ${error.message}` });
+      state.child.kill();
     }
   }
 }
@@ -317,10 +367,15 @@ function sendLanguageServerMessage(message) {
   languageServer.child.stdin.write(header + body);
 }
 
-function stopLanguageServer() {
+async function stopLanguageServer() {
   if (!languageServer) return false;
-  languageServer.child.kill();
+  const state = languageServer;
   languageServer = null;
+  if (state.child.exitCode === null && !state.child.killed) {
+    state.child.kill();
+    await Promise.race([once(state.child, 'exit'), new Promise((resolvePromise) => setTimeout(resolvePromise, 1000))]);
+    if (state.child.exitCode === null) state.child.kill('SIGKILL');
+  }
   return true;
 }
 
@@ -344,8 +399,11 @@ async function handleWorkspaceDocumentEvent(request) {
   return { action: request.event, uri: key, documents: vscode.workspace.textDocuments.length };
 }
 
-function startLanguageServer(command, args = [], cwd = process.cwd()) {
-  stopLanguageServer();
+async function startLanguageServer(command, args = [], cwd = process.cwd()) {
+  await stopLanguageServer();
+  if (!command || typeof command !== 'string' || !cwd || typeof cwd !== 'string') {
+    throw new Error('A language server command and working directory are required.');
+  }
   const child = spawn(command, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
   const state = { child, buffer: Buffer.alloc(0), command };
   languageServer = state;
@@ -353,7 +411,7 @@ function startLanguageServer(command, args = [], cwd = process.cwd()) {
   child.stderr.on('data', (chunk) => send({ type: 'event', event: 'languageServerStderr', message: chunk.toString() }));
   child.on('error', (error) => send({ type: 'event', event: 'languageServerError', message: error.message }));
   child.on('exit', (code, signal) => {
-    send({ type: 'event', event: 'languageServerExit', command, code, signal });
+    send({ type: 'event', event: 'languageServerExit', command, code, signal, protocolError: state.protocolError ?? null });
     if (languageServer === state) languageServer = null;
   });
   return { command, args, cwd };
@@ -361,6 +419,9 @@ function startLanguageServer(command, args = [], cwd = process.cwd()) {
 
 async function loadExtension(extensionPath) {
   const root = resolve(extensionPath);
+  if (!isAllowedExtensionRoot(root)) {
+    throw new Error(`Extension path is outside the configured extension roots: ${root}`);
+  }
   const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
   if (!manifest.name || !manifest.publisher) {
     throw new Error('Invalid manifest: name and publisher are required.');
@@ -368,9 +429,13 @@ async function loadExtension(extensionPath) {
   if (manifest.engines?.vscode && manifest.engines.vscode === '*') {
     throw new Error('Manifests with engines.vscode=* are not accepted by this host.');
   }
+  const mainRelativePath = String(manifest.main ?? 'extension.js');
+  const entry = resolve(root, mainRelativePath);
+  if (isAbsolute(mainRelativePath) || !isPathWithin(entry, root)) {
+    throw new Error('Extension manifest main must remain inside the extension directory.');
+  }
 
   const id = `${manifest.publisher}.${manifest.name}`;
-  const entry = join(root, manifest.main ?? 'extension.js');
   const extension = {
     id,
     extensionPath: root,
@@ -449,7 +514,7 @@ async function handle(request) {
       })) });
       return;
     case 'startLanguageServer':
-      response(request, { languageServer: startLanguageServer(request.command, request.args ?? [], request.cwd ?? process.cwd()) });
+      response(request, { languageServer: await startLanguageServer(request.command, request.args ?? [], request.cwd ?? process.cwd()) });
       return;
     case 'languageServerRequest':
       sendLanguageServerMessage(request.message);
@@ -460,15 +525,15 @@ async function handle(request) {
       response(request, { sent: true });
       return;
     case 'stopLanguageServer':
-      response(request, { stopped: stopLanguageServer() });
+      response(request, { stopped: await stopLanguageServer() });
       return;
     case 'workspaceDocumentEvent':
       response(request, await handleWorkspaceDocumentEvent(request));
       return;
     case 'shutdown':
-      stopLanguageServer();
+      await stopLanguageServer();
       response(request, { shuttingDown: true });
-      process.exit(0);
+      setImmediate(() => process.exit(0));
       return;
     default:
       throw new Error(`Unknown message: ${request.type}`);
@@ -477,15 +542,21 @@ async function handle(request) {
 
 await loadConfiguration();
 const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
+let requestQueue = Promise.resolve();
 input.on('line', async (line) => {
-  if (!line.trim()) return;
-  let request;
-  try {
-    request = JSON.parse(line);
-    await handle(request);
-  } catch (error) {
-    failure(request ?? { id: null }, error);
-  }
+  requestQueue = requestQueue.then(async () => {
+    if (!line.trim()) return;
+    let request;
+    try {
+      if (Buffer.byteLength(line, 'utf8') > maximumBrokerLine) {
+        throw new Error('Broker message exceeds the maximum JSON Lines size.');
+      }
+      request = JSON.parse(line);
+      await handle(request);
+    } catch (error) {
+      failure(request ?? { id: null }, error);
+    }
+  });
 });
 
 send({

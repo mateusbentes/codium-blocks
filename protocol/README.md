@@ -15,15 +15,21 @@ Protocol 2 is an additive evolution of the prototype, but it is not a promise of
 
 ## Host messages
 
+The initial event is representative of the current host contract. Capability names are protocol data and are not localized.
+
 ```json
-{"type":"ready","protocol":2,"runtime":"node","electron":false,"capabilities":["configuration","documents","lsp-process-manager"]}
+{"type":"ready","protocol":2,"runtime":"node","electron":false,"api":["commands","window","workspace","languages","extensions","Uri","TreeItem"],"capabilities":["configuration","documents","workspace-events","tree-views","lsp-process-manager"]}
 {"type":"event","event":"notification","level":"info","message":"..."}
 {"type":"event","event":"contribution","kind":"command","command":"hello.codium","title":"Codium::Blocks: Hello"}
 {"type":"event","event":"languageServerMessage","message":{"jsonrpc":"2.0"}}
 {"type":"event","event":"languageServerResult","method":"textDocument/hover","result":{}}
 {"type":"event","event":"diagnostics","uri":"file:///workspace/main.cpp","diagnostics":[]}
+{"type":"event","event":"workspaceDocument","action":"open","uri":"file:///workspace/main.cpp","version":1}
+{"type":"event","event":"treeView","extension":"codium-blocks.hello-codium","viewId":"hello.codium.views","items":[]}
 {"type":"response","id":2,"ok":true}
 ```
+
+The `ready` event is emitted before requests are accepted. The `hello` response repeats the negotiated protocol version and reports `electron:false`; it is the request/response handshake that native clients should use before sending extension or language-server commands.
 
 ## Broker messages
 
@@ -41,6 +47,15 @@ Protocol 2 is an additive evolution of the prototype, but it is not a promise of
 
 Protocol version 2 adds persistent extension configuration, manifest contributions returned to the native UI, workspace document notifications, Tree View contributions, and an LSP process manager with standard `Content-Length` framing. The native client sends `initialize`, `initialized`, `textDocument/didOpen`, and `textDocument/didChange`, and can request hover, completion, semantic tokens, definitions, references, rename, and code actions. LSP responses and `textDocument/publishDiagnostics` notifications are forwarded to the native event loop as raw messages plus normalized events.
 
+## Security boundary
+
+The Extension Host is a separate Node.js process, not a sandbox. Extensions, language servers, tasks, and debug adapters can still run with the user's operating-system permissions. The host accepts only extension paths inside its configured runtime extension roots by default; this path boundary is containment validation, not a substitute for signatures, workspace trust, operating-system sandboxing, or a publisher trust store. See [`docs/EXTENSIONS_SECURITY.md`](../docs/EXTENSIONS_SECURITY.md).
+
 ## Compatibility maintenance
 
 Any wire-contract change must update this document, `tests/host-smoke.mjs`, the integration matrix, and the host implementation together. Product names, JSON keys, protocol identifiers, and LSP/DAP method names are protocol data and must not be localized.
+
+## References
+
+[1]: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/ "Language Server Protocol specification"
+[2]: https://microsoft.github.io/debug-adapter-protocol/specification "Debug Adapter Protocol specification"

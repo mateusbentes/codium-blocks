@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Validate release tag
         if: github.ref_type == 'tag'
@@ -73,7 +75,13 @@ jobs:
           cleanup() { hdiutil detach "$mount_point" >/dev/null || true; }
           trap cleanup EXIT
           packaged_app=$(find "$mount_point" -maxdepth 1 -type d -name '*.app' -print -quit)
+          test -n "$packaged_app"
           test -x "$packaged_app/Contents/MacOS/codium-blocks"
+          test -f "$packaged_app/Contents/Resources/CodiumBlocks.icns"
+          test -f "$packaged_app/Contents/Resources/codium-blocks/locales/en-US.tsv"
+          test -f "$packaged_app/Contents/Resources/codium-blocks/locales/pt-BR.tsv"
+          test -f "$packaged_app/Contents/Resources/codium-blocks/extension-host/src/host.mjs"
+          test -f "$packaged_app/Contents/Resources/share/doc/codium-blocks/CHANGELOG.md"
           otool -L "$packaged_app/Contents/MacOS/codium-blocks" | tee build/codium-blocks-macos-dependencies.txt
           if grep -E '/(opt/homebrew|usr/local|opt/local)/' build/codium-blocks-macos-dependencies.txt; then
             echo 'The DMG contains a bundle with an external package-manager dependency.' >&2
@@ -82,13 +90,18 @@ jobs:
           "$packaged_app/Contents/MacOS/codium-blocks" > build/codium-blocks-macos-package.log 2>&1 &
           app_pid=$!
           sleep 5
-          kill "$app_pid" 2>/dev/null || true
-          wait "$app_pid" 2>/dev/null || true
-          shasum -a 256 "$dmg" > build/codium-blocks-macos.sha256
+          if kill -0 "$app_pid" 2>/dev/null; then
+            kill "$app_pid" 2>/dev/null || true
+            wait "$app_pid" 2>/dev/null || true
+          else
+            wait "$app_pid"
+          fi
+          (cd build && shasum -a 256 "$(basename "$dmg")") > build/codium-blocks-macos.sha256
 
       - name: Upload macOS package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
+          if-no-files-found: error
           name: codium-blocks-macos-package
           path: |
             build/codium-blocks-*.dmg

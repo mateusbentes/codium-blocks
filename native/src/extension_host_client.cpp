@@ -29,6 +29,19 @@ wxString JsonEscape(const wxString& value)
     return escaped;
 }
 
+bool WriteAll(wxOutputStream* output, const void* data, size_t length)
+{
+    const auto* bytes = static_cast<const char*>(data);
+    size_t written = 0;
+    while (written < length) {
+        output->Write(bytes + written, length - written);
+        const size_t count = output->LastWrite();
+        if (count == 0 || !output->IsOk()) return false;
+        written += count;
+    }
+    return true;
+}
+
 } // namespace
 
 ExtensionHostClient::ExtensionHostClient(wxWindow* owner)
@@ -98,9 +111,9 @@ bool ExtensionHostClient::SendRaw(const wxString& jsonLine)
     const wxString line = jsonLine + wxS("\n");
     const wxScopedCharBuffer utf8 = line.utf8_str();
     wxOutputStream* output = process_->GetOutputStream();
-    output->Write(utf8.data(), utf8.length());
+    if (!WriteAll(output, utf8.data(), utf8.length())) return false;
     output->Sync();
-    return output->LastWrite() == utf8.length() && output->IsOk();
+    return output->IsOk();
 }
 
 bool ExtensionHostClient::LoadExtension(const wxString& extensionPath)

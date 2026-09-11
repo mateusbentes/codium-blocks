@@ -99,7 +99,7 @@ The current `1.0.1` development snapshot builds on the completed `0.9.0` baselin
 - persistent watches and DAP source-file mapping;
 - adapter capability discovery and automatic `configurationDone`;
 - clickable call-stack locations with source mapping;
-- an Open VSX search client with HTTPS validation and offline catalog cache;
+- an Open VSX search request client with HTTPS validation and offline catalog cache; the current native UI records the response but does not yet provide a marketplace browser, download, or unattended installation flow;
 - optional Ed25519 artifact verification through OpenSSL;
 - per-extension compatibility reports;
 - native Tree View, Git SCM, and custom-editor registries with UI surfaces.

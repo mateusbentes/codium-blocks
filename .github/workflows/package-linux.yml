@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Validate release tag
         if: github.ref_type == 'tag'
@@ -61,10 +63,14 @@ jobs:
           cmake --build build --target install/strip -- DESTDIR="$PWD/staging"
           test -n "$(find staging -type f -path '*/bin/codium-blocks' -print -quit)"
           (cd build && cpack)
-          deb=$(find build -maxdepth 1 -type f -name 'codium-blocks-*.deb' -print -quit)
-          tgz=$(find build -maxdepth 1 -type f -name 'codium-blocks-*.tar.gz' -print -quit)
-          test -n "$deb" && test -s "$deb"
-          test -n "$tgz" && test -s "$tgz"
+          debs=(build/codium-blocks-*.deb)
+          tgzs=(build/codium-blocks-*.tar.gz)
+          test "${#debs[@]}" -eq 1
+          test "${#tgzs[@]}" -eq 1
+          deb="${debs[0]}"
+          tgz="${tgzs[0]}"
+          test -s "$deb"
+          test -s "$tgz"
           dpkg-deb --info "$deb"
           dpkg-deb --contents "$deb" | grep -F 'usr/bin/codium-blocks'
           dpkg-deb --contents "$deb" | grep -F 'en-US.tsv'
@@ -72,11 +78,12 @@ jobs:
           tar -tzf "$tgz" | grep -F 'bin/codium-blocks'
           tar -tzf "$tgz" | grep -F 'locales/en-US.tsv'
           tar -tzf "$tgz" | grep -F 'CHANGELOG.md'
-          sha256sum "$deb" "$tgz" > build/codium-blocks-linux.sha256
+          (cd build && sha256sum "$(basename "$deb")" "$(basename "$tgz")") > build/codium-blocks-linux.sha256
 
       - name: Upload Linux packages
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
+          if-no-files-found: error
           name: codium-blocks-linux-packages
           path: |
             build/codium-blocks-*.deb

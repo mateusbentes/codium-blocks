@@ -21,6 +21,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -50,7 +52,7 @@ jobs:
           npm install --global pyright@1.1.390
 
       - name: Configure Linux
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF
 
       - name: Verify Linux toolchain versions
         run: |
@@ -102,5 +104,6 @@ jobs:
       - name: Upload Linux visual validation
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
+          if-no-files-found: error
           name: codium-blocks-linux-visual-validation
           path: artifacts/

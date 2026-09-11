@@ -14,6 +14,8 @@
 #include <wx/zipstrm.h>
 
 #include <cctype>
+#include <algorithm>
+#include <cstdint>
 #include <memory>
 
 namespace codium {
@@ -139,7 +141,17 @@ bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expe
 
     wxZipInputStream archive(input);
     std::unique_ptr<wxZipEntry> entry;
+    constexpr size_t kMaximumEntries = 10000;
+    constexpr wxFileOffset kMaximumEntryBytes = 128LL * 1024LL * 1024LL;
+    constexpr wxFileOffset kMaximumExtractedBytes = 512LL * 1024LL * 1024LL;
+    size_t entryCount = 0;
+    wxFileOffset extractedBytes = 0;
     while ((entry.reset(archive.GetNextEntry()), entry != nullptr)) {
+        if (++entryCount > kMaximumEntries) {
+            wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+            if (message) *message = wxS("VSIX contains too many archive entries.");
+            return false;
+        }
         const wxString entryName = entry->GetName();
         if (!IsSafeArchivePath(entryName)) {
             wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
@@ -157,6 +169,13 @@ bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expe
             continue;
         }
 
+        const wxFileOffset declaredSize = entry->GetSize();
+        if (declaredSize != wxInvalidOffset && declaredSize > kMaximumEntryBytes) {
+            wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+            if (message) *message = wxS("VSIX contains a file larger than the extraction limit.");
+            return false;
+        }
+
         const wxFileName outputFile(outputPath);
         if (!wxFileName::Mkdir(outputFile.GetPath(), wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL) && !wxDirExists(outputFile.GetPath())) {
             wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
@@ -170,8 +189,28 @@ bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expe
             if (message) *message = wxString::Format(wxS("Could not create VSIX file: %s."), outputPath);
             return false;
         }
-        archive.Read(output);
-        if (!output.IsOk()) {
+        char buffer[64 * 1024];
+        wxFileOffset entryBytes = 0;
+        while (archive.CanRead()) {
+            archive.Read(buffer, sizeof(buffer));
+            const size_t count = archive.LastRead();
+            if (count == 0) break;
+            if (entryBytes > kMaximumEntryBytes - static_cast<wxFileOffset>(count) ||
+                extractedBytes > kMaximumExtractedBytes - static_cast<wxFileOffset>(count)) {
+                wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+                if (message) *message = wxS("VSIX exceeds the extraction size limit.");
+                return false;
+            }
+            output.Write(buffer, count);
+            if (output.LastWrite() != count || !output.IsOk()) {
+                wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+                if (message) *message = wxString::Format(wxS("Could not extract VSIX file: %s."), outputPath);
+                return false;
+            }
+            entryBytes += static_cast<wxFileOffset>(count);
+            extractedBytes += static_cast<wxFileOffset>(count);
+        }
+        if (!output.IsOk() || (declaredSize != wxInvalidOffset && declaredSize != entryBytes)) {
             wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
             if (message) *message = wxString::Format(wxS("Could not extract VSIX file: %s."), outputPath);
             return false;

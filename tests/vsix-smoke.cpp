@@ -82,8 +82,25 @@ int main()
         return 1;
     }
 
+    const wxString crowdedPath = root + wxFILE_SEP_PATH + wxS("crowded.vsix");
+    {
+        wxFFileOutputStream output(crowdedPath);
+        wxZipOutputStream archive(output);
+        for (int index = 0; index < 10001; ++index) {
+            archive.PutNextEntry(wxString::Format(wxS("extension/files/%05d.txt"), index));
+        }
+        archive.Close();
+    }
+    wxString crowdedDigest;
+    if (!codium::ExtensionSecurity::ComputeSha256(crowdedPath, &crowdedDigest, &message) ||
+        manager.InstallVerified(crowdedPath, crowdedDigest, &message)) {
+        std::cerr << "vsix-smoke: archive entry limit was not enforced\n";
+        return 1;
+    }
+
     std::remove(vsixPath.utf8_str().data());
     std::remove(maliciousPath.utf8_str().data());
+    std::remove(crowdedPath.utf8_str().data());
     std::cout << "vsix-smoke: ok — cross-platform ZIP extraction\n";
     return 0;
 }

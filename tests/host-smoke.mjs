@@ -80,6 +80,10 @@ try {
   assert.deepEqual(loaded.extension.commands, ['hello.codium', 'hello.codium.configure']);
   assert.equal(loaded.extension.contributes.commands.length, 2);
   assert.equal(loaded.extension.contributes.views['codium-blocks'][0].id, 'hello.codium.views');
+  send({ id: 26, type: 'load', extensionPath: root });
+  const rejectedPath = await waitFor((message) => message.type === 'response' && message.id === 26);
+  assert.equal(rejectedPath.ok, false);
+  assert.match(rejectedPath.error, /outside the configured extension roots/);
   const treeView = await waitFor((message) => message.type === 'event' && message.event === 'treeView' &&
     message.viewId === 'hello.codium.views');
   assert.deepEqual(treeView.items.map((item) => item.label), ['Greeting: Hello from Codium::Blocks', 'Electron-free host']);

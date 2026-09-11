@@ -75,8 +75,21 @@ cmake -S . -B build \
   -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=ON \
   -DBUILD_TESTING=ON
 cmake --build build
-ctest --test-dir build -R codeblocks-real-adapter-smoke --output-on-failure
+ctest --test-dir build -N
+ctest --test-dir build -R '^codeblocks-(real-adapter|sdk-events)-smoke$' --output-on-failure
 ```
+
+The real adapter and SDK event tests are registered only when CMake finds `xvfb-run`, the configured Code::Blocks data directory containing `resources.zip`, and the matched Compiler plugin. Inspect the `ctest -N` output before running a filtered command. If either test is absent, the build is a portable/fake-adapter build rather than a failed real-SDK validation; install the prerequisites below and configure again instead of treating “No tests were found” as success.
+
+On Debian or Ubuntu, the usual prerequisites are:
+
+```bash
+sudo apt-get install build-essential cmake pkg-config libwxgtk3.2-dev \
+  codeblocks codeblocks-dev libtinyxml-dev xvfb
+pkg-config --modversion codeblocks
+```
+
+`codeblocks-dev` supplies SDK headers, the shared library, and `pkg-config` metadata. `codeblocks` supplies official runtime resources and plugins. `libtinyxml-dev` supplies the `tinyxml.h` header used by SDK headers, and `xvfb` supplies the virtual display used by the headless adapter smoke. These packages are not required by the portable native IDE.
 
 For installations without a usable `pkg-config` file, provide a Code::Blocks root and, when necessary, explicit runtime paths:
 
