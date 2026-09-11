@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Codium::Blocks Contributors
+
+include(BundleUtilities)
+
+set(CODIUM_BLOCKS_BUNDLE "${CMAKE_INSTALL_PREFIX}/@CODIUM_BLOCKS_BUNDLE_NAME@")
+set(CODIUM_BLOCKS_BUNDLE_SEARCH_DIRS
+@CODIUM_BLOCKS_BUNDLE_SEARCH_DIRS_CMAKE@)
+
+if(EXISTS "${CODIUM_BLOCKS_BUNDLE}")
+    fixup_bundle("${CODIUM_BLOCKS_BUNDLE}" "" "${CODIUM_BLOCKS_BUNDLE_SEARCH_DIRS}")
+endif()
