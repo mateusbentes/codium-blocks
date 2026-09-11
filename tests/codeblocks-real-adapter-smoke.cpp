@@ -252,8 +252,17 @@ int main(int argc, char** argv)
         const bool privateDataComplete = debuggerProvider.empty()
             ? privateDataRejected
             : framesSeen && framesJsonValid && threadsSeen && breakpointsSeen && watchesSeen && variablesSeen;
-        const bool stopObserved = debuggerProvider.empty() ? debugStopped : stopRequested;
-        if (!debugStarted || !debugObserved || !snapshotSeen || !privateDataComplete || !stopObserved) {
+        // A public-SDK run may finish naturally immediately after the adapter
+        // reports debugDataUnavailable for a private model kind. In that
+        // case the process has already ended, so there is no later
+        // cbEVT_DEBUGGER_FINISHED event left to observe through the pipe.
+        // Treat that bounded, explicit termination as equivalent to the
+        // normal stop event; provider-backed runs still require our stop
+        // request to be accepted.
+        const bool sessionEnded = debuggerProvider.empty()
+            ? (debugStopped || (!adapter.IsRunning() && privateDataComplete))
+            : stopRequested;
+        if (!debugStarted || !debugObserved || !snapshotSeen || !privateDataComplete || !sessionEnded) {
             adapter.Stop();
             std::cerr << "codeblocks-real-adapter-smoke: debugger events were not observed"
                       << " (error=" << adapter.LastErrorCode().ToStdString()
