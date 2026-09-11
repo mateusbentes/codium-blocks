@@ -160,6 +160,13 @@ bool StartConPty(TerminalSession* session, const wxString& program, const wxArra
     STARTUPINFOEXW startup{};
     // The extended startup structure carries the pseudo-console attribute.
     startup.StartupInfo.cb = sizeof(STARTUPINFOEXW);
+    // Do not let a GUI/CI parent's redirected standard handles leak into the
+    // hosted process. The pseudoconsole supplies the child console handles.
+    // This is also the startup shape used by established ConPTY hosts.
+    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    startup.StartupInfo.hStdInput = nullptr;
+    startup.StartupInfo.hStdOutput = nullptr;
+    startup.StartupInfo.hStdError = nullptr;
     startup.lpAttributeList = attributes;
     PROCESS_INFORMATION processInfo{};
     std::wstring cwd = workingDirectory.ToStdWstring();
