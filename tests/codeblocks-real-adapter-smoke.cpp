@@ -249,6 +249,15 @@ int main(int argc, char** argv)
                 stopRequested = adapter.StopDebug();
             if (!debuggerProvider.empty() && stopRequested) break;
         }
+        // PollEvents() intentionally stops reading after the child has
+        // exited. The adapter can therefore publish debugDataUnavailable
+        // just before the final loop condition observes IsRunning()==false;
+        // capture the already parsed client error once more before judging
+        // the public-ABI probe.
+        if (debuggerProvider.empty() && privateDataRequested &&
+            adapter.LastErrorCode() == wxS("debugDataUnavailable")) {
+            privateDataRejected = true;
+        }
         const bool privateDataComplete = debuggerProvider.empty()
             ? privateDataRejected
             : framesSeen && framesJsonValid && threadsSeen && breakpointsSeen && watchesSeen && variablesSeen;
