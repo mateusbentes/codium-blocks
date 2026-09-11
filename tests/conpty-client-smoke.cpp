@@ -19,6 +19,15 @@ bool WriteText(HANDLE output, const char* text)
     return WriteBytes(output, text, static_cast<DWORD>(std::strlen(text)));
 }
 
+bool ReadInput(HANDLE input, char* buffer, DWORD capacity, DWORD* received)
+{
+    DWORD mode = 0;
+    if (GetConsoleMode(input, &mode)) {
+        return ReadConsoleA(input, buffer, capacity, received, nullptr) != FALSE;
+    }
+    return ReadFile(input, buffer, capacity, received, nullptr) != FALSE;
+}
+
 } // namespace
 
 int main()
@@ -36,7 +45,7 @@ int main()
     char line[256]{};
     DWORD lineLength = 0;
     for (;;) {
-        if (!ReadFile(input, buffer, sizeof(buffer), &received, nullptr) || received == 0) return 4;
+        if (!ReadInput(input, buffer, sizeof(buffer), &received) || received == 0) return 4;
         for (DWORD index = 0; index < received; ++index) {
             const char character = buffer[index];
             if (character == '\r' || character == '\n') {
