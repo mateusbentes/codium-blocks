@@ -65,7 +65,10 @@ jobs:
           rust-analyzer.exe --version | Select-String '1.82.0'
           gopls.exe version | Select-String 'v0.17.1'
           pyright.cmd --version | Select-String '1.1.390'
-          lldb.exe --version | Select-String '18.1.8'
+          $llvmVersion = (& clang.exe --version 2>&1 | Out-String)
+          if ($llvmVersion -notmatch '18\.1\.8') {
+            throw "Expected LLVM 18.1.8, received: $llvmVersion"
+          }
 
       - name: Build Windows
         shell: pwsh
