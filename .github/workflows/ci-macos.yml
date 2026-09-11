@@ -30,11 +30,13 @@ jobs:
       - name: Install macOS dependencies
         run: |
           brew update
-          brew install cmake wxwidgets llvm@18 rustup-init
+          brew install cmake wxwidgets llvm@18 rustup
           echo "$(brew --prefix wxwidgets)/bin" >> "$GITHUB_PATH"
           echo "$(brew --prefix llvm@18)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix rustup)/bin" >> "$GITHUB_PATH"
           echo "PKG_CONFIG_PATH=$(brew --prefix wxwidgets)/lib/pkgconfig" >> "$GITHUB_ENV"
-          rustup-init -y --default-toolchain none
+          export PATH="$(brew --prefix rustup)/bin:$PATH"
+          rustup --version
           rustup toolchain install 1.82.0 --profile minimal
           rustup component add rust-analyzer --toolchain 1.82.0
           mkdir -p "$HOME/.local/bin"
