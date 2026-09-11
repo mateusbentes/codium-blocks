@@ -65,7 +65,7 @@ jobs:
           rust-analyzer.exe --version | Select-String '1.82.0'
           gopls.exe version | Select-String 'v0.17.1'
           pyright.cmd --version | Select-String '1.1.390'
-          llvm-config.exe --version | Select-String '18.1.8'
+          lldb.exe --version | Select-String '18.1.8'
 
       - name: Build Windows
         shell: pwsh
