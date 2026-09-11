@@ -148,8 +148,16 @@ int main(int argc, char** argv)
     bool buildFinished = false;
     bool compilerOutput = false;
     int buildExitCode = -1;
-    for (int index = 0; index < 1200 && adapter.IsRunning() && !buildFinished; ++index) {
-        wxMilliSleep(25);
+    // A first Compiler/Debugger plugin launch can spend tens of seconds in
+    // dynamic loading and GDB startup on a cold hosted runner. Keep this
+    // bounded, but do not turn runner initialization variance into a false
+    // build failure.
+    constexpr int kBuildPollIntervalMs = 25;
+    constexpr int kBuildTimeoutMs = 120 * 1000;
+    for (int elapsed = 0;
+         elapsed < kBuildTimeoutMs && adapter.IsRunning() && !buildFinished;
+         elapsed += kBuildPollIntervalMs) {
+        wxMilliSleep(kBuildPollIntervalMs);
         for (const auto& event : adapter.PollEvents()) {
             if (event.kind == codium::CodeBlocksEventKind::BuildStarted) buildStarted = true;
             if (event.kind == codium::CodeBlocksEventKind::CompilerOutput && !event.message.empty()) {
@@ -182,8 +190,12 @@ int main(int argc, char** argv)
         bool watchesSeen = false;
         bool variablesSeen = false;
         bool framesJsonValid = false;
-        for (int index = 0; index < 1200 && adapter.IsRunning() && !debugStopped; ++index) {
-            wxMilliSleep(25);
+        constexpr int kDebugPollIntervalMs = 25;
+        constexpr int kDebugTimeoutMs = 120 * 1000;
+        for (int elapsed = 0;
+             elapsed < kDebugTimeoutMs && adapter.IsRunning() && !debugStopped;
+             elapsed += kDebugPollIntervalMs) {
+            wxMilliSleep(kDebugPollIntervalMs);
             for (const auto& event : adapter.PollEvents()) {
                 if (event.kind == codium::CodeBlocksEventKind::DebugSessionStarted) {
                     debugStarted = true;
