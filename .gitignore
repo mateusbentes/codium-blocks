@@ -5,6 +5,7 @@
 
 # Build directories and generated CMake files
 build/
+build-*/
 out/
 bin/
 cmake-build-*/

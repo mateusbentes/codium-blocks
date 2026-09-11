@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(CodiumBlocks VERSION 1.0.1 LANGUAGES CXX)
 
+include(GNUInstallDirs)
+
 option(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_SDK "Expose an optional Code::Blocks SDK include root to the native target" OFF)
 set(CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT "" CACHE PATH "Code::Blocks SDK installation or source root")
 option(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER "Build the isolated Code::Blocks SDK host adapter when a usable SDK is found" ON)
@@ -10,6 +12,10 @@ set(CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN "" CACHE FILEPATH "Explicit Code::B
 set(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGER_PLUGIN "" CACHE FILEPATH "Optional explicit Code::Blocks Debugger plugin path")
 option(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_DEBUGGERGDB_PROVIDER
     "Build the separately compiled private DebuggerGDB data provider" OFF)
+option(CODIUM_BLOCKS_MACOS_BUNDLE
+    "Build and install the native target as a macOS application bundle" OFF)
+set(CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR "" CACHE PATH
+    "Optional Windows directory containing runtime DLLs to include in an installed package")
 set(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_DIR "" CACHE PATH
     "Code::Blocks plugins/debuggergdb source directory matching the installed SDK")
 set(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_REVISION "" CACHE STRING
@@ -256,6 +262,32 @@ add_executable(codium-blocks
     native/src/codeblocks_host.cpp
     native/src/codeblocks_adapter_client.cpp
 )
+
+if(APPLE)
+    set_source_files_properties(assets/icons/macos/CodiumBlocks.icns
+        PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    target_sources(codium-blocks PRIVATE assets/icons/macos/CodiumBlocks.icns)
+    if(CODIUM_BLOCKS_MACOS_BUNDLE)
+        set_target_properties(codium-blocks PROPERTIES
+            MACOSX_BUNDLE TRUE
+            MACOSX_BUNDLE_BUNDLE_NAME "Codium::Blocks"
+            MACOSX_BUNDLE_GUI_IDENTIFIER "com.codiumblocks.ide"
+            MACOSX_BUNDLE_ICON_FILE "CodiumBlocks.icns"
+            MACOSX_BUNDLE_INFO_STRING "Codium::Blocks native Electron-free IDE"
+            MACOSX_BUNDLE_LONG_VERSION_STRING "${PROJECT_VERSION}"
+            MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}"
+            MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}")
+    endif()
+endif()
+
+if(WIN32)
+    target_sources(codium-blocks PRIVATE assets/icons/windows/CodiumBlocks.rc)
+    if(CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR AND EXISTS "${CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR}")
+        install(DIRECTORY "${CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR}/"
+            DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FILES_MATCHING PATTERN "*.dll")
+    endif()
+endif()
 
 add_executable(codium-blocks-real-dap-debuggee
     tests/fixtures/real-dap-debuggee.cpp
@@ -546,19 +578,62 @@ if(CODIUM_BLOCKS_CODEBLOCKS_ADAPTER_AVAILABLE AND UNIX AND NOT APPLE)
         ${wxWidgets_LIBRARIES} ${CODIUM_BLOCKS_CODEBLOCKS_LINK_TARGET})
 endif()
 
-install(TARGETS codium-blocks RUNTIME DESTINATION bin)
+if(APPLE AND CODIUM_BLOCKS_MACOS_BUNDLE)
+    set(CODIUM_BLOCKS_INSTALL_DATA_DIR
+        "codium-blocks.app/Contents/Resources/codium-blocks")
+    set(CODIUM_BLOCKS_INSTALL_DOC_DIR
+        "${CODIUM_BLOCKS_INSTALL_DATA_DIR}/share/doc/codium-blocks")
+    install(TARGETS codium-blocks BUNDLE DESTINATION .)
+else()
+    set(CODIUM_BLOCKS_INSTALL_DATA_DIR "${CMAKE_INSTALL_DATADIR}/codium-blocks")
+    set(CODIUM_BLOCKS_INSTALL_DOC_DIR "${CMAKE_INSTALL_DATADIR}/doc/codium-blocks")
+    install(TARGETS codium-blocks RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
 if(TARGET codium-blocks-codeblocks-adapter)
-    install(TARGETS codium-blocks-codeblocks-adapter RUNTIME DESTINATION bin)
+    install(TARGETS codium-blocks-codeblocks-adapter RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 if(TARGET codium-blocks-codeblocks-debuggergdb-provider)
     install(TARGETS codium-blocks-codeblocks-debuggergdb-provider
-        RUNTIME DESTINATION bin LIBRARY DESTINATION bin)
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} LIBRARY DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
-install(DIRECTORY extension-host DESTINATION share/codium-blocks)
-install(DIRECTORY extensions DESTINATION share/codium-blocks)
-install(DIRECTORY assets/icons DESTINATION share/codium-blocks)
-install(FILES README.md LICENSE COPYING DESTINATION share/doc/codium-blocks)
-install(DIRECTORY docs protocol DESTINATION share/doc/codium-blocks)
+install(DIRECTORY extension-host DESTINATION ${CODIUM_BLOCKS_INSTALL_DATA_DIR})
+install(DIRECTORY extensions DESTINATION ${CODIUM_BLOCKS_INSTALL_DATA_DIR})
+install(FILES README.md LICENSE COPYING DESTINATION ${CODIUM_BLOCKS_INSTALL_DOC_DIR})
+install(DIRECTORY docs protocol DESTINATION ${CODIUM_BLOCKS_INSTALL_DOC_DIR})
+
+if(UNIX AND NOT APPLE)
+    foreach(icon_size IN ITEMS 16 24 32 48 64 128 256 512)
+        install(FILES "assets/icons/linux/hicolor/${icon_size}x${icon_size}/apps/codium-blocks.png"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/${icon_size}x${icon_size}/apps")
+    endforeach()
+    install(FILES assets/icons/linux/codium-blocks.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+endif()
+
+set(CPACK_PACKAGE_NAME "codium-blocks")
+set(CPACK_PACKAGE_VENDOR "Codium::Blocks Contributors")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Native, Electron-free, multi-language IDE")
+set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_SOURCE_DIR}/README.md")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/mateusbentes/codium-blocks")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_FILE_NAME
+    "codium-blocks-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+set(CPACK_PACKAGE_CHECKSUM SHA256)
+set(CPACK_VERBATIM_VARIABLES TRUE)
+set(CPACK_THREADS 0)
+if(UNIX AND NOT APPLE)
+    set(CPACK_GENERATOR "TGZ;DEB")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Codium::Blocks Contributors")
+    set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS TRUE)
+    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "nodejs")
+elseif(APPLE)
+    set(CPACK_GENERATOR "DragNDrop")
+else()
+    set(CPACK_GENERATOR "ZIP")
+endif()
+include(CPack)
 
 include(CTest)
 if(BUILD_TESTING)
@@ -605,6 +680,15 @@ if(BUILD_TESTING)
     add_test(NAME codeblocks-bridge-smoke COMMAND codium-blocks-codeblocks-bridge-smoke)
     add_test(NAME codeblocks-host-smoke COMMAND codium-blocks-codeblocks-host-smoke)
     add_test(NAME codeblocks-adapter-smoke COMMAND codium-blocks-codeblocks-adapter-smoke ${CMAKE_SOURCE_DIR})
+
+    add_test(
+        NAME install-layout-smoke
+        COMMAND ${CMAKE_COMMAND}
+            -DBUILD_DIR=${CMAKE_BINARY_DIR}
+            -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -DCONFIGURATION=$<CONFIG>
+            -DCODIUM_BLOCKS_MACOS_BUNDLE=${CODIUM_BLOCKS_MACOS_BUNDLE}
+            -P ${CMAKE_SOURCE_DIR}/tests/install-layout-smoke.cmake)
 
     if(TARGET codium-blocks-codeblocks-real-adapter-smoke)
         find_program(CODIUM_BLOCKS_XVFB_RUN xvfb-run)

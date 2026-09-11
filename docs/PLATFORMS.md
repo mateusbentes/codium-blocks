@@ -56,3 +56,7 @@ $env:CODIUM_BLOCKS_DATA = "D:\CodiumBlocksData"
 ```
 
 The platform abstraction must remain in the native core and Extension Host. New features must not assume POSIX paths, `/bin/sh`, Linux-only process signals, or a case-sensitive filesystem.
+
+## Package artifacts
+
+The repository also contains isolated package workflows. Linux produces Debian and tar archive artifacts, macOS produces a native application bundle inside a disk image, and Windows produces a portable ZIP archive. These workflows build the portable adapter-disabled configuration, run platform tests, and upload SHA-256 checksums. They do not publish a public release automatically. See [`PACKAGING.md`](PACKAGING.md) for the installation layout and release policy.

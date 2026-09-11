@@ -1,0 +1,60 @@
+name: Codium::Blocks Linux Packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  package-linux:
+    name: Linux packages (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Linux packaging dependencies
+        run: |
+          for source in /etc/apt/sources.list.d/*google* /etc/apt/sources.list.d/*chrome*; do
+            if [ -f "$source" ]; then
+              sudo mv "$source" "$source.disabled"
+            fi
+          done
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y build-essential cmake pkg-config libwxgtk3.2-dev libssl-dev imagemagick xvfb
+
+      - name: Configure Linux package build
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF
+
+      - name: Build Linux package
+        run: cmake --build build --parallel 2
+
+      - name: Run Linux package validation
+        run: |
+          ctest --test-dir build --output-on-failure
+          node --check extension-host/src/host.mjs
+          node tests/host-smoke.mjs
+
+      - name: Generate Linux packages
+        run: |
+          cmake --build build --target install/strip -- DESTDIR="$PWD/staging"
+          (cd build && cpack)
+          sha256sum build/codium-blocks-*.deb build/codium-blocks-*.tar.gz > build/codium-blocks-linux.sha256
+
+      - name: Upload Linux packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: codium-blocks-linux-packages
+          path: |
+            build/codium-blocks-*.deb
+            build/codium-blocks-*.tar.gz
+            build/codium-blocks-*.sha256
+            build/codium-blocks-linux.sha256

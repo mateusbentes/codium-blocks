@@ -1,0 +1,64 @@
+name: Codium::Blocks Windows Package
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  package-windows:
+    name: Windows portable package (windows-2022)
+    runs-on: windows-2022
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Windows packaging dependencies
+        shell: pwsh
+        run: vcpkg install wxwidgets:x64-windows
+
+      - name: Configure Windows portable package
+        shell: pwsh
+        run: >-
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_TARGET_TRIPLET=x64-windows
+          -DBUILD_TESTING=ON
+          -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF
+          -DCODIUM_BLOCKS_WINDOWS_RUNTIME_DIR="$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/bin"
+
+      - name: Build Windows portable package
+        shell: pwsh
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Run Windows package validation
+        shell: pwsh
+        run: |
+          ctest --test-dir build -C Release --output-on-failure
+          node --check extension-host/src/host.mjs
+          node tests/host-smoke.mjs
+
+      - name: Generate Windows ZIP
+        shell: pwsh
+        run: |
+          cpack --config build/CPackConfig.cmake -C Release
+          $packages = @(Get-ChildItem build/codium-blocks-*.zip)
+          if ($packages.Count -eq 0) { throw 'No Windows package was generated.' }
+          $hashes = $packages | Get-FileHash -Algorithm SHA256
+          $hashes | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path)" } | Set-Content build/codium-blocks-windows.sha256
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: codium-blocks-windows-package
+          path: |
+            build/codium-blocks-*.zip
+            build/codium-blocks-windows.sha256

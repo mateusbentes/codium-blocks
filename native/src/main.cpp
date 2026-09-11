@@ -122,6 +122,30 @@ wxString ParentDirectory(wxString path)
     return separator == wxNOT_FOUND ? wxString(wxEmptyString) : path.Left(separator);
 }
 
+wxString UserDataRoot()
+{
+    wxString root;
+    if (wxGetEnv(wxS("CODIUM_BLOCKS_DATA"), &root) && !root.empty()) return root;
+#if defined(__WXMSW__)
+    return wxStandardPaths::Get().GetUserConfigDir() + wxFILE_SEP_PATH + wxS("CodiumBlocks");
+#elif defined(__WXMAC__)
+    return wxStandardPaths::Get().GetUserConfigDir() + wxFILE_SEP_PATH + wxS("CodiumBlocks");
+#else
+    wxString state;
+    if (wxGetEnv(wxS("XDG_STATE_HOME"), &state) && !state.empty()) {
+        return state + wxFILE_SEP_PATH + wxS("codium-blocks");
+    }
+    return wxStandardPaths::Get().GetUserConfigDir() + wxFILE_SEP_PATH + wxS("codium-blocks");
+#endif
+}
+
+wxString ExtensionInstallRoot()
+{
+    const wxString root = UserDataRoot() + wxFILE_SEP_PATH + wxS("extensions-installed");
+    wxFileName::Mkdir(root, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+    return root;
+}
+
 wxString FindCodeBlocksDataDirectory(const codium::CodeBlocksBridge& bridge)
 {
     const wxString roots[] = {
@@ -188,13 +212,21 @@ wxString DetectProjectRoot()
 {
     const wxString executable = wxStandardPaths::Get().GetExecutablePath();
     const wxString executableDirectory = wxFileName(executable).GetPath();
-    if (wxDirExists(executableDirectory + wxFILE_SEP_PATH + wxS("extension-host"))) {
-        return executableDirectory;
-    }
-
     const wxString parent = ParentDirectory(executableDirectory);
-    if (wxDirExists(parent + wxFILE_SEP_PATH + wxS("extension-host"))) {
-        return parent;
+    const wxString sharedResources = wxS("share") + wxString(wxFILE_SEP_PATH) + wxS("codium-blocks");
+    const wxString macResources = wxS("Resources") + wxString(wxFILE_SEP_PATH) + wxS("codium-blocks");
+    const wxString candidates[] = {
+        executableDirectory,
+        parent,
+        executableDirectory + wxFILE_SEP_PATH + wxS("..") + wxFILE_SEP_PATH + sharedResources,
+        parent + wxFILE_SEP_PATH + sharedResources,
+        executableDirectory + wxFILE_SEP_PATH + wxS("..") + wxFILE_SEP_PATH + macResources,
+        executableDirectory + wxFILE_SEP_PATH + wxS("..") + wxFILE_SEP_PATH + wxS("Resources")
+    };
+    for (const auto& candidate : candidates) {
+        if (wxDirExists(candidate + wxFILE_SEP_PATH + wxS("extension-host"))) {
+            return wxFileName(candidate).GetFullPath();
+        }
     }
 
     // Development fallback for IDEs that launch the binary from a build tree.
@@ -526,7 +558,7 @@ public:
           terminalScreen_(120, 32),
           dap_(this, ID_DAP_PROCESS),
           terminalShell_(DefaultShell()),
-          extensions_(projectRoot_ + wxFILE_SEP_PATH + wxS("extensions-installed")),
+          extensions_(ExtensionInstallRoot()),
           codeBlocksAdapter_(this),
           timer_(this)
     {

@@ -1,0 +1,54 @@
+name: Codium::Blocks macOS Package
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  package-macos:
+    name: macOS application bundle (macos-15)
+    runs-on: macos-15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install macOS packaging dependencies
+        run: |
+          brew update
+          brew install cmake wxwidgets
+          echo "$(brew --prefix wxwidgets)/bin" >> "$GITHUB_PATH"
+          echo "PKG_CONFIG_PATH=$(brew --prefix wxwidgets)/lib/pkgconfig" >> "$GITHUB_ENV"
+
+      - name: Configure macOS application bundle
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF -DCODIUM_BLOCKS_MACOS_BUNDLE=ON
+
+      - name: Build macOS application bundle
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Run macOS package validation
+        run: |
+          ctest --test-dir build -C Release --output-on-failure
+          node --check extension-host/src/host.mjs
+          node tests/host-smoke.mjs
+
+      - name: Generate macOS DMG
+        run: |
+          (cd build && cpack -C Release)
+          shasum -a 256 build/codium-blocks-*.dmg > build/codium-blocks-macos.sha256
+
+      - name: Upload macOS package
+        uses: actions/upload-artifact@v4
+        with:
+          name: codium-blocks-macos-package
+          path: |
+            build/codium-blocks-*.dmg
+            build/codium-blocks-*.sha256
