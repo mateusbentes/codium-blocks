@@ -5,6 +5,7 @@
 #include <windows.h>
 
 #include <cstring>
+#include <cstdio>
 #include <iterator>
 
 namespace {
@@ -20,18 +21,36 @@ bool WriteText(HANDLE output, const char* text)
     return WriteBytes(output, text, static_cast<DWORD>(std::strlen(text)));
 }
 
-bool ReadInput(HANDLE input, char* buffer, DWORD capacity, DWORD* received)
+bool ReportError(HANDLE output, const char* operation, DWORD error)
+{
+    char message[128]{};
+    const int length = std::snprintf(message, sizeof(message), "%s:%lu\r\n", operation,
+                                     static_cast<unsigned long>(error));
+    return length > 0 && static_cast<size_t>(length) < sizeof(message) &&
+           WriteBytes(output, message, static_cast<DWORD>(length));
+}
+
+bool WriteOutput(HANDLE output, const char* text)
+{
+    return WriteText(output, text);
+}
+
+bool ReadInput(HANDLE input, char* buffer, DWORD capacity, DWORD* received, DWORD* errorCode)
 {
     DWORD mode = 0;
     if (GetConsoleMode(input, &mode)) {
         // ConPTY injects terminal input as console key events. Reading the
         // input-record buffer avoids the line-editor semantics of ReadConsoleA
         // and works for both cooked and raw console input modes.
-        SetConsoleMode(input, mode & ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT));
+        if (!SetConsoleMode(input, mode & ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT))) {
+            if (errorCode) *errorCode = GetLastError();
+            return false;
+        }
         INPUT_RECORD records[64]{};
         while (*received == 0) {
             DWORD recordCount = 0;
             if (!ReadConsoleInputA(input, records, static_cast<DWORD>(std::size(records)), &recordCount)) {
+                if (errorCode) *errorCode = GetLastError();
                 return false;
             }
             for (DWORD index = 0; index < recordCount && *received < capacity; ++index) {
@@ -43,7 +62,9 @@ bool ReadInput(HANDLE input, char* buffer, DWORD capacity, DWORD* received)
         }
         return true;
     }
-    return ReadFile(input, buffer, capacity, received, nullptr) != FALSE;
+    const BOOL read = ReadFile(input, buffer, capacity, received, nullptr);
+    if (!read && errorCode) *errorCode = GetLastError();
+    return read != FALSE;
 }
 
 } // namespace
@@ -56,24 +77,39 @@ int main()
         return 2;
     }
 
-    if (!WriteText(output, "ready\r\n")) return 3;
+    DWORD inputMode = 0;
+    DWORD outputMode = 0;
+    const bool inputIsConsole = GetConsoleMode(input, &inputMode) != FALSE;
+    const bool outputIsConsole = GetConsoleMode(output, &outputMode) != FALSE;
+    const char* handleDescription = inputIsConsole
+        ? (outputIsConsole ? "ready handles=console,console\r\n" : "ready handles=console,redirected\r\n")
+        : (outputIsConsole ? "ready handles=redirected,console\r\n" : "ready handles=redirected,redirected\r\n");
+    if (!WriteOutput(output, handleDescription)) return 3;
 
     char buffer[256]{};
     DWORD received = 0;
+    DWORD inputError = ERROR_SUCCESS;
     char line[256]{};
     DWORD lineLength = 0;
     for (;;) {
-        if (!ReadInput(input, buffer, sizeof(buffer), &received) || received == 0) return 4;
+        if (!ReadInput(input, buffer, sizeof(buffer), &received, &inputError)) {
+            ReportError(output, "input-error", inputError);
+            return 4;
+        }
+        if (received == 0) {
+            ReportError(output, "input-empty", ERROR_SUCCESS);
+            return 4;
+        }
         for (DWORD index = 0; index < received; ++index) {
             const char character = buffer[index];
             if (character == '\r' || character == '\n') {
                 line[lineLength] = '\0';
                 if (std::strcmp(line, "ping") == 0) {
-                    if (!WriteText(output, "pong\r\n")) return 5;
+                    if (!WriteOutput(output, "pong\r\n")) return 5;
                 } else if (std::strcmp(line, "ansi") == 0) {
-                    if (!WriteText(output, "\x1b[31mred\x1b[0m\r\n")) return 6;
+                    if (!WriteOutput(output, "\x1b[31mred\x1b[0m\r\n")) return 6;
                 } else if (std::strcmp(line, "exit") == 0) {
-                    WriteText(output, "bye\r\n");
+                    WriteOutput(output, "bye\r\n");
                     return 0;
                 }
                 lineLength = 0;
