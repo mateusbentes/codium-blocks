@@ -45,7 +45,7 @@ The `ready` event is emitted before requests are accepted. The `hello` response 
 {"id":9,"type":"shutdown"}
 ```
 
-Protocol version 2 adds persistent extension configuration, manifest contributions returned to the native UI, workspace document notifications, Tree View contributions, and an LSP process manager with standard `Content-Length` framing. The native client sends `initialize`, `initialized`, `textDocument/didOpen`, and `textDocument/didChange`, and can request hover, completion, semantic tokens, definitions, references, rename, and code actions. LSP responses and `textDocument/publishDiagnostics` notifications are forwarded to the native event loop as raw messages plus normalized events.
+Protocol version 2 adds persistent extension configuration, manifest contributions returned to the native UI, workspace document notifications, Tree View contributions, and an LSP process manager with standard `Content-Length` framing aligned with the Language Server Protocol specification [1]. The native client sends `initialize`, `initialized`, `textDocument/didOpen`, and `textDocument/didChange`, and can request hover, completion, semantic tokens, definitions, references, rename, and code actions. Native debug-adapter communication follows the corresponding Debug Adapter Protocol framing and lifecycle conventions [2]. LSP responses and `textDocument/publishDiagnostics` notifications are forwarded to the native event loop as raw messages plus normalized events.
 
 ## Security boundary
 

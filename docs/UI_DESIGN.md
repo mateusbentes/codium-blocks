@@ -2,7 +2,7 @@
 
 ## Product direction
 
-Codium::Blocks 1.0 will preserve the compact, direct character of the classic Code::Blocks interface while adding the practical feedback and navigation expected from a modern native IDE. The result should feel familiar to C and C++ developers, remain useful for other languages, and avoid the visual and resource cost of an Electron workbench.
+Codium::Blocks 1.0 will preserve the compact, direct character of the classic Code::Blocks interface [3] while adding the practical feedback and navigation expected from a modern native IDE. The result should feel familiar to C and C++ developers, remain useful for other languages, and avoid the visual and resource cost of an Electron workbench.
 
 The design is inspired by the clarity of Code::Blocks and by the workflow conveniences commonly associated with Xcode, such as a strong issue navigator, inline diagnostics, build schemes, structured build logs, and direct navigation from a problem to its source location. It is not intended to reproduce Xcode, Code::Blocks, or any proprietary visual identity.
 
@@ -32,7 +32,7 @@ Translated labels must be allowed to grow. Toolbars and scheme controls should u
 
 The default System theme uses the restrained, high-contrast appearance associated with traditional native IDEs: a neutral window background, clear separators, compact toolbars, readable labels, and restrained accent colors. Light, Dark, and High contrast palettes are also available. Each palette preserves the same information hierarchy rather than becoming a separate visual product.
 
-The interface should use native wxWidgets controls where they provide correct keyboard, accessibility, focus, and platform behavior. Custom drawing should be limited to the editor annotations, terminal screen, severity markers, and other areas where native controls cannot provide the required interaction.
+The interface should use native wxWidgets controls where they provide correct keyboard, accessibility, focus, and platform behavior. This follows the platform-native interaction principle represented by the Human Interface Guidelines [1]. Custom drawing should be limited to the editor annotations, terminal screen, severity markers, and other areas where native controls cannot provide the required interaction.
 
 Color is not the only indicator of state. Errors, warnings, notes, breakpoints, and trust status also have icons, text labels, or tooltips. The native High contrast palette provides a bounded accessible mode; platform-specific font scaling, screen-reader, and high-DPI validation remain scheduled verification work.
 
@@ -79,7 +79,7 @@ The active debug state must be visible in the Debug panel and status bar. The DA
 
 ## Navigation and keyboard workflow
 
-The interface must be keyboard-first without requiring the user to memorize hidden commands. Common actions must have visible shortcuts in menus and tooltips. The first 1.0 navigation set is:
+The interface must be keyboard-first without requiring the user to memorize hidden commands. Common actions must have visible shortcuts in menus and tooltips, consistent with the navigation patterns documented for modern code editors [2]. The first 1.0 navigation set is:
 
 | Action | Expected behavior |
 |---|---|

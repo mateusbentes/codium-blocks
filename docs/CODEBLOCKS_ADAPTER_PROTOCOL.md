@@ -45,6 +45,8 @@ The contract defines the following request types:
 | `requestDebugSnapshot` | `dataKind` (`state`, `frames`, `threads`, `breakpoints`, `watches`, or `variables`) | Requests a value-owned debugger data snapshot. The generic adapter implements `state`; an exact DebuggerGDB provider additionally implements `frames`, `threads`, `breakpoints`, `watches`, and expression-backed `variables`. `watches` and `variables` accept an optional `expression`. |
 | `shutdown` | none | Closes the loaded project, frees the Code::Blocks manager, and terminates the adapter. |
 
+The project-loading and target-enumeration behavior follows the public Code::Blocks application and project-manager boundaries [1] [2].
+
 The adapter executable receives its runtime boundary separately from the JSON protocol. Its command line requires `--data-dir=DIR` for the Code::Blocks data directory and `--compiler-plugin=FILE` for the explicitly selected matching Compiler plugin. `--debugger-plugin=FILE` is optional and enables the matched Debugger capability. `--debugger-provider=FILE` is an optional separately compiled provider for private DebuggerGDB models. When a Debugger plugin is present, the adapter requires the Compiler and Debugger files to come from the same plugin directory, stages only those two files, and scans that private staging directory. The adapter never scans the user's complete plugin directory.
 
 ## Events
@@ -69,7 +71,7 @@ The adapter emits one target event for every `cbProject` target returned by the 
 
 ### Official SDK project events
 
-After bootstrap, the adapter registers typed event sinks with the Code::Blocks `Manager`. The following official SDK events are normalized without exposing SDK pointers across the process boundary:
+After bootstrap, the adapter registers typed event sinks with the Code::Blocks `Manager` and follows the SDK's plugin-manager event boundary [3]. The following official SDK events are normalized without exposing SDK pointers across the process boundary:
 
 | Code::Blocks event | Normalized event | Important fields |
 |---|---|---|
@@ -108,7 +110,7 @@ Diagnostics use one-based line and column numbers so they can be displayed consi
 
 ### Official debugger lifecycle events
 
-When the optional Debugger plugin is enabled, the adapter registers the official debugger event types and converts them to value-owned protocol events:
+When the optional Debugger plugin is enabled, the adapter registers the official debugger event types from the public plugin interface and SDK event definitions [5] [6], then converts them to value-owned protocol events:
 
 | Code::Blocks event | Normalized event | Important fields |
 |---|---|---|
@@ -121,7 +123,7 @@ When the optional Debugger plugin is enabled, the adapter registers the official
 
 The isolated adapter supplies no-op debugger windows and menu handlers inside the adapter process. This lets a matched Debugger plugin execute its real GDB session without requiring Code::Blocks GUI objects in the main Codium::Blocks process. The public debugger contract adds a `debugSnapshot` event for value-owned state. An optional provider boundary exposes private DebuggerGDB models only after exact identity validation.
 
-The `state` snapshot contains running, stopped, busy, exit-code, active-frame, current-source-location, breakpoint-count, and `SupportsFeature` flags. The generic adapter does not dereference `cbStackFrame`, `cbThread`, `cbBreakpoint`, or `cbWatch` objects because the installed public SDK only forward-declares those model types. An E.2 build may load a separately compiled provider that was built from the exact DebuggerGDB source revision with the same SDK tuple, compiler identity, language standard, build flags, and explicit ABI tag. That provider returns value-owned JSON only; it never exports private SDK pointers across the adapter boundary. Without a validated provider, requests for private model kinds return `debugDataUnavailable` rather than becoming an ABI violation or bootstrap failure. The active adapter remains usable; if the underlying debug session finishes naturally at that point, no later debugger-finished event is guaranteed.
+The `state` snapshot contains running, stopped, busy, exit-code, active-frame, current-source-location, breakpoint-count, and `SupportsFeature` flags. The generic adapter does not dereference `cbStackFrame`, `cbThread`, `cbBreakpoint`, or `cbWatch` objects because the installed public SDK only forward-declares those model types. The private model boundary is based on the DebuggerGDB definitions rather than an assumption that those containers are public ABI [7]. An E.2 build may load a separately compiled provider that was built from the exact DebuggerGDB source revision with the same SDK tuple, compiler identity, language standard, build flags, and explicit ABI tag. That provider returns value-owned JSON only; it never exports private SDK pointers across the adapter boundary. Without a validated provider, requests for private model kinds return `debugDataUnavailable` rather than becoming an ABI violation or bootstrap failure. The active adapter remains usable; if the underlying debug session finishes naturally at that point, no later debugger-finished event is guaranteed.
 
 When the provider is active, `frames`, `threads`, `breakpoints`, `watches`, and expression-backed `variables` snapshots contain normalized JSON objects. The ready response advertises these five data categories through `debuggerStackFrames`, `debuggerThreads`, `debuggerBreakpoints`, `debuggerWatches`, and `debuggerVariables`. The `watches` and `variables` requests carry an expression, and the response contains the expression, value, type, and status fields when the matched DebuggerGDB build supplies them. The provider is not enabled by default and is not inferred from a shared library name alone.
 
@@ -139,7 +141,7 @@ An unsupported request is explicit and non-fatal:
 
 ## Process and security boundary
 
-The adapter is an optional executable selected through `CODIUM_BLOCKS_CODEBLOCKS_ADAPTER` or a native file chooser. Its working directory is the active workspace, arguments are passed as a native argument vector, and the protocol does not invoke a POSIX shell. Workspace trust remains required before starting it or sending build requests.
+The adapter is an optional executable selected through `CODIUM_BLOCKS_CODEBLOCKS_ADAPTER` or a native file chooser. Its working directory is the active workspace, arguments are passed as a native argument vector, and the protocol does not invoke a POSIX shell. This process and trust boundary follows the integration policy documented for the host adapter [4]. Workspace trust remains required before starting it or sending build requests.
 
 Code::Blocks plugins are native C++ modules whose ABI depends on the host SDK, build flags, resources, and manager lifecycle. The adapter loads only explicitly supplied, version-matched Compiler and Debugger plugins from one matched installation in the dedicated adapter process. The private provider is loaded as a separate library only after its exported identity matches the adapter's expected source revision, SDK tuple, and ABI tag. It does not load arbitrary discovered plugins, and it does not load any Code::Blocks plugin into `codium-blocks` itself. A process boundary limits the failure scope of the adapter but is not a trust mechanism for third-party native code. Native debugger loading is refused for an untrusted workspace.
 

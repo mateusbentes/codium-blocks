@@ -1,12 +1,12 @@
 # Packaging and Distribution
 
-Codium::Blocks uses a native CMake installation layout and CPack generators for first-party package artifacts. Packaging is deliberately separate from ordinary build workflows. A package workflow may build and upload an artifact, but it does not publish a public GitHub release automatically.
+Codium::Blocks uses a native CMake installation layout and CPack generators [1] for first-party package artifacts. Packaging is deliberately separate from ordinary build workflows. A package workflow may build and upload an artifact, but it does not publish a public GitHub release automatically.
 
 ## Installation layout
 
 The installed native executable is placed in `bin` on Linux and Windows. The optional Node.js Extension Host, bundled demonstration extension, localization catalogs, and other runtime resources are installed below `share/codium-blocks` on those platforms. Documentation is installed below `share/doc/codium-blocks`. On macOS, the package workflow enables a native `Codium::Blocks.app` bundle; runtime resources are placed inside the application bundle under `Contents/Resources/codium-blocks`.
 
-The executable searches for the Extension Host and resources relative to its installation prefix. This supports a staged install, a relocated archive, and a conventional system prefix. Development builds retain the source-tree fallback required by the local build directory. User-installed VSIX extensions are not written into the installation prefix. They are stored under the platform data directory, or under `CODIUM_BLOCKS_DATA` when that variable is set.
+The executable searches for the Extension Host and resources relative to its installation prefix. This supports a staged install, a relocated archive, and a conventional system prefix in the usual CMake installation model [2]. Development builds retain the source-tree fallback required by the local build directory. User-installed VSIX extensions are not written into the installation prefix. They are stored under the platform data directory, or under `CODIUM_BLOCKS_DATA` when that variable is set.
 
 A typical non-bundle installation therefore has this shape:
 
@@ -112,7 +112,7 @@ The package workflows are isolated by platform:
 * `package-macos.yml` builds the macOS application bundle and disk image on `macos-15`.
 * `package-windows.yml` builds the Windows portable archive on `windows-2022`.
 
-Each workflow runs on `workflow_dispatch` and on version tags matching `v*`. A tag build fails unless the tag matches the CMake project version, for example `v1.0.1` for `PROJECT_VERSION 1.0.1`. Manual runs are validation runs and are not release publication. Each workflow runs its own tests, generates its own artifacts, and uploads its own checksums. No package workflow publishes a release or assumes that another operating system has already completed.
+Each workflow runs on `workflow_dispatch` and on version tags matching `v*`. A tag build fails unless the tag matches the CMake project version, for example `v1.0.1` for `PROJECT_VERSION 1.0.1`. Manual runs are validation runs and are not release publication. Each workflow runs its own tests, generates its own artifacts, and uploads its own checksums. The workflows are maintained in the public project repository [3]. No package workflow publishes a release or assumes that another operating system has already completed.
 
 The first release process should create a draft release from reviewed artifacts. Before public publication, a human should inspect package contents, run the application from a clean environment, verify documented dependencies, review high-contrast screenshots, and confirm the license and changelog. Automated packaging reduces repetitive work, but it cannot replace that final product check.
 

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Codium::Blocks 1.0 must make compiler and language feedback visible at the point where the user can act on it. A warning or error should be present in the originating Build or Terminal output, in the Problems view, and in the source editor whenever a reliable source location is available.
+Codium::Blocks 1.0 must make compiler and language feedback visible at the point where the user can act on it. This follows the established code-navigation and issue-feedback expectations documented by Visual Studio Code and Xcode [1] [2]. A warning or error should be present in the originating Build or Terminal output, in the Problems view, and in the source editor whenever a reliable source location is available.
 
 The system is not a second compiler. It is a normalized diagnostic layer that receives messages from language servers, compiler parsers, task runners, terminal output, and debug adapters. Raw output is always retained even when parsing fails.
 
@@ -48,7 +48,7 @@ The Build menu, the Problems toolbar, and the command palette expose the same re
 
 ## Build and compiler parsing
 
-The parser begins with conservative support for GCC/Clang, MSVC, Rust, ANSI-prefixed output, and common language-server formats. A line becomes a structured problem only when the parser can identify a plausible path and location. Rust diagnostics are assembled from an `error[...]` or `warning[...]` header followed by a `--> path:line:column` location. Unrecognized lines remain raw text.
+The parser begins with conservative support for GCC/Clang, MSVC, Rust, ANSI-prefixed output, and common language-server formats. The Clang diagnostic model is one of the external compiler references for this design [3]. A line becomes a structured problem only when the parser can identify a plausible path and location. Rust diagnostics are assembled from an `error[...]` or `warning[...]` header followed by a `--> path:line:column` location. Unrecognized lines remain raw text.
 
 Compiler output commonly appears in the following forms:
 

@@ -28,11 +28,11 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-For the application bundle and DMG workflow, add `-DCODIUM_BLOCKS_MACOS_BUNDLE=ON` and use `cpack -C Release` after the build. The default Extension Host state directory is `~/Library/Application Support/CodiumBlocks`.
+For the application bundle and DMG workflow, add `-DCODIUM_BLOCKS_MACOS_BUNDLE=ON` and use `cpack -C Release` after the build, following the CMake installation and packaging model [1]. The default Extension Host state directory is `~/Library/Application Support/CodiumBlocks`.
 
 ## Windows
 
-Install Visual Studio 2022 with the Desktop C++ workload, CMake, vcpkg, and Node.js. The supported CI/package baseline is **Visual Studio 17 2022, x64, and the vcpkg `x64-windows` triplet**. Configure the project from a **Developer PowerShell for VS 2022**:
+Install Visual Studio 2022 with the Desktop C++ workload, CMake, vcpkg, and Node.js. The supported CI/package baseline is **Visual Studio 17 2022, x64, and the vcpkg `x64-windows` triplet**. Configure the project from a **Developer PowerShell for VS 2022**; vcpkg's documented setup model is the source for this toolchain arrangement [2].
 
 ```powershell
 vcpkg install wxwidgets:x64-windows
