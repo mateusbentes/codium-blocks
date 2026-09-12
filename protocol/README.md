@@ -57,5 +57,8 @@ Any wire-contract change must update this document, `tests/host-smoke.mjs`, the 
 
 ## References
 
+1. [Language Server Protocol specification](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/)
+2. [Debug Adapter Protocol specification](https://microsoft.github.io/debug-adapter-protocol/specification)
+
 [1]: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/ "Language Server Protocol specification"
 [2]: https://microsoft.github.io/debug-adapter-protocol/specification "Debug Adapter Protocol specification"

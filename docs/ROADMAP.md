@@ -90,6 +90,12 @@ Post-1.0 work may add mathematically complete Unicode grapheme and width handlin
 
 ## References
 
+1. [Codium::Blocks native interface specification](https://github.com/mateusbentes/codium-blocks/blob/main/docs/UI_DESIGN.md)
+2. [Codium::Blocks diagnostics contract](https://github.com/mateusbentes/codium-blocks/blob/main/docs/PROBLEMS.md)
+3. [Codium::Blocks Code::Blocks SDK integration](https://github.com/mateusbentes/codium-blocks/blob/main/docs/CODEBLOCKS_INTEGRATION.md)
+4. [Codium::Blocks adapter protocol](https://github.com/mateusbentes/codium-blocks/blob/main/docs/CODEBLOCKS_ADAPTER_PROTOCOL.md)
+5. [Codium::Blocks debugging model](https://github.com/mateusbentes/codium-blocks/blob/main/docs/DEBUGGING.md)
+
 [1]: https://github.com/mateusbentes/codium-blocks/blob/main/docs/UI_DESIGN.md "Codium::Blocks native interface specification"
 [2]: https://github.com/mateusbentes/codium-blocks/blob/main/docs/PROBLEMS.md "Codium::Blocks diagnostics contract"
 [3]: https://github.com/mateusbentes/codium-blocks/blob/main/docs/CODEBLOCKS_INTEGRATION.md "Codium::Blocks Code::Blocks SDK integration"

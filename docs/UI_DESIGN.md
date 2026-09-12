@@ -115,6 +115,10 @@ The project must not claim that every VS Code extension or every Xcode-like work
 
 ## References
 
+1. [Apple Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/)
+2. [Visual Studio Code editing and navigation documentation](https://code.visualstudio.com/docs/editor/editingevolved)
+3. [Code::Blocks project website](https://www.codeblocks.org/)
+
 [1]: https://developer.apple.com/design/human-interface-guidelines/ "Apple Human Interface Guidelines"
 [2]: https://code.visualstudio.com/docs/editor/editingevolved "Visual Studio Code editing and navigation documentation"
 [3]: https://www.codeblocks.org/ "Code::Blocks project website"

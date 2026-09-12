@@ -145,6 +145,14 @@ The adapter never exposes private Code::Blocks objects to the main process. It c
 
 ## References
 
+1. [Code::Blocks application lifecycle](https://svn.code.sf.net/p/codeblocks/code/trunk/src/src/app.cpp)
+2. [Code::Blocks ProjectManager implementation](https://svn.code.sf.net/p/codeblocks/code/trunk/src/sdk/projectmanager.cpp)
+3. [Code::Blocks PluginManager implementation](https://svn.code.sf.net/p/codeblocks/code/trunk/src/sdk/pluginmanager.cpp)
+4. [Codium::Blocks host adapter protocol](https://github.com/mateusbentes/codium-blocks/blob/main/docs/CODEBLOCKS_ADAPTER_PROTOCOL.md)
+5. [Code::Blocks public debugger plugin interface](https://svn.code.sf.net/p/codeblocks/code/trunk/src/include/cbplugin.h)
+6. [Code::Blocks DebuggerGDB private data definitions](https://svn.code.sf.net/p/codeblocks/code/trunk/src/plugins/debuggergdb/debugger_defs.h)
+7. [Code::Blocks DebuggerGDB private driver containers](https://svn.code.sf.net/p/codeblocks/code/trunk/src/plugins/debuggergdb/debuggerdriver.h)
+
 [1]: https://svn.code.sf.net/p/codeblocks/code/trunk/src/src/app.cpp "Code::Blocks application lifecycle"
 [2]: https://svn.code.sf.net/p/codeblocks/code/trunk/src/sdk/projectmanager.cpp "Code::Blocks ProjectManager implementation"
 [3]: https://svn.code.sf.net/p/codeblocks/code/trunk/src/sdk/pluginmanager.cpp "Code::Blocks PluginManager implementation"

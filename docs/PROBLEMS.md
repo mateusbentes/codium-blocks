@@ -82,6 +82,10 @@ The automated and manual test matrix must cover a clean build, a failed build, a
 
 ## References
 
+1. [Visual Studio Code code navigation and editor basics](https://code.visualstudio.com/docs/editor/codebasics)
+2. [Apple Xcode documentation](https://developer.apple.com/documentation/xcode)
+3. [Clang user manual and diagnostics](https://clang.llvm.org/docs/UsersManual.html)
+
 [1]: https://code.visualstudio.com/docs/editor/codebasics "Visual Studio Code code navigation and editor basics"
 [2]: https://developer.apple.com/documentation/xcode "Apple Xcode documentation"
 [3]: https://clang.llvm.org/docs/UsersManual.html "Clang user manual and diagnostics"

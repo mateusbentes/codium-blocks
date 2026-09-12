@@ -122,6 +122,10 @@ The native workbench currently does not use a mandatory splash screen. Its windo
 
 ## References
 
+1. [CMake CPack documentation](https://cmake.org/cmake/help/latest/module/CPack.html)
+2. [CMake installation and testing guide](https://cmake.org/cmake/help/latest/guide/tutorial/Installing%20and%20Testing%20CMake.html)
+3. [Codium::Blocks public repository](https://github.com/mateusbentes/codium-blocks)
+
 [1]: https://cmake.org/cmake/help/latest/module/CPack.html "CMake CPack documentation"
 [2]: https://cmake.org/cmake/help/latest/guide/tutorial/Installing%20and%20Testing%20CMake.html "CMake installation and testing guide"
 [3]: https://github.com/mateusbentes/codium-blocks "Codium::Blocks public repository"

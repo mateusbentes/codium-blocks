@@ -74,5 +74,8 @@ The repository also contains isolated package workflows. Linux produces Debian a
 
 ## References
 
+1. [CMake installation and testing guide](https://cmake.org/cmake/help/latest/guide/tutorial/Installing%20and%20Testing%20CMake.html)
+2. [vcpkg getting started guide](https://vcpkg.io/en/getting-started.html)
+
 [1]: https://cmake.org/cmake/help/latest/guide/tutorial/Installing%20and%20Testing%20CMake.html "CMake installation and testing guide"
 [2]: https://vcpkg.io/en/getting-started.html "vcpkg getting started guide"
