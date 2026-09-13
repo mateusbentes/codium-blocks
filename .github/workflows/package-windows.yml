@@ -88,6 +88,11 @@ jobs:
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'wx*.dll')) { throw 'Windows package is missing wxWidgets runtime DLLs.' }
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'vcruntime140*.dll')) { throw 'Windows package is missing the Microsoft Visual C++ runtime.' }
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'msvcp140*.dll')) { throw 'Windows package is missing the Microsoft C++ standard library runtime.' }
+          $versionMatch = Select-String -Path CMakeLists.txt -Pattern 'project\(CodiumBlocks VERSION ([^ )]+)'
+          $version = $versionMatch.Matches.Groups[1].Value
+          if ([string]::IsNullOrWhiteSpace($version)) { throw 'Could not determine the project version from CMakeLists.txt.' }
+          python scripts/generate-sbom.py --root $expanded --version $version --output build/codium-blocks-windows-package.spdx.json
+          python -m json.tool build/codium-blocks-windows-package.spdx.json | Out-Null
           $dataRoot = Join-Path $env:RUNNER_TEMP 'codium-blocks-package-data'
           Remove-Item -Recurse -Force $dataRoot -ErrorAction SilentlyContinue
           $executable = (Get-ChildItem -Path $expanded -Recurse -Filter 'codium-blocks.exe' | Select-Object -First 1).FullName
@@ -107,3 +112,4 @@ jobs:
           path: |
             build/codium-blocks-*.zip
             build/codium-blocks-windows.sha256
+            build/codium-blocks-windows-package.spdx.json

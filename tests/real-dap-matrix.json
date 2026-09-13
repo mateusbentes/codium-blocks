@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "matrixVersion": "2026.09",
-  "policy": "Each adapter is probed with DAP initialize. Missing optional tools are reported as skipped; an installed adapter that cannot complete initialize fails the smoke.",
+  "policy": "Each adapter is probed with DAP initialize. Entries are required unless they set required=false. Missing optional tools are reported as skipped; an installed adapter that cannot complete initialize fails the smoke.",
   "adapters": [
     {
       "id": "gdb-dap",
@@ -35,6 +35,7 @@
     },
     {
       "id": "open-debug-ad7",
+      "required": false,
       "version": "0.1.0-codium-blocks-contract",
       "platforms": ["win32"],
       "command": { "linux": null, "darwin": null, "win32": "OpenDebugAD7.exe" },

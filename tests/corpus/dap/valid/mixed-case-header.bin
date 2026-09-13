@@ -1,0 +1,4 @@
+content-length: 33
+X-Corpus: valid
+
+{"type":"event","event":"output"}

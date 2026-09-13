@@ -11,3 +11,26 @@ Workspace document lifecycle events are also versioned at the process boundary. 
 `CustomEditorRegistry` maps file extensions to editor identifiers. The current native surface still uses the wxWidgets text editor for registered files, but records the selected custom-editor identifier and exposes the registry in the UI. This is the compatibility seam for future binary, notebook, image, and domain-specific editors.
 
 These registries remain smaller than the VS Code contribution API. They provide stable native foundations while JavaScript contribution points are progressively added to the Extension Host. SCM provider methods, custom-editor activation, webviews, arbitrary renderer APIs, and complete VS Code compatibility remain outside this increment. The deterministic native-contributions test and Extension Host smoke test cover the currently supported boundaries.
+
+## Reproducible quality commands
+
+The ordinary local gate remains the portable CMake build and CTest suite documented in [`QUALITY_GATES.md`](QUALITY_GATES.md). Linux contributors can run the checked-in coverage preset after installing CMake and the pinned Python tool listed in `tools/coverage/requirements.txt`:
+
+```bash
+python3 -m venv .quality-venv
+.quality-venv/bin/python -m pip install --requirement tools/coverage/requirements.txt
+cmake --preset coverage-gcc
+cmake --build --preset coverage-gcc
+ctest --test-dir build/coverage --output-on-failure
+.quality-venv/bin/gcovr --root . --object-directory build/coverage --filter 'native/' --exclude 'tests/' --txt-metric branch --print-summary
+```
+
+The bounded native fuzz target replays the checked-in seeds under `tests/corpus/dap/` before generating deterministic cases. A source SBOM and dependency report can be produced without network access after the required toolchains are available:
+
+```bash
+CODIUM_BLOCKS_FUZZ_ITERATIONS=512 ctest --test-dir build-fuzz -R '^fuzz-smoke$' --output-on-failure
+SOURCE_DATE_EPOCH=0 python3 scripts/generate-sbom.py --root . --output codium-blocks-source.spdx.json
+python3 scripts/audit-dependencies.py --strict --output codium-blocks-dependency-audit.json
+```
+
+Coverage, static analysis, package evidence, and real external-server matrices are intentionally separate from the ordinary portable build. A passing automated command does not establish accessibility, release signing, notarization, or clean-machine installation behavior.

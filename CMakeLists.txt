@@ -31,6 +31,10 @@ option(CODIUM_BLOCKS_STRICT_WARNINGS
     "Treat warnings as errors for Codium::Blocks targets" OFF)
 option(CODIUM_BLOCKS_ENABLE_SANITIZERS
     "Enable AddressSanitizer and UndefinedBehaviorSanitizer for Codium::Blocks targets" OFF)
+option(CODIUM_BLOCKS_ENABLE_COVERAGE
+    "Enable GCC/Clang gcov coverage instrumentation for Codium::Blocks targets" OFF)
+option(CODIUM_BLOCKS_ENABLE_LIBFUZZER
+    "Build the optional Clang libFuzzer DAP parser target" OFF)
 option(CODIUM_BLOCKS_MACOS_BUNDLE
     "Build and install the native target as a macOS application bundle" OFF)
 set(CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR "" CACHE PATH
@@ -53,7 +57,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 function(codium_blocks_enable_warnings target)
+    if(CODIUM_BLOCKS_ENABLE_COVERAGE AND CODIUM_BLOCKS_ENABLE_SANITIZERS)
+        message(FATAL_ERROR
+            "CODIUM_BLOCKS_ENABLE_COVERAGE and CODIUM_BLOCKS_ENABLE_SANITIZERS are mutually exclusive")
+    endif()
     if(MSVC)
+        if(CODIUM_BLOCKS_ENABLE_COVERAGE)
+            message(FATAL_ERROR
+                "CODIUM_BLOCKS_ENABLE_COVERAGE requires a GNU or Clang-style compiler")
+        endif()
         target_compile_options(${target} PRIVATE /W4)
         if(CODIUM_BLOCKS_STRICT_WARNINGS)
             target_compile_options(${target} PRIVATE /WX)
@@ -76,8 +88,16 @@ function(codium_blocks_enable_warnings target)
             target_compile_options(${target} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
             target_link_options(${target} PRIVATE -fsanitize=address,undefined)
         endif()
+        if(CODIUM_BLOCKS_ENABLE_COVERAGE)
+            target_compile_options(${target} PRIVATE --coverage -O0 -g)
+            target_link_options(${target} PRIVATE --coverage)
+        endif()
     endif()
 endfunction()
+
+if(CODIUM_BLOCKS_ENABLE_LIBFUZZER AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR "CODIUM_BLOCKS_ENABLE_LIBFUZZER requires a Clang compiler with libFuzzer")
+endif()
 
 find_package(wxWidgets REQUIRED COMPONENTS core base richtext net xml xrc)
 include(${wxWidgets_USE_FILE})
@@ -509,6 +529,20 @@ codium_blocks_enable_warnings(codium-blocks-fuzz-smoke)
 target_link_libraries(codium-blocks-fuzz-smoke PRIVATE
     ${wxWidgets_LIBRARIES} ${CODIUM_BLOCKS_CRYPTO_LIB})
 
+if(CODIUM_BLOCKS_ENABLE_LIBFUZZER)
+    add_executable(codium-blocks-dap-libfuzzer
+        native/src/dap_client.cpp
+        tests/dap-libfuzzer.cpp
+    )
+    target_include_directories(codium-blocks-dap-libfuzzer PRIVATE native/include)
+    codium_blocks_enable_warnings(codium-blocks-dap-libfuzzer)
+    target_compile_options(codium-blocks-dap-libfuzzer PRIVATE
+        -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer)
+    target_link_options(codium-blocks-dap-libfuzzer PRIVATE
+        -fsanitize=fuzzer,address,undefined)
+    target_link_libraries(codium-blocks-dap-libfuzzer PRIVATE ${wxWidgets_LIBRARIES})
+endif()
+
 add_executable(codium-blocks-workspace-smoke
     native/src/workspace.cpp
     tests/workspace-smoke.cpp
@@ -779,7 +813,8 @@ if(BUILD_TESTING)
     add_test(NAME security-smoke COMMAND codium-blocks-security-smoke)
     add_test(NAME invariants-smoke
         COMMAND codium-blocks-invariants-smoke ${CMAKE_SOURCE_DIR})
-    add_test(NAME fuzz-smoke COMMAND codium-blocks-fuzz-smoke)
+    add_test(NAME fuzz-smoke
+        COMMAND codium-blocks-fuzz-smoke ${CMAKE_SOURCE_DIR}/tests/corpus/dap)
     add_test(NAME fuzz-host-smoke
         COMMAND ${CMAKE_COMMAND} -E env
             CODIUM_BLOCKS_ROOT=${CMAKE_SOURCE_DIR}

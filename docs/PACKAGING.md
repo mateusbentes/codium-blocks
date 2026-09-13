@@ -102,7 +102,7 @@ For a local ZIP, `CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR` must contain both the vcpkg
 
 Extract the ZIP on a Windows x64 machine and start `bin\codium-blocks.exe`. The package workflow copies the matching wxWidgets and Microsoft Visual C++ runtime DLLs into the archive, but the CI runner is not a complete clean-consumer proof; SmartScreen, architecture, and future Windows servicing behavior remain release concerns.
 
-Each package workflow creates a SHA-256 checksum with package basenames. A checksum confirms artifact integrity after transfer; it is not a code-signing mechanism, provenance attestation, notarization, or trust anchor.
+Each package workflow creates a SHA-256 checksum with package basenames and an SPDX 2.3 inventory of the staged or extracted product. A checksum confirms artifact integrity after transfer, while an SBOM records the files and hashes that were scanned; neither is a code-signing mechanism, provenance attestation, notarization, or trust anchor. The source-level dependency and action-pin audit is produced separately by `quality-security.yml`.
 
 ## GitHub Actions policy
 
@@ -112,7 +112,7 @@ The package workflows are isolated by platform:
 * `package-macos.yml` builds the macOS application bundle and disk image on `macos-15`.
 * `package-windows.yml` builds the Windows portable archive on `windows-2022`.
 
-Each workflow runs on `workflow_dispatch` and on version tags matching `v*`. A tag build fails unless the tag matches the CMake project version, for example `v1.0.1` for `PROJECT_VERSION 1.0.1`. Manual runs are validation runs and are not release publication. Each workflow runs its own tests, generates its own artifacts, and uploads its own checksums. The workflows are maintained in the public project repository [3](https://github.com/mateusbentes/codium-blocks). No package workflow publishes a release or assumes that another operating system has already completed.
+Each workflow runs on `workflow_dispatch` and on version tags matching `v*`. A tag build fails unless the tag matches the CMake project version, for example `v1.0.1` for `PROJECT_VERSION 1.0.1`. Manual runs are validation runs and are not release publication. Each workflow runs its own tests, generates its own package checksum and SPDX inventory, and uploads its own artifacts. The workflows are maintained in the public project repository [3](https://github.com/mateusbentes/codium-blocks). No package workflow publishes a release or assumes that another operating system has already completed.
 
 The first release process should create a draft release from reviewed artifacts. Before public publication, a human should inspect package contents, run the application from a clean environment, verify documented dependencies, review high-contrast screenshots, and confirm the license and changelog. Automated packaging reduces repetitive work, but it cannot replace that final product check.
 

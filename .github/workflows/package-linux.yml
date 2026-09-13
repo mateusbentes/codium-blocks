@@ -74,10 +74,16 @@ jobs:
           dpkg-deb --info "$deb"
           dpkg-deb --contents "$deb" | grep -F 'usr/bin/codium-blocks'
           dpkg-deb --contents "$deb" | grep -F 'en-US.tsv'
+          dpkg-deb --contents "$deb" | grep -F 'pt-BR.tsv'
           dpkg-deb --contents "$deb" | grep -F 'CHANGELOG.md'
           tar -tzf "$tgz" | grep -F 'bin/codium-blocks'
           tar -tzf "$tgz" | grep -F 'locales/en-US.tsv'
+          tar -tzf "$tgz" | grep -F 'locales/pt-BR.tsv'
           tar -tzf "$tgz" | grep -F 'CHANGELOG.md'
+          version=$(sed -n 's/.*project(CodiumBlocks VERSION \([^ )]*\).*/\1/p' CMakeLists.txt)
+          test -n "$version"
+          SOURCE_DATE_EPOCH=0 python3 scripts/generate-sbom.py --root staging --version "$version" --output build/codium-blocks-linux-staging.spdx.json
+          python3 -m json.tool build/codium-blocks-linux-staging.spdx.json >/dev/null
           (cd build && sha256sum "$(basename "$deb")" "$(basename "$tgz")") > build/codium-blocks-linux.sha256
 
       - name: Upload Linux packages
@@ -90,3 +96,4 @@ jobs:
             build/codium-blocks-*.tar.gz
             build/codium-blocks-*.sha256
             build/codium-blocks-linux.sha256
+            build/codium-blocks-linux-staging.spdx.json

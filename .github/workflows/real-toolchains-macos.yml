@@ -1,0 +1,69 @@
+name: Codium::Blocks macOS real toolchain matrix
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '53 4 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codium-blocks-real-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-macos:
+    name: macOS real LSP and DAP matrix (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.23.6'
+          cache: false
+      - name: Install pinned macOS toolchains
+        run: |
+          brew update
+          brew install llvm@18 rustup cmake
+          echo "$(brew --prefix llvm@18)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix rustup)/bin" >> "$GITHUB_PATH"
+          export PATH="$(brew --prefix rustup)/bin:$PATH"
+          rustup toolchain install 1.82.0 --profile minimal
+          rustup component add rust-analyzer --toolchain 1.82.0
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$(find "$HOME/.rustup/toolchains" -path '*/bin/rust-analyzer' | head -1)" "$HOME/.local/bin/rust-analyzer"
+          GOTOOLCHAIN=go1.23.6 GOBIN="$HOME/.local/bin" go install golang.org/x/tools/gopls@v0.17.1
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          npm install --global pyright@1.1.390
+      - name: Verify pinned versions
+        run: |
+          clangd --version | grep -F '18.1.8'
+          rust-analyzer --version | grep -F '1.82.0'
+          gopls version | grep -F 'v0.17.1'
+          pyright --version | grep -F '1.1.390'
+          llvm-config --version | grep -F '18.1.8'
+      - name: Run strict real LSP matrix
+        env:
+          CODIUM_BLOCKS_REQUIRE_REAL_LSP: '1'
+        run: node tests/real-lsp-smoke.mjs
+      - name: Build real DAP debuggee
+        run: |
+          clang++ -std=c++17 -g tests/fixtures/real-dap-debuggee.cpp -o /tmp/codium-blocks-real-dap-debuggee
+      - name: Run strict real DAP matrix
+        env:
+          CODIUM_BLOCKS_REQUIRE_REAL_DAP: '1'
+          CODIUM_BLOCKS_REAL_DAP_DEBUGGEE: /tmp/codium-blocks-real-dap-debuggee
+          CODIUM_BLOCKS_REAL_DAP_SOURCE: ${{ github.workspace }}/tests/fixtures/real-dap-debuggee.cpp
+        run: node tests/real-dap-smoke.mjs
+      - name: Validate matrix contracts
+        run: node tests/integration-matrix-smoke.mjs

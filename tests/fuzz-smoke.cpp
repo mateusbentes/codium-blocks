@@ -18,9 +18,11 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <iostream>
 #include <random>
 #include <string>
+#include <utility>
 
 namespace {
 
@@ -110,6 +112,66 @@ bool RunDapFuzz(int iterations, std::mt19937& generator)
         if (iteration % 7 >= 2 && iteration % 7 <= 4 && client.LastError().empty()) {
             std::cerr << "fuzz-smoke: malformed DAP frame was accepted at iteration "
                       << iteration << "\n";
+            return false;
+        }
+    }
+    return true;
+}
+
+bool ReplayDapCorpus(const wxString& corpusRoot)
+{
+    if (corpusRoot.empty()) return true;
+    constexpr size_t kMaximumSeedSize = 1024U * 1024U;
+    constexpr size_t kMaximumCorpusBytes = 8U * 1024U * 1024U;
+    constexpr size_t kMaximumSeeds = 64U;
+    std::vector<std::pair<std::filesystem::path, bool>> seeds;
+    size_t totalBytes = 0;
+    for (const auto& category : {std::string("valid"), std::string("invalid")}) {
+        const std::filesystem::path directory =
+            std::filesystem::path(corpusRoot.ToStdString()) / category;
+        if (!std::filesystem::is_directory(directory)) {
+            std::cerr << "fuzz-smoke: missing DAP corpus directory " << directory << "\n";
+            return false;
+        }
+        for (const auto& entry : std::filesystem::directory_iterator(directory)) {
+            if (!entry.is_regular_file()) continue;
+            seeds.emplace_back(entry.path(), category == "valid");
+        }
+    }
+    std::sort(seeds.begin(), seeds.end(), [](const auto& left, const auto& right) {
+        return left.first.generic_string() < right.first.generic_string();
+    });
+    if (seeds.empty() || seeds.size() > kMaximumSeeds) {
+        std::cerr << "fuzz-smoke: DAP corpus seed count is outside the bounded range\n";
+        return false;
+    }
+    for (const auto& [path, valid] : seeds) {
+        std::ifstream input(path, std::ios::binary);
+        if (!input) {
+            std::cerr << "fuzz-smoke: could not read DAP corpus seed " << path << "\n";
+            return false;
+        }
+        const std::string bytes((std::istreambuf_iterator<char>(input)),
+                                std::istreambuf_iterator<char>());
+        if (bytes.empty() || bytes.size() > kMaximumSeedSize ||
+            totalBytes > kMaximumCorpusBytes - bytes.size()) {
+            std::cerr << "fuzz-smoke: DAP corpus seed exceeds its bounded size " << path << "\n";
+            return false;
+        }
+        totalBytes += bytes.size();
+        codium::DapClient client(nullptr, wxID_HIGHEST + 2200);
+        wxArrayString messages;
+        for (const char byte : bytes) {
+            const wxArrayString parsed = client.ParseBytesForTesting(std::string(1, byte));
+            for (const auto& message : parsed) messages.Add(message);
+        }
+        if (valid) {
+            if (messages.empty() || !client.LastError().empty()) {
+                std::cerr << "fuzz-smoke: valid DAP corpus seed was rejected: " << path << "\n";
+                return false;
+            }
+        } else if (client.LastError().empty()) {
+            std::cerr << "fuzz-smoke: invalid DAP corpus seed was accepted: " << path << "\n";
             return false;
         }
     }
@@ -290,7 +352,9 @@ int main(int argc, char** argv)
     std::mt19937 generator(kSeed);
     (void)argc;
     (void)argv;
-    const bool ok = RunAnsiFuzz(iterations, generator) &&
+    const wxString corpusRoot = argc > 1 ? wxString::FromUTF8(argv[1]) : wxString();
+    const bool ok = ReplayDapCorpus(corpusRoot) &&
+                    RunAnsiFuzz(iterations, generator) &&
                     RunDapFuzz(iterations, generator) &&
                     RunVsixFuzz(tempRoot, iterations, generator);
     const bool cleaned = RemoveTreeNoThrow(tempRoot);

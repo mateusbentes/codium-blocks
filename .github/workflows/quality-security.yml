@@ -1,0 +1,116 @@
+name: Codium::Blocks quality and security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '31 4 * * 1'
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: codium-blocks-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clang-tidy:
+    name: clang-tidy (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install static-analysis dependencies
+        run: |
+          for source in /etc/apt/sources.list.d/*google* /etc/apt/sources.list.d/*chrome*; do
+            if [ -f "$source" ]; then sudo mv "$source" "$source.disabled"; fi
+          done
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y build-essential cmake pkg-config libwxgtk3.2-dev libssl-dev clang-tidy-18
+      - name: Configure clang-tidy build
+        run: |
+          cmake -S . -B build-clang-tidy -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTING=ON \
+            -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF \
+            -DCMAKE_CXX_CLANG_TIDY='/usr/bin/clang-tidy-18'
+      - name: Build with clang-tidy
+        run: cmake --build build-clang-tidy --parallel 2
+      - name: Upload compile database
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          if-no-files-found: error
+          name: codium-blocks-clang-tidy-compile-database
+          path: build-clang-tidy/compile_commands.json
+
+  source-audit:
+    name: Source SBOM and dependency audit (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Generate source SBOM and audit report
+        run: |
+          mkdir -p artifacts
+          SOURCE_DATE_EPOCH=0 python3 scripts/generate-sbom.py --root . --output artifacts/codium-blocks-source.spdx.json
+          python3 scripts/audit-dependencies.py --root . --strict --output artifacts/codium-blocks-dependency-audit.json
+          python3 -m json.tool artifacts/codium-blocks-source.spdx.json >/dev/null
+          python3 -m json.tool artifacts/codium-blocks-dependency-audit.json >/dev/null
+      - name: Upload source audit artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          if-no-files-found: error
+          name: codium-blocks-source-audit
+          path: artifacts/
+
+  codeql:
+    name: CodeQL C/C++ (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        with:
+          languages: c-cpp
+          build-mode: manual
+      - name: Install CodeQL build dependencies
+        run: |
+          for source in /etc/apt/sources.list.d/*google* /etc/apt/sources.list.d/*chrome*; do
+            if [ -f "$source" ]; then sudo mv "$source" "$source.disabled"; fi
+          done
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y build-essential cmake pkg-config libwxgtk3.2-dev libssl-dev
+      - name: Build for CodeQL
+        run: |
+          cmake -S . -B build-codeql -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=OFF -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF
+          cmake --build build-codeql --parallel 2
+      - name: Analyze with CodeQL
+        uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        with:
+          category: /language:cpp
+
+  dependency-review:
+    name: Dependency Review (pull requests)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high

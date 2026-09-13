@@ -63,6 +63,10 @@ jobs:
           app="$staging/codium-blocks.app"
           test -x "$app/Contents/MacOS/codium-blocks"
           otool -L "$app/Contents/MacOS/codium-blocks"
+          version=$(sed -n 's/.*project(CodiumBlocks VERSION \([^ )]*\).*/\1/p' CMakeLists.txt)
+          test -n "$version"
+          SOURCE_DATE_EPOCH=0 python3 scripts/generate-sbom.py --root "$staging" --version "$version" --output build/codium-blocks-macos-staging.spdx.json
+          python3 -m json.tool build/codium-blocks-macos-staging.spdx.json >/dev/null
           if otool -L "$app/Contents/MacOS/codium-blocks" | grep -E '/(opt/homebrew|usr/local|opt/local)/'; then
             echo 'The installed macOS bundle still references a package-manager path.' >&2
             exit 1
@@ -106,3 +110,4 @@ jobs:
           path: |
             build/codium-blocks-*.dmg
             build/codium-blocks-*.sha256
+            build/codium-blocks-macos-staging.spdx.json

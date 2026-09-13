@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process';
 
 const matrix = JSON.parse(await readFile(new URL('./real-lsp-matrix.json', import.meta.url), 'utf8'));
 const platform = process.platform;
+const requireRealServers = process.env.CODIUM_BLOCKS_REQUIRE_REAL_LSP === '1';
 const servers = matrix.servers.map((server) => ({
   ...server,
   name: server.id,
@@ -288,15 +289,21 @@ try {
       console.log(`real-lsp-smoke: ${server.name} responses ${JSON.stringify(result.responses)}`);
     } catch (error) {
       if (error?.code === 'ENOENT' || String(error?.message).includes('ENOENT')) {
+        if (requireRealServers) throw new Error(`${server.name}: required executable is not installed`);
         console.log(`real-lsp-smoke: ${server.name} skipped — executable not installed`);
       } else if (server.noViewsPolicy?.[platform] === 'environment-skip' && /no views/i.test(error?.message ?? '')) {
+        if (requireRealServers) throw new Error(`${server.name}: required workspace view was not created (${error.message})`);
         console.log(`real-lsp-smoke: ${server.name} skipped — ${platform} gopls did not create a workspace view in this runner (${error.message})`);
       } else if (error?.code === 'LSP_SERVER_EXIT' && error.phase === 'initialize') {
+        if (requireRealServers) throw new Error(`${server.name}: required server could not initialize (${error.message})`);
         console.log(`real-lsp-smoke: ${server.name} skipped — executable could not start in this environment (${error.message})`);
       } else {
         throw new Error(`${server.name}: ${error.message}`);
       }
     }
+  }
+  if (requireRealServers && executed !== servers.length) {
+    throw new Error(`real-lsp-smoke: strict matrix completed ${executed}/${servers.length} servers`);
   }
   if (executed === 0) console.log('real-lsp-smoke: no real language servers completed; optional matrix skipped');
 } finally {

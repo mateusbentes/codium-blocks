@@ -1,0 +1,4 @@
+Checks: '-*,bugprone-*,performance-*,portability-*,readability-*'
+WarningsAsErrors: ''
+HeaderFilterRegex: 'native/(include|src)/.*'
+FormatStyle: none

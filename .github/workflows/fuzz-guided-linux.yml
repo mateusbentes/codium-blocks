@@ -1,0 +1,66 @@
+name: Codium::Blocks coverage-guided fuzzing
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '13 5 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codium-blocks-fuzz-guided-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz-guided-linux:
+    name: Clang libFuzzer DAP corpus (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install Clang and native dependencies
+        run: |
+          for source in /etc/apt/sources.list.d/*google* /etc/apt/sources.list.d/*chrome*; do
+            if [ -f "$source" ]; then sudo mv "$source" "$source.disabled"; fi
+          done
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y clang cmake build-essential pkg-config libwxgtk3.2-dev libssl-dev
+      - name: Configure and build libFuzzer target
+        run: |
+          cmake -S . -B build-libfuzzer -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_CXX_COMPILER=clang++ -DBUILD_TESTING=OFF \
+            -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF \
+            -DCODIUM_BLOCKS_ENABLE_LIBFUZZER=ON
+          cmake --build build-libfuzzer --target codium-blocks-dap-libfuzzer --parallel 2
+      - name: Restore persistent DAP corpus
+        id: fuzz-corpus-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: artifacts/fuzz-corpus
+          key: codium-blocks-dap-corpus-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            codium-blocks-dap-corpus-${{ runner.os }}-${{ github.ref_name }}-
+      - name: Run coverage-guided fuzzing with persistent corpus
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/fuzz-corpus artifacts/fuzz-artifacts
+          cp -a tests/corpus/dap/. artifacts/fuzz-corpus/
+          ./build-libfuzzer/codium-blocks-dap-libfuzzer \
+            -max_total_time=60 -max_len=65536 -print_final_stats=1 \
+            -artifact_prefix=artifacts/fuzz-artifacts/ artifacts/fuzz-corpus
+          test -n "$(find artifacts/fuzz-corpus -type f -print -quit)"
+      - name: Save persistent DAP corpus
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: artifacts/fuzz-corpus
+          key: codium-blocks-dap-corpus-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}
+      - name: Upload fuzz corpus and artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          if-no-files-found: error
+          name: codium-blocks-linux-fuzz-guided-corpus
+          path: artifacts/

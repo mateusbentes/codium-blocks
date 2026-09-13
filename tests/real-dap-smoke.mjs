@@ -17,9 +17,11 @@ const adapters = matrix.adapters
       ? adapter.versionPattern : adapter.versionPattern?.[process.platform],
     versionCommand: adapter.versionCommand?.[process.platform] ?? adapter.command[process.platform],
   }));
+const requiredAdapters = adapters.filter((adapter) => adapter.required !== false);
 const WINDOWS_DLL_NOT_FOUND = 0xC0000135;
 const debuggee = process.env.CODIUM_BLOCKS_REAL_DAP_DEBUGGEE ?? '';
 const sourceFile = process.env.CODIUM_BLOCKS_REAL_DAP_SOURCE ?? '';
+const requireRealAdapters = process.env.CODIUM_BLOCKS_REQUIRE_REAL_DAP === '1';
 
 function send(child, message) {
   const body = JSON.stringify(message);
@@ -266,9 +268,15 @@ let executed = 0;
 for (const adapter of adapters) {
   const result = await probe(adapter).catch((error) => {
     if (error?.code === 'ENOENT' || String(error?.message).includes('ENOENT')) {
+      if (requireRealAdapters && adapter.required !== false) {
+        throw new Error(`${adapter.id}: required executable is not installed`);
+      }
       return { skipped: true, reason: 'executable not installed' };
     }
     if (process.platform === 'win32' && String(error?.message).includes(`code=${WINDOWS_DLL_NOT_FOUND}`)) {
+      if (requireRealAdapters && adapter.required !== false) {
+        throw new Error(`${adapter.id}: required Windows runtime DLL is not available`);
+      }
       return { skipped: true, reason: 'executable could not load a required Windows DLL' };
     }
     throw error;
@@ -281,3 +289,6 @@ for (const adapter of adapters) {
   }
 }
 if (executed === 0) console.log('real-dap-smoke: no installed adapter completed; optional runtime probe skipped');
+if (requireRealAdapters && executed !== requiredAdapters.length) {
+  throw new Error(`real-dap-smoke: strict matrix completed ${executed}/${requiredAdapters.length} required adapters`);
+}

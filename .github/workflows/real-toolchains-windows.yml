@@ -1,0 +1,83 @@
+name: Codium::Blocks Windows real toolchain matrix
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '7 5 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codium-blocks-real-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-windows:
+    name: Windows real LSP and DAP matrix (windows-2022)
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+      - name: Install pinned Windows toolchains
+        shell: pwsh
+        run: |
+          choco install llvm --version=18.1.8 -y --no-progress --allow-downgrade
+          $rustupInit = Join-Path $env:RUNNER_TEMP 'rustup-init.exe'
+          $rustupVersion = '1.28.2'
+          $rustupBase = "https://static.rust-lang.org/rustup/archive/$rustupVersion/x86_64-pc-windows-msvc"
+          Invoke-WebRequest -Uri "$rustupBase/rustup-init.exe" -OutFile $rustupInit
+          Invoke-WebRequest -Uri "$rustupBase/rustup-init.exe.sha256" -OutFile "$rustupInit.sha256"
+          $expected = ((Get-Content "$rustupInit.sha256" -Raw).Trim() -split '\s+')[0].ToUpperInvariant()
+          $actual = (Get-FileHash -Algorithm SHA256 $rustupInit).Hash.ToUpperInvariant()
+          if ($expected -ne $actual) { throw 'rustup-init.exe checksum mismatch.' }
+          & $rustupInit -y --default-toolchain none --profile minimal
+          $cargoBin = Join-Path $env:USERPROFILE '.cargo/bin'
+          $env:Path = "$cargoBin;$env:Path"
+          "$cargoBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          rustup toolchain install 1.82.0 --profile minimal
+          rustup component add rust-analyzer --toolchain 1.82.0
+          $llvmBin = Join-Path $env:ProgramFiles 'LLVM/bin'
+          $rustAnalyzerBin = Join-Path $env:USERPROFILE '.rustup/toolchains/1.82.0-x86_64-pc-windows-msvc/bin'
+          "$llvmBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "$rustAnalyzerBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          New-Item -ItemType Directory -Force -Path (Join-Path $env:USERPROFILE '.local/bin') | Out-Null
+          $env:GOBIN = Join-Path $env:USERPROFILE '.local/bin'
+          $env:GOTOOLCHAIN = 'go1.23.6'
+          go install golang.org/x/tools/gopls@v0.17.1
+          $env:GOBIN | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          npm install --global pyright@1.1.390
+      - name: Verify pinned versions
+        shell: pwsh
+        run: |
+          clangd.exe --version | Select-String '18.1.8'
+          rust-analyzer.exe --version | Select-String '1.82.0'
+          gopls.exe version | Select-String 'v0.17.1'
+          pyright.cmd --version | Select-String '1.1.390'
+          & clang.exe --version | Select-String '18.1.8'
+      - name: Run strict real LSP matrix
+        shell: pwsh
+        env:
+          CODIUM_BLOCKS_REQUIRE_REAL_LSP: '1'
+        run: node tests/real-lsp-smoke.mjs
+      - name: Build real DAP debuggee
+        shell: pwsh
+        run: |
+          clang++.exe -std=c++17 -g tests/fixtures/real-dap-debuggee.cpp -o "$env:RUNNER_TEMP/codium-blocks-real-dap-debuggee.exe"
+      - name: Run strict real DAP matrix
+        shell: pwsh
+        env:
+          CODIUM_BLOCKS_REQUIRE_REAL_DAP: '1'
+          CODIUM_BLOCKS_REAL_DAP_DEBUGGEE: ${{ runner.temp }}/codium-blocks-real-dap-debuggee.exe
+          CODIUM_BLOCKS_REAL_DAP_SOURCE: ${{ github.workspace }}/tests/fixtures/real-dap-debuggee.cpp
+        run: node tests/real-dap-smoke.mjs
+      - name: Validate matrix contracts
+        shell: pwsh
+        run: node tests/integration-matrix-smoke.mjs
