@@ -779,8 +779,7 @@ if(BUILD_TESTING)
     add_test(NAME security-smoke COMMAND codium-blocks-security-smoke)
     add_test(NAME invariants-smoke
         COMMAND codium-blocks-invariants-smoke ${CMAKE_SOURCE_DIR})
-    add_test(NAME fuzz-smoke
-        COMMAND $<TARGET_FILE:codium-blocks-fuzz-smoke> ${CMAKE_SOURCE_DIR})
+    add_test(NAME fuzz-smoke COMMAND codium-blocks-fuzz-smoke)
     add_test(NAME fuzz-host-smoke
         COMMAND ${CMAKE_COMMAND} -E env
             CODIUM_BLOCKS_ROOT=${CMAKE_SOURCE_DIR}

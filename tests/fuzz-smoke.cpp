@@ -46,12 +46,6 @@ std::string Frame(const std::string& body)
     return "Content-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body;
 }
 
-void WriteBytes(const wxString& path, const std::string& bytes)
-{
-    std::ofstream output(path.ToStdString(), std::ios::binary | std::ios::trunc);
-    output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-}
-
 bool RemoveTreeNoThrow(const wxString& path)
 {
     std::error_code error;
@@ -66,10 +60,8 @@ bool RemoveFileNoThrow(const wxString& path)
     return !error;
 }
 
-bool RunDapFuzz(const wxString& root, const wxString& tempRoot, int iterations,
-                std::mt19937& generator)
+bool RunDapFuzz(int iterations, std::mt19937& generator)
 {
-    const wxString adapter = root + wxS("/tests/fuzz-dap-adapter.mjs");
     for (int iteration = 0; iteration < iterations; ++iteration) {
         std::string payload;
         switch (iteration % 7) {
@@ -97,28 +89,26 @@ bool RunDapFuzz(const wxString& root, const wxString& tempRoot, int iterations,
         }
         }
 
-        const wxString payloadPath = tempRoot + wxFILE_SEP_PATH +
-            wxString::Format(wxS("dap-%04d.bin"), iteration);
-        WriteBytes(payloadPath, payload);
-
         codium::DapClient client(nullptr, wxID_HIGHEST + 1100 + iteration);
-        wxArrayString arguments;
-        arguments.Add(adapter);
-        arguments.Add(payloadPath);
-        wxString error;
-        if (!client.Start(wxS("node"), arguments, root, &error)) {
-            std::cerr << "fuzz-smoke: DAP child start failed at iteration " << iteration
-                      << ": " << error.ToStdString() << "\n";
+        wxArrayString messages;
+        const auto feed = [&](const std::string& chunk) {
+            const wxArrayString parsed = client.ParseBytesForTesting(chunk);
+            for (const auto& message : parsed) messages.Add(message);
+        };
+        if (iteration % 2 == 0 || payload.size() < 2) {
+            feed(payload);
+        } else {
+            const size_t split = payload.size() / 2;
+            feed(payload.substr(0, split));
+            feed(payload.substr(split));
+        }
+        if (iteration % 7 <= 1 && (messages.size() != 1 || !client.LastError().empty())) {
+            std::cerr << "fuzz-smoke: valid DAP frame was not parsed at iteration "
+                      << iteration << "\n";
             return false;
         }
-        for (int poll = 0; poll < 80; ++poll) {
-            wxMilliSleep(2);
-            client.Poll();
-            if (!client.IsRunning()) break;
-        }
-        client.Stop();
-        if (!RemoveFileNoThrow(payloadPath)) {
-            std::cerr << "fuzz-smoke: could not clean DAP case at iteration "
+        if (iteration % 7 >= 2 && iteration % 7 <= 4 && client.LastError().empty()) {
+            std::cerr << "fuzz-smoke: malformed DAP frame was accepted at iteration "
                       << iteration << "\n";
             return false;
         }
@@ -279,12 +269,11 @@ bool RunVsixFuzz(const wxString& tempRoot, int iterations, std::mt19937& generat
 int main(int argc, char** argv)
 {
     wxInitializer initializer;
-    if (!initializer.IsOk() || argc < 2) {
+    if (!initializer.IsOk()) {
         std::cerr << "fuzz-smoke: wxWidgets initialization or source root failed\n";
         return 1;
     }
 
-    const wxString root = wxString::FromUTF8(argv[1]);
     const wxString tempRoot = wxStandardPaths::Get().GetTempDir() + wxFILE_SEP_PATH +
                               wxString::Format(wxS("codium-blocks-fuzz-smoke-%lu"),
                                                wxGetProcessId());
@@ -299,8 +288,10 @@ int main(int argc, char** argv)
 
     const int iterations = Iterations();
     std::mt19937 generator(kSeed);
+    (void)argc;
+    (void)argv;
     const bool ok = RunAnsiFuzz(iterations, generator) &&
-                    RunDapFuzz(root, tempRoot, iterations, generator) &&
+                    RunDapFuzz(iterations, generator) &&
                     RunVsixFuzz(tempRoot, iterations, generator);
     const bool cleaned = RemoveTreeNoThrow(tempRoot);
     if (!ok) return 1;

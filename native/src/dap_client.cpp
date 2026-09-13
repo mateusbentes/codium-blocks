@@ -346,4 +346,12 @@ wxArrayString DapClient::Poll()
     return messages;
 }
 
+wxArrayString DapClient::ParseBytesForTesting(const std::string& bytes)
+{
+    inputBuffer_.append(bytes);
+    wxArrayString messages;
+    ParseFrames(messages);
+    return messages;
+}
+
 } // namespace codium

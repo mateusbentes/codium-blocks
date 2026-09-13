@@ -56,6 +56,9 @@ public:
     const wxString& LastError() const { return lastError_; }
 
     wxArrayString Poll();
+    // Feeds raw UTF-8 protocol bytes through the production DAP framer. This
+    // is useful for deterministic parser tests without launching an adapter.
+    wxArrayString ParseBytesForTesting(const std::string& bytes);
     int NextSequence() const { return nextSequence_; }
 
 private:
