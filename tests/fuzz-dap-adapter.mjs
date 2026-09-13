@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 const payloadPath = process.argv[2];
 if (!payloadPath) process.exit(2);
 const payload = readFileSync(payloadPath);
-process.stdout.write(payload);
-process.stdin.resume();
-process.stdin.on('error', () => process.exit(0));
+// This is a finite parser fixture. Closing stdout after the payload lets the
+// native client observe natural process exit instead of accumulating live
+// Node children that must be force-terminated on Windows.
+process.stdout.end(payload, () => process.exit(0));
