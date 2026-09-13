@@ -180,48 +180,53 @@ bool RunAnsiFuzz(int iterations, std::mt19937& generator)
     return true;
 }
 
-bool CreateValidVsix(const wxString& path)
+bool CreateFuzzVsix(const wxString& path, int iteration, std::mt19937& generator,
+                    bool includeUnsafePath)
 {
     wxFFileOutputStream output(path);
     if (!output.IsOk()) return false;
     wxZipOutputStream archive(output);
     archive.PutNextEntry(wxS("extension/package.json"));
-    const wxString manifest = wxS("{\"name\":\"fuzz\",\"publisher\":\"codium\",\"version\":\"1.0.0\"}\n");
+    const wxString manifest = wxString::Format(
+        wxS("{\"name\":\"fuzz\",\"publisher\":\"codium\",\"version\":\"1.0.%d\"}\n"),
+        iteration);
     const wxScopedCharBuffer manifestUtf8 = manifest.utf8_str();
     archive.Write(manifestUtf8.data(), manifestUtf8.length());
     archive.PutNextEntry(wxS("extension/extension.js"));
-    const wxString script = wxS("module.exports = { activate() {} };\n");
+    const wxString script = wxString::Format(
+        wxS("module.exports = { activate() { return %d; } };\n"),
+        iteration);
     const wxScopedCharBuffer scriptUtf8 = script.utf8_str();
     archive.Write(scriptUtf8.data(), scriptUtf8.length());
+
+    const int extraEntries = static_cast<int>(Next(generator) % 12U);
+    for (int entryIndex = 0; entryIndex < extraEntries; ++entryIndex) {
+        const wxString entryName = wxString::Format(
+            wxS("extension/files/%04d-%02d.txt"), iteration, entryIndex);
+        archive.PutNextEntry(entryName);
+        const size_t byteCount = static_cast<size_t>(Next(generator) % 512U);
+        std::string content(byteCount, '\0');
+        for (char& byte : content) byte = static_cast<char>(Next(generator) & 0xffU);
+        archive.Write(content.data(), content.size());
+    }
+
+    if (includeUnsafePath) {
+        archive.PutNextEntry(wxS("../escape.txt"));
+        const char payload[] = "must not be extracted\n";
+        archive.Write(payload, sizeof(payload) - 1);
+    }
     return archive.Close();
 }
 
 bool RunVsixFuzz(const wxString& tempRoot, int iterations, std::mt19937& generator)
 {
-    const wxString valid = tempRoot + wxFILE_SEP_PATH + wxS("valid.vsix");
-    if (!CreateValidVsix(valid)) return false;
     for (int iteration = 0; iteration < iterations; ++iteration) {
         const wxString path = tempRoot + wxFILE_SEP_PATH +
             wxString::Format(wxS("archive-%04d.vsix"), iteration);
-        std::error_code copyError;
-        std::filesystem::copy_file(valid.ToStdString(), path.ToStdString(),
-                                    std::filesystem::copy_options::overwrite_existing, copyError);
-        if (copyError) return false;
-
-        std::fstream archive(path.ToStdString(), std::ios::in | std::ios::out | std::ios::binary);
-        archive.seekg(0, std::ios::end);
-        const std::streamoff size = archive.tellg();
-        if (size > 0) {
-            const std::streamoff offset = static_cast<std::streamoff>(Next(generator) %
-                static_cast<uint32_t>(size));
-            archive.seekg(offset);
-            char byte = 0;
-            archive.read(&byte, 1);
-            archive.seekp(offset);
-            archive.put(static_cast<char>(static_cast<unsigned char>(byte) ^
-                                           static_cast<unsigned char>(1U + Next(generator) % 255U)));
-        }
-        archive.close();
+        // Keep ZIP structure valid so the production policy, rather than a
+        // platform-specific third-party stream abort, is the observed result.
+        const bool includeUnsafePath = (iteration % 5) == 0;
+        if (!CreateFuzzVsix(path, iteration, generator, includeUnsafePath)) return false;
 
         const wxString installRoot = tempRoot + wxFILE_SEP_PATH +
             wxString::Format(wxS("installed-%04d"), iteration);
@@ -229,7 +234,12 @@ bool RunVsixFuzz(const wxString& tempRoot, int iterations, std::mt19937& generat
         wxString digest;
         wxString message;
         if (!codium::ExtensionSecurity::ComputeSha256(path, &digest, &message)) return false;
-        (void)manager.InstallVerified(path, digest, &message);
+        const bool installed = manager.InstallVerified(path, digest, &message);
+        if (installed == includeUnsafePath) {
+            std::cerr << "fuzz-smoke: VSIX semantic mutation had an unexpected result at iteration "
+                      << iteration << "\n";
+            return false;
+        }
         if (wxFileExists(tempRoot + wxFILE_SEP_PATH + wxS("escape.txt"))) {
             std::cerr << "fuzz-smoke: VSIX extraction escaped its root at iteration "
                       << iteration << "\n";

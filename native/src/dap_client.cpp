@@ -7,6 +7,8 @@
 
 #include <cctype>
 #include <algorithm>
+#include <csignal>
+#include <mutex>
 #include <vector>
 
 namespace codium {
@@ -31,6 +33,7 @@ wxString JsonEscape(const wxString& value)
 
 bool WriteAll(wxOutputStream* output, const void* data, size_t length)
 {
+    if (!output) return false;
     const auto* bytes = static_cast<const char*>(data);
     size_t written = 0;
     while (written < length) {
@@ -40,6 +43,18 @@ bool WriteAll(wxOutputStream* output, const void* data, size_t length)
         written += count;
     }
     return true;
+}
+
+void IgnoreBrokenPipe()
+{
+#if defined(SIGPIPE) && !defined(__WXMSW__)
+    static std::once_flag once;
+    std::call_once(once, [] {
+        // A debug adapter may exit between polling and a final disconnect.
+        // Do not let that expected IPC race terminate the native workbench.
+        std::signal(SIGPIPE, SIG_IGN);
+    });
+#endif
 }
 
 } // namespace
@@ -57,6 +72,7 @@ DapClient::~DapClient()
 bool DapClient::Start(const wxString& program, const wxArrayString& arguments,
                       const wxString& workingDirectory, wxString* error)
 {
+    IgnoreBrokenPipe();
     if (IsRunning()) return true;
     if (program.empty()) {
         if (error) *error = wxS("The debug adapter program is empty.");
