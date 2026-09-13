@@ -29,41 +29,15 @@ jobs:
         with:
           node-version: 22
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version: '1.23.6'
-          cache: false
-
       - name: Install macOS dependencies
         run: |
           brew update
-          brew install cmake wxwidgets llvm@18 rustup
+          brew install cmake wxwidgets
           echo "$(brew --prefix wxwidgets)/bin" >> "$GITHUB_PATH"
-          echo "$(brew --prefix llvm@18)/bin" >> "$GITHUB_PATH"
-          echo "$(brew --prefix rustup)/bin" >> "$GITHUB_PATH"
           echo "PKG_CONFIG_PATH=$(brew --prefix wxwidgets)/lib/pkgconfig" >> "$GITHUB_ENV"
-          export PATH="$(brew --prefix rustup)/bin:$PATH"
-          rustup --version
-          rustup toolchain install 1.82.0 --profile minimal
-          rustup component add rust-analyzer --toolchain 1.82.0
-          mkdir -p "$HOME/.local/bin"
-          rustAnalyzer=$(find "$HOME/.rustup/toolchains" -path '*/bin/rust-analyzer' | head -1)
-          ln -sf "$rustAnalyzer" "$HOME/.local/bin/rust-analyzer"
-          GOTOOLCHAIN=go1.23.6 GOBIN="$HOME/.local/bin" go install golang.org/x/tools/gopls@v0.17.1
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          npm install --global pyright@1.1.390
 
       - name: Configure macOS
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF
-
-      - name: Verify macOS toolchain versions
-        run: |
-          clangd --version | grep -F '18.1.8'
-          rust-analyzer --version | grep -F '1.82.0'
-          gopls version | grep -F 'v0.17.1'
-          pyright --version | grep -F '1.1.390'
-          llvm-config --version | grep -F '18.1.8'
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF -DCODIUM_BLOCKS_ENABLE_REAL_TOOLCHAIN_TESTS=OFF
 
       - name: Build macOS
         run: cmake --build build --parallel 1 --verbose

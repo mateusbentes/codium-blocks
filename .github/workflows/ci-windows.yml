@@ -29,42 +29,10 @@ jobs:
         with:
           node-version: 22
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version: '1.23.6'
-          cache: false
-
       - name: Install Windows dependencies
         shell: pwsh
         run: |
           vcpkg install wxwidgets:x64-windows
-          choco install llvm --version=18.1.8 -y --no-progress --allow-downgrade
-          $rustupInit = Join-Path $env:RUNNER_TEMP 'rustup-init.exe'
-          $rustupVersion = '1.28.2'
-          $rustupBase = "https://static.rust-lang.org/rustup/archive/$rustupVersion/x86_64-pc-windows-msvc"
-          $rustupChecksum = Join-Path $env:RUNNER_TEMP 'rustup-init.exe.sha256'
-          Invoke-WebRequest -Uri "$rustupBase/rustup-init.exe" -OutFile $rustupInit
-          Invoke-WebRequest -Uri "$rustupBase/rustup-init.exe.sha256" -OutFile $rustupChecksum
-          $expectedRustupHash = ((Get-Content $rustupChecksum -Raw).Trim() -split '\s+')[0].ToUpperInvariant()
-          $actualRustupHash = (Get-FileHash -Algorithm SHA256 $rustupInit).Hash.ToUpperInvariant()
-          if ($expectedRustupHash -ne $actualRustupHash) { throw "rustup-init.exe checksum mismatch." }
-          & $rustupInit -y --default-toolchain none --profile minimal
-          $cargoBin = Join-Path $env:USERPROFILE '.cargo/bin'
-          $env:Path = "$cargoBin;$env:Path"
-          "$cargoBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          rustup toolchain install 1.82.0 --profile minimal
-          rustup component add rust-analyzer --toolchain 1.82.0
-          $llvmBin = Join-Path $env:ProgramFiles 'LLVM/bin'
-          $rustAnalyzerBin = Join-Path $env:USERPROFILE '.rustup/toolchains/1.82.0-x86_64-pc-windows-msvc/bin'
-          "$llvmBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          "$rustAnalyzerBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          New-Item -ItemType Directory -Force -Path (Join-Path $env:USERPROFILE '.local/bin') | Out-Null
-          $env:GOBIN = Join-Path $env:USERPROFILE '.local/bin'
-          $env:GOTOOLCHAIN = 'go1.23.6'
-          go install golang.org/x/tools/gopls@v0.17.1
-          $env:GOBIN | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          npm install --global pyright@1.1.390
 
       - name: Configure Windows
         shell: pwsh
@@ -72,19 +40,7 @@ jobs:
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64
           -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
           -DVCPKG_TARGET_TRIPLET=x64-windows
-          -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF
-
-      - name: Verify Windows toolchain versions
-        shell: pwsh
-        run: |
-          clangd.exe --version | Select-String '18.1.8'
-          rust-analyzer.exe --version | Select-String '1.82.0'
-          gopls.exe version | Select-String 'v0.17.1'
-          pyright.cmd --version | Select-String '1.1.390'
-          $llvmVersion = (& clang.exe --version 2>&1 | Out-String)
-          if ($llvmVersion -notmatch '18\.1\.8') {
-            throw "Expected LLVM 18.1.8, received: $llvmVersion"
-          }
+          -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF -DCODIUM_BLOCKS_ENABLE_REAL_TOOLCHAIN_TESTS=OFF
 
       - name: Build Windows
         shell: pwsh

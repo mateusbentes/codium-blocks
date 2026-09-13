@@ -14,7 +14,7 @@ These registries remain smaller than the VS Code contribution API. They provide 
 
 ## Reproducible quality commands
 
-The ordinary local gate remains the portable CMake build and CTest suite documented in [`QUALITY_GATES.md`](QUALITY_GATES.md). Linux contributors can run the checked-in coverage preset after installing CMake and the pinned Python tool listed in `tools/coverage/requirements.txt`:
+The ordinary local gate remains the portable CMake build and CTest suite documented in [`QUALITY_GATES.md`](QUALITY_GATES.md). To reproduce the platform CI boundary on a machine without external language servers or debugger adapters, pass `-DCODIUM_BLOCKS_ENABLE_REAL_TOOLCHAIN_TESTS=OFF`; local development leaves this option enabled by default so installed real tools can be exercised opportunistically. Linux contributors can run the checked-in coverage preset after installing CMake and the pinned Python tool listed in `tools/coverage/requirements.txt`:
 
 ```bash
 python3 -m venv .quality-venv

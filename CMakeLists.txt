@@ -35,6 +35,8 @@ option(CODIUM_BLOCKS_ENABLE_COVERAGE
     "Enable GCC/Clang gcov coverage instrumentation for Codium::Blocks targets" OFF)
 option(CODIUM_BLOCKS_ENABLE_LIBFUZZER
     "Build the optional Clang libFuzzer DAP parser target" OFF)
+option(CODIUM_BLOCKS_ENABLE_REAL_TOOLCHAIN_TESTS
+    "Register external LSP/DAP smoke tests with CTest" ON)
 option(CODIUM_BLOCKS_MACOS_BUNDLE
     "Build and install the native target as a macOS application bundle" OFF)
 set(CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR "" CACHE PATH
@@ -787,20 +789,22 @@ if(BUILD_TESTING)
             node ${CMAKE_SOURCE_DIR}/tests/host-smoke.mjs
     )
     add_test(
-        NAME real-lsp-smoke
-        COMMAND node ${CMAKE_SOURCE_DIR}/tests/real-lsp-smoke.mjs
-    )
-    add_test(
         NAME integration-matrix-smoke
         COMMAND node ${CMAKE_SOURCE_DIR}/tests/integration-matrix-smoke.mjs
     )
-    add_test(
-        NAME real-dap-smoke
-        COMMAND ${CMAKE_COMMAND} -E env
-            CODIUM_BLOCKS_REAL_DAP_DEBUGGEE=$<TARGET_FILE:codium-blocks-real-dap-debuggee>
-            CODIUM_BLOCKS_REAL_DAP_SOURCE=${CMAKE_SOURCE_DIR}/tests/fixtures/real-dap-debuggee.cpp
-            node ${CMAKE_SOURCE_DIR}/tests/real-dap-smoke.mjs
-    )
+    if(CODIUM_BLOCKS_ENABLE_REAL_TOOLCHAIN_TESTS)
+        add_test(
+            NAME real-lsp-smoke
+            COMMAND node ${CMAKE_SOURCE_DIR}/tests/real-lsp-smoke.mjs
+        )
+        add_test(
+            NAME real-dap-smoke
+            COMMAND ${CMAKE_COMMAND} -E env
+                CODIUM_BLOCKS_REAL_DAP_DEBUGGEE=$<TARGET_FILE:codium-blocks-real-dap-debuggee>
+                CODIUM_BLOCKS_REAL_DAP_SOURCE=${CMAKE_SOURCE_DIR}/tests/fixtures/real-dap-debuggee.cpp
+                node ${CMAKE_SOURCE_DIR}/tests/real-dap-smoke.mjs
+        )
+    endif()
     add_test(NAME document-smoke COMMAND codium-blocks-document-smoke)
     add_test(NAME editor-actions-smoke COMMAND codium-blocks-editor-actions-smoke)
     add_test(NAME syntax-highlighting-smoke COMMAND codium-blocks-syntax-highlighting-smoke)

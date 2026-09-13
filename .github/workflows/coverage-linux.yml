@@ -36,7 +36,8 @@ jobs:
       - name: Install pinned coverage tool
         run: |
           python3 -m venv .quality-venv
-          .quality-venv/bin/python -m pip install --requirement tools/coverage/requirements.txt
+          .quality-venv/bin/python -m pip install --disable-pip-version-check --retries 5 --timeout 60 \
+            --only-binary=:all: --requirement tools/coverage/requirements.txt
       - name: Configure and build coverage tree
         run: |
           cmake --preset coverage-gcc
