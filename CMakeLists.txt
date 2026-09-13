@@ -27,6 +27,10 @@ set(CODIUM_BLOCKS_CODEBLOCKS_COMPILER_PLUGIN "" CACHE FILEPATH "Explicit Code::B
 set(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGER_PLUGIN "" CACHE FILEPATH "Optional explicit Code::Blocks Debugger plugin path")
 option(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_DEBUGGERGDB_PROVIDER
     "Build the separately compiled private DebuggerGDB data provider" OFF)
+option(CODIUM_BLOCKS_STRICT_WARNINGS
+    "Treat warnings as errors for Codium::Blocks targets" OFF)
+option(CODIUM_BLOCKS_ENABLE_SANITIZERS
+    "Enable AddressSanitizer and UndefinedBehaviorSanitizer for Codium::Blocks targets" OFF)
 option(CODIUM_BLOCKS_MACOS_BUNDLE
     "Build and install the native target as a macOS application bundle" OFF)
 set(CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR "" CACHE PATH
@@ -51,8 +55,27 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 function(codium_blocks_enable_warnings target)
     if(MSVC)
         target_compile_options(${target} PRIVATE /W4)
+        if(CODIUM_BLOCKS_STRICT_WARNINGS)
+            target_compile_options(${target} PRIVATE /WX)
+        endif()
+        if(CODIUM_BLOCKS_ENABLE_SANITIZERS)
+            if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+                target_compile_options(${target} PRIVATE /fsanitize=address)
+                target_link_options(${target} PRIVATE /INCREMENTAL:NO /fsanitize=address)
+            else()
+                message(FATAL_ERROR
+                    "CODIUM_BLOCKS_ENABLE_SANITIZERS requires an AddressSanitizer-capable MSVC or GNU/Clang compiler")
+            endif()
+        endif()
     else()
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+        if(CODIUM_BLOCKS_STRICT_WARNINGS)
+            target_compile_options(${target} PRIVATE -Werror)
+        endif()
+        if(CODIUM_BLOCKS_ENABLE_SANITIZERS)
+            target_compile_options(${target} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+            target_link_options(${target} PRIVATE -fsanitize=address,undefined)
+        endif()
     endif()
 endfunction()
 
@@ -462,6 +485,17 @@ target_include_directories(codium-blocks-security-smoke PRIVATE native/include)
 codium_blocks_enable_warnings(codium-blocks-security-smoke)
 target_link_libraries(codium-blocks-security-smoke PRIVATE ${wxWidgets_LIBRARIES} ${CODIUM_BLOCKS_CRYPTO_LIB})
 
+add_executable(codium-blocks-invariants-smoke
+    native/src/extension_security.cpp
+    native/src/localization.cpp
+    native/src/problem_model.cpp
+    native/src/terminal_screen.cpp
+    tests/invariants-smoke.cpp
+)
+target_include_directories(codium-blocks-invariants-smoke PRIVATE native/include)
+codium_blocks_enable_warnings(codium-blocks-invariants-smoke)
+target_link_libraries(codium-blocks-invariants-smoke PRIVATE ${wxWidgets_LIBRARIES})
+
 add_executable(codium-blocks-workspace-smoke
     native/src/workspace.cpp
     tests/workspace-smoke.cpp
@@ -730,6 +764,8 @@ if(BUILD_TESTING)
     add_test(NAME lsp-navigation-smoke COMMAND codium-blocks-lsp-navigation-smoke)
     add_test(NAME vsix-smoke COMMAND codium-blocks-vsix-smoke)
     add_test(NAME security-smoke COMMAND codium-blocks-security-smoke)
+    add_test(NAME invariants-smoke
+        COMMAND codium-blocks-invariants-smoke ${CMAKE_SOURCE_DIR})
     add_test(NAME workspace-smoke COMMAND codium-blocks-workspace-smoke)
     add_test(NAME task-smoke COMMAND codium-blocks-task-smoke)
     add_test(NAME target-discovery-smoke COMMAND codium-blocks-target-discovery-smoke)

@@ -85,6 +85,22 @@ jobs:
       - name: Run Linux CTest
         run: ctest --test-dir build --output-on-failure
 
+      - name: Run Linux strict sanitizer invariants
+        env:
+          ASAN_OPTIONS: halt_on_error=1:detect_leaks=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          cmake -S . -B build-sanitized \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTING=ON \
+            -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF \
+            -DCODIUM_BLOCKS_STRICT_WARNINGS=ON \
+            -DCODIUM_BLOCKS_ENABLE_SANITIZERS=ON
+          cmake --build build-sanitized --parallel 1
+          ctest --test-dir build-sanitized \
+            -R '^(invariants-smoke|security-smoke|problem-model-smoke|terminal-screen-smoke)$' \
+            --output-on-failure
+
       - name: Run Linux Extension Host smoke test
         run: node tests/host-smoke.mjs
 

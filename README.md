@@ -8,6 +8,8 @@ The target desktop platforms are **Windows, macOS, and Linux**. See [`docs/PLATF
 
 Every push to `main` and every pull request is checked by isolated GitHub Actions workflows for the three target operating systems. The workflows build the native application, run CTest, validate the versioned LSP/DAP matrices, check JavaScript syntax, and execute the Extension Host smoke test. The optional Code::Blocks SDK and DebuggerGDB jobs are isolated in a separate Linux workflow. Separate, manually triggered or tag-triggered package workflows build Linux, macOS, and Windows artifacts without publishing a release automatically.
 
+The automated quality layer also includes a deterministic property-style `invariants-smoke`, opt-in strict-warning and sanitizer CMake profiles, and a dedicated Linux sanitizer gate. See [`docs/QUALITY_GATES.md`](docs/QUALITY_GATES.md) for reproducible commands, covered invariants, and the checks that intentionally remain periodic or human-led.
+
 ## Current status
 
 The current `1.0.1` development snapshot builds on the completed `0.9.0` baseline and provides the following. It is not a stable release until a matching `v1.0.1` tag, clean package validation, and human release review have been completed. See [`CHANGELOG.md`](CHANGELOG.md) for the version history:
