@@ -2,7 +2,7 @@
 
 ## Goal
 
-Codium::Blocks 1.0 must make compiler and language feedback visible at the point where the user can act on it. This follows the established code-navigation and issue-feedback expectations documented by Visual Studio Code and Xcode [1] [2]. A warning or error should be present in the originating Build or Terminal output, in the Problems view, and in the source editor whenever a reliable source location is available.
+Codium::Blocks 1.0 must make compiler and language feedback visible at the point where the user can act on it. This follows the established code-navigation and issue-feedback expectations documented by Visual Studio Code and Xcode [1](https://code.visualstudio.com/docs/editor/codebasics) [2](https://developer.apple.com/documentation/xcode). A warning or error should be present in the originating Build or Terminal output, in the Problems view, and in the source editor whenever a reliable source location is available.
 
 The system is not a second compiler. It is a normalized diagnostic layer that receives messages from language servers, compiler parsers, task runners, terminal output, and debug adapters. Raw output is always retained even when parsing fails.
 
@@ -48,7 +48,7 @@ The Build menu, the Problems toolbar, and the command palette expose the same re
 
 ## Build and compiler parsing
 
-The parser begins with conservative support for GCC/Clang, MSVC, Rust, ANSI-prefixed output, and common language-server formats. The Clang diagnostic model is one of the external compiler references for this design [3]. A line becomes a structured problem only when the parser can identify a plausible path and location. Rust diagnostics are assembled from an `error[...]` or `warning[...]` header followed by a `--> path:line:column` location. Unrecognized lines remain raw text.
+The parser begins with conservative support for GCC/Clang, MSVC, Rust, ANSI-prefixed output, and common language-server formats. The Clang diagnostic model is one of the external compiler references for this design [3](https://clang.llvm.org/docs/UsersManual.html). A line becomes a structured problem only when the parser can identify a plausible path and location. Rust diagnostics are assembled from an `error[...]` or `warning[...]` header followed by a `--> path:line:column` location. Unrecognized lines remain raw text.
 
 Compiler output commonly appears in the following forms:
 
@@ -85,7 +85,3 @@ The automated and manual test matrix must cover a clean build, a failed build, a
 1. [Visual Studio Code code navigation and editor basics](https://code.visualstudio.com/docs/editor/codebasics)
 2. [Apple Xcode documentation](https://developer.apple.com/documentation/xcode)
 3. [Clang user manual and diagnostics](https://clang.llvm.org/docs/UsersManual.html)
-
-[1]: https://code.visualstudio.com/docs/editor/codebasics "Visual Studio Code code navigation and editor basics"
-[2]: https://developer.apple.com/documentation/xcode "Apple Xcode documentation"
-[3]: https://clang.llvm.org/docs/UsersManual.html "Clang user manual and diagnostics"

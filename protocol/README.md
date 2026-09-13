@@ -45,7 +45,7 @@ The `ready` event is emitted before requests are accepted. The `hello` response 
 {"id":9,"type":"shutdown"}
 ```
 
-Protocol version 2 adds persistent extension configuration, manifest contributions returned to the native UI, workspace document notifications, Tree View contributions, and an LSP process manager with standard `Content-Length` framing aligned with the Language Server Protocol specification [1]. The native client sends `initialize`, `initialized`, `textDocument/didOpen`, and `textDocument/didChange`, and can request hover, completion, semantic tokens, definitions, references, rename, and code actions. Native debug-adapter communication follows the corresponding Debug Adapter Protocol framing and lifecycle conventions [2]. LSP responses and `textDocument/publishDiagnostics` notifications are forwarded to the native event loop as raw messages plus normalized events.
+Protocol version 2 adds persistent extension configuration, manifest contributions returned to the native UI, workspace document notifications, Tree View contributions, and an LSP process manager with standard `Content-Length` framing aligned with the Language Server Protocol specification [1](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/). The native client sends `initialize`, `initialized`, `textDocument/didOpen`, and `textDocument/didChange`, and can request hover, completion, semantic tokens, definitions, references, rename, and code actions. Native debug-adapter communication follows the corresponding Debug Adapter Protocol framing and lifecycle conventions [2](https://microsoft.github.io/debug-adapter-protocol/specification). LSP responses and `textDocument/publishDiagnostics` notifications are forwarded to the native event loop as raw messages plus normalized events.
 
 ## Security boundary
 
@@ -59,6 +59,3 @@ Any wire-contract change must update this document, `tests/host-smoke.mjs`, the 
 
 1. [Language Server Protocol specification](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/)
 2. [Debug Adapter Protocol specification](https://microsoft.github.io/debug-adapter-protocol/specification)
-
-[1]: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/ "Language Server Protocol specification"
-[2]: https://microsoft.github.io/debug-adapter-protocol/specification "Debug Adapter Protocol specification"

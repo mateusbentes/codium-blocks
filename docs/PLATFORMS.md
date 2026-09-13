@@ -28,11 +28,11 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-For the application bundle and DMG workflow, add `-DCODIUM_BLOCKS_MACOS_BUNDLE=ON` and use `cpack -C Release` after the build, following the CMake installation and packaging model [1]. The default Extension Host state directory is `~/Library/Application Support/CodiumBlocks`.
+For the application bundle and DMG workflow, add `-DCODIUM_BLOCKS_MACOS_BUNDLE=ON` and use `cpack -C Release` after the build, following the CMake installation and packaging model [1](https://cmake.org/cmake/help/latest/guide/tutorial/Installing%20and%20Testing%20CMake.html). The default Extension Host state directory is `~/Library/Application Support/CodiumBlocks`.
 
 ## Windows
 
-Install Visual Studio 2022 with the Desktop C++ workload, CMake, vcpkg, and Node.js. The supported CI/package baseline is **Visual Studio 17 2022, x64, and the vcpkg `x64-windows` triplet**. Configure the project from a **Developer PowerShell for VS 2022**; vcpkg's documented setup model is the source for this toolchain arrangement [2].
+Install Visual Studio 2022 with the Desktop C++ workload, CMake, vcpkg, and Node.js. The supported CI/package baseline is **Visual Studio 17 2022, x64, and the vcpkg `x64-windows` triplet**. Configure the project from a **Developer PowerShell for VS 2022**; vcpkg's documented setup model is the source for this toolchain arrangement [2](https://vcpkg.io/en/getting-started.html).
 
 ```powershell
 vcpkg install wxwidgets:x64-windows
@@ -76,6 +76,3 @@ The repository also contains isolated package workflows. Linux produces Debian a
 
 1. [CMake installation and testing guide](https://cmake.org/cmake/help/latest/guide/tutorial/Installing%20and%20Testing%20CMake.html)
 2. [vcpkg getting started guide](https://vcpkg.io/en/getting-started.html)
-
-[1]: https://cmake.org/cmake/help/latest/guide/tutorial/Installing%20and%20Testing%20CMake.html "CMake installation and testing guide"
-[2]: https://vcpkg.io/en/getting-started.html "vcpkg getting started guide"

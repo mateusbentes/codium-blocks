@@ -8,17 +8,17 @@ This roadmap describes verified capabilities and bounded follow-up work. It does
 
 ## Verified product foundation
 
-The native workbench provides a project navigator, tabbed documents, a line-number gutter, a dockable bottom workbench, Problems, Build, Terminal, Debug, Output, and Tasks views, a command palette, workspace trust, and a persistent scheme bar [1]. The document model supports UTF-8 text, dirty state, saving, multiple buffers, and workspace-relative paths. The Problems view follows the diagnostic model defined in the dedicated Problems contract [2].
+The native workbench provides a project navigator, tabbed documents, a line-number gutter, a dockable bottom workbench, Problems, Build, Terminal, Debug, Output, and Tasks views, a command palette, workspace trust, and a persistent scheme bar [1](https://github.com/mateusbentes/codium-blocks/blob/main/docs/UI_DESIGN.md). The document model supports UTF-8 text, dirty state, saving, multiple buffers, and workspace-relative paths. The Problems view follows the diagnostic model defined in the dedicated Problems contract [2](https://github.com/mateusbentes/codium-blocks/blob/main/docs/PROBLEMS.md).
 
-The build system provides CMake, Make, Cargo, npm, Ninja, CMake Presets, and Code::Blocks target discovery through a common target model [3]. User-defined tasks and schemes use executable argument vectors without implicit shell execution. Build sessions preserve task metadata, selected target, configuration, toolchain, elapsed time, status, output, and diagnostics. Build and Run use the selected scheme and discovered artifact candidates.
+The build system provides CMake, Make, Cargo, npm, Ninja, CMake Presets, and Code::Blocks target discovery through a common target model [3](https://github.com/mateusbentes/codium-blocks/blob/main/docs/CODEBLOCKS_INTEGRATION.md). User-defined tasks and schemes use executable argument vectors without implicit shell execution. Build sessions preserve task metadata, selected target, configuration, toolchain, elapsed time, status, output, and diagnostics. Build and Run use the selected scheme and discovered artifact candidates.
 
 The editor provides lexical highlighting, semantic-token decoding, Go to File, document and workspace symbol navigation, definition and declaration requests, references, completion text-edit application, multi-block hover presentation, rename, code actions, delimiter matching, paired delimiters, basic indentation, Find and Replace, Go to Line, and circular tab navigation. A deterministic fake server and an optional real-server harness exercise the LSP transport.
 
 The terminal provides PTY support on Unix-like systems, dynamically selected ConPTY support on Windows with a pipe fallback, ANSI and VT handling, resize propagation, scrollback, selection, bracketed paste, mouse reporting, terminal profiles, safe hyperlinks, synchronized updates, and bounded graphics-payload consumption. Remaining Unicode and image-rendering limitations are documented separately.
 
-The debugger foundation provides DAP framing, adapter lifecycle controls, session states, automatic refresh after stopped events, clearing of stale views after continued or terminated events, threads, stack frames, scopes, variables, watches, source mapping, and a native Debug panel [5]. The client persists source breakpoints per workspace and sends conditional, hit-count, and logpoint fields. It also sends function-breakpoint and data-breakpoint requests only when the adapter advertises the corresponding capabilities.
+The debugger foundation provides DAP framing, adapter lifecycle controls, session states, automatic refresh after stopped events, clearing of stale views after continued or terminated events, threads, stack frames, scopes, variables, watches, source mapping, and a native Debug panel [5](https://github.com/mateusbentes/codium-blocks/blob/main/docs/DEBUGGING.md). The client persists source breakpoints per workspace and sends conditional, hit-count, and logpoint fields. It also sends function-breakpoint and data-breakpoint requests only when the adapter advertises the corresponding capabilities.
 
-The Code::Blocks boundary is implemented as an optional isolated process [4]. The public SDK path discovers projects, normalizes official project and compiler events, builds matched targets, captures compiler output, and exposes debugger lifecycle information. The private DebuggerGDB provider is separately compiled from an exact source and ABI identity. Its snapshots are transferred as value-owned data, and the main process never loads private Code::Blocks plugin libraries.
+The Code::Blocks boundary is implemented as an optional isolated process [4](https://github.com/mateusbentes/codium-blocks/blob/main/docs/CODEBLOCKS_ADAPTER_PROTOCOL.md). The public SDK path discovers projects, normalizes official project and compiler events, builds matched targets, captures compiler output, and exposes debugger lifecycle information. The private DebuggerGDB provider is separately compiled from an exact source and ABI identity. Its snapshots are transferred as value-owned data, and the main process never loads private Code::Blocks plugin libraries.
 
 ## Current delivery status
 
@@ -95,9 +95,3 @@ Post-1.0 work may add mathematically complete Unicode grapheme and width handlin
 3. [Codium::Blocks Code::Blocks SDK integration](https://github.com/mateusbentes/codium-blocks/blob/main/docs/CODEBLOCKS_INTEGRATION.md)
 4. [Codium::Blocks adapter protocol](https://github.com/mateusbentes/codium-blocks/blob/main/docs/CODEBLOCKS_ADAPTER_PROTOCOL.md)
 5. [Codium::Blocks debugging model](https://github.com/mateusbentes/codium-blocks/blob/main/docs/DEBUGGING.md)
-
-[1]: https://github.com/mateusbentes/codium-blocks/blob/main/docs/UI_DESIGN.md "Codium::Blocks native interface specification"
-[2]: https://github.com/mateusbentes/codium-blocks/blob/main/docs/PROBLEMS.md "Codium::Blocks diagnostics contract"
-[3]: https://github.com/mateusbentes/codium-blocks/blob/main/docs/CODEBLOCKS_INTEGRATION.md "Codium::Blocks Code::Blocks SDK integration"
-[4]: https://github.com/mateusbentes/codium-blocks/blob/main/docs/CODEBLOCKS_ADAPTER_PROTOCOL.md "Codium::Blocks adapter protocol"
-[5]: https://github.com/mateusbentes/codium-blocks/blob/main/docs/DEBUGGING.md "Codium::Blocks debugging model"

@@ -496,6 +496,19 @@ target_include_directories(codium-blocks-invariants-smoke PRIVATE native/include
 codium_blocks_enable_warnings(codium-blocks-invariants-smoke)
 target_link_libraries(codium-blocks-invariants-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
+add_executable(codium-blocks-fuzz-smoke
+    native/src/dap_client.cpp
+    native/src/extension_security.cpp
+    native/src/terminal_screen.cpp
+    native/src/vsix_manager.cpp
+    native/src/signature_verifier.cpp
+    tests/fuzz-smoke.cpp
+)
+target_include_directories(codium-blocks-fuzz-smoke PRIVATE native/include)
+codium_blocks_enable_warnings(codium-blocks-fuzz-smoke)
+target_link_libraries(codium-blocks-fuzz-smoke PRIVATE
+    ${wxWidgets_LIBRARIES} ${CODIUM_BLOCKS_CRYPTO_LIB})
+
 add_executable(codium-blocks-workspace-smoke
     native/src/workspace.cpp
     tests/workspace-smoke.cpp
@@ -766,6 +779,12 @@ if(BUILD_TESTING)
     add_test(NAME security-smoke COMMAND codium-blocks-security-smoke)
     add_test(NAME invariants-smoke
         COMMAND codium-blocks-invariants-smoke ${CMAKE_SOURCE_DIR})
+    add_test(NAME fuzz-smoke
+        COMMAND $<TARGET_FILE:codium-blocks-fuzz-smoke> ${CMAKE_SOURCE_DIR})
+    add_test(NAME fuzz-host-smoke
+        COMMAND ${CMAKE_COMMAND} -E env
+            CODIUM_BLOCKS_ROOT=${CMAKE_SOURCE_DIR}
+            node ${CMAKE_SOURCE_DIR}/tests/fuzz-host-smoke.mjs)
     add_test(NAME workspace-smoke COMMAND codium-blocks-workspace-smoke)
     add_test(NAME task-smoke COMMAND codium-blocks-task-smoke)
     add_test(NAME target-discovery-smoke COMMAND codium-blocks-target-discovery-smoke)

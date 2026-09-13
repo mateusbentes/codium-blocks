@@ -1,0 +1,86 @@
+name: Codium::Blocks bounded fuzzing
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codium-blocks-fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz-linux:
+    name: Linux bounded fuzzing
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y build-essential cmake pkg-config libwxgtk3.2-dev libssl-dev
+
+      - name: Configure sanitized fuzz build
+        run: |
+          cmake -S . -B build-fuzz \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTING=ON \
+            -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF \
+            -DCODIUM_BLOCKS_STRICT_WARNINGS=ON \
+            -DCODIUM_BLOCKS_ENABLE_SANITIZERS=ON
+
+      - name: Build fuzz targets
+        run: cmake --build build-fuzz --target codium-blocks-fuzz-smoke --parallel 2
+
+      - name: Run bounded native fuzzing
+        env:
+          ASAN_OPTIONS: halt_on_error=1:detect_leaks=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+          CODIUM_BLOCKS_FUZZ_ITERATIONS: 512
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          ctest --test-dir build-fuzz -R '^fuzz-smoke$' --output-on-failure 2>&1 | tee artifacts/native-fuzz.log
+
+      - name: Run bounded JSON and LSP fuzzing
+        env:
+          CODIUM_BLOCKS_FUZZ_ITERATIONS: 128
+        run: |
+          set -o pipefail
+          node --check tests/fuzz-host-smoke.mjs
+          node --check tests/fuzz-lsp-server.mjs
+          node --check tests/fuzz-dap-adapter.mjs
+          mkdir -p artifacts
+          ctest --test-dir build-fuzz -R '^fuzz-host-smoke$' --output-on-failure 2>&1 | tee artifacts/host-fuzz.log
+
+      - name: Run bounded mutation checks
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          python3 tests/mutation-smoke.py --budget 3 --timeout 120 2>&1 | tee artifacts/mutation.log
+
+      - name: Upload fuzz failure logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: codium-blocks-fuzz-linux-${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 14

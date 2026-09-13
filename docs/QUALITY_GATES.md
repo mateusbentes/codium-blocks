@@ -64,9 +64,26 @@ Sanitizers do not prove the absence of data races, deadlocks, protocol design er
 
 These are property-style checks, not a claim of exhaustive formal verification. The seed is fixed for reproducibility, and the generated case count is intentionally bounded so the smoke remains suitable for every portable build.
 
-## Future periodic checks
+## Bounded fuzzing and mutation checks
 
-Mutation testing and long-running fuzzing are deliberately separate from the per-commit gate. Mutation testing is useful for measuring whether tests detect deliberate changes, while fuzzing is particularly valuable for DAP framing, terminal escape sequences, diagnostics, JSON/LSP input, catalog parsing, and VSIX archive boundaries. Those checks should run with bounded budgets in manually triggered or scheduled jobs after their corpus, sanitizer configuration, and failure-artifact retention are reviewed.
+The repository now includes bounded, offline fuzz-oriented checks. `fuzz-smoke` is a native CTest target with fixed pseudo-random generation and a configurable budget. It exercises DAP `Content-Length` framing, fragmented VT/ANSI input, cursor bounds, and VSIX archive mutation through the production parser and installer. `fuzz-host-smoke` starts a fresh Extension Host for each case and exercises JSON Lines requests plus valid, malformed, truncated, oversized, and mixed-case LSP headers through a controlled child process. Neither harness accesses the network or claims exhaustive coverage.
+
+The separate `fuzz-linux.yml` workflow runs these smokes with AddressSanitizer and UndefinedBehaviorSanitizer automatically for pushes to `main` and pull requests targeting `main`, as well as through a bounded manual dispatch and a weekly schedule. It retains logs only when the job fails. The workflow is intentionally separate from the platform build workflows and does not publish releases or install the optional Code::Blocks SDK.
+
+The bounded mutation check is `tests/mutation-smoke.py`. It creates disposable source copies, applies three exact mutations to terminal carriage return, the HTTPS registry allowlist, and DAP header detection, and requires the corresponding existing smoke to fail. A surviving mutant is a hard failure. This is a small test-strength signal, not a mutation score for the entire codebase:
+
+```bash
+python3 tests/mutation-smoke.py --budget 3 --timeout 120
+```
+
+The fuzz smoke can be replayed with a larger but still bounded local budget:
+
+```bash
+CODIUM_BLOCKS_FUZZ_ITERATIONS=512 \
+  ctest --test-dir build-fuzz -R '^(fuzz-smoke|fuzz-host-smoke)$' --output-on-failure
+```
+
+Mutation testing and fuzzing do not prove the absence of data races, deadlocks, protocol design errors, accessibility defects, visual regressions, ABI incompatibilities, or release-signing problems. The existing deterministic invariant smoke remains the fast per-build property-style check; these fuzz and mutation jobs add bounded depth without replacing platform CI or human review.
 
 A passing automated gate is evidence about the tested behavior at a specific commit and toolchain. It is not a substitute for human review of architecture, keyboard and focus behavior, screen readers, high-DPI rendering, clean-machine installation, package signing, notarization, or product intent.
 
