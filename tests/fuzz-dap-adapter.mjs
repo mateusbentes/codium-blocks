@@ -10,4 +10,7 @@ const payload = readFileSync(payloadPath);
 // This is a finite parser fixture. Closing stdout after the payload lets the
 // native client observe natural process exit instead of accumulating live
 // Node children that must be force-terminated on Windows.
-process.stdout.end(payload, () => process.exit(0));
+// The native side may close the pipe after receiving a malformed/truncated
+// case; that expected teardown must not become an uncaught Node EPIPE.
+process.stdout.on('error', () => { process.exitCode = 0; });
+process.stdout.end(payload);
