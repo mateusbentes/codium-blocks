@@ -52,6 +52,8 @@ install_manifest.txt
 *.profraw
 *.profdata
 coverage/
+!tools/coverage/
+!tools/coverage/requirements.txt
 
 # Visual Studio / MSBuild / Windows tooling
 .vs/
