@@ -70,6 +70,12 @@ bool IsSha256Digest(const wxString& digest)
     return true;
 }
 
+bool RemoveDirectoryIfPresent(const wxString& path)
+{
+    if (!wxDirExists(path)) return true;
+    return wxFileName::Rmdir(path, wxPATH_RMDIR_RECURSIVE);
+}
+
 } // namespace
 
 VsixManager::VsixManager(wxString extensionRoot)
@@ -125,8 +131,8 @@ bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expe
     const wxString destination = extensionRoot_ + wxFILE_SEP_PATH + source.GetName();
     const wxString staging = extensionRoot_ + wxFILE_SEP_PATH + wxS(".staging-") + source.GetName();
     const wxString rollback = extensionRoot_ + wxFILE_SEP_PATH + wxS(".rollback-") + source.GetName();
-    wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
-    wxFileName::Rmdir(rollback, wxPATH_RMDIR_RECURSIVE);
+    RemoveDirectoryIfPresent(staging);
+    RemoveDirectoryIfPresent(rollback);
     if (!wxFileName::Mkdir(staging, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL)) {
         if (message) *message = wxString::Format(wxS("Could not create VSIX staging directory: %s."), staging);
         return false;
@@ -134,7 +140,7 @@ bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expe
 
     wxFFileInputStream input(vsixPath);
     if (!input.IsOk()) {
-        wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+        RemoveDirectoryIfPresent(staging);
         if (message) *message = wxString::Format(wxS("Could not open the VSIX: %s."), vsixPath);
         return false;
     }
@@ -148,13 +154,13 @@ bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expe
     wxFileOffset extractedBytes = 0;
     while ((entry.reset(archive.GetNextEntry()), entry != nullptr)) {
         if (++entryCount > kMaximumEntries) {
-            wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+            RemoveDirectoryIfPresent(staging);
             if (message) *message = wxS("VSIX contains too many archive entries.");
             return false;
         }
         const wxString entryName = entry->GetName();
         if (!IsSafeArchivePath(entryName)) {
-            wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+            RemoveDirectoryIfPresent(staging);
             if (message) *message = wxString::Format(wxS("Rejected unsafe VSIX path: %s."), entryName);
             return false;
         }
@@ -162,7 +168,7 @@ bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expe
         const wxString outputPath = ArchiveDestination(staging, entryName);
         if (entry->IsDir() || entryName.EndsWith(wxS("/")) || entryName.EndsWith(wxS("\\"))) {
             if (!wxFileName::Mkdir(outputPath, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL) && !wxDirExists(outputPath)) {
-                wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+                RemoveDirectoryIfPresent(staging);
                 if (message) *message = wxString::Format(wxS("Could not create VSIX directory: %s."), outputPath);
                 return false;
             }
@@ -171,21 +177,21 @@ bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expe
 
         const wxFileOffset declaredSize = entry->GetSize();
         if (declaredSize != wxInvalidOffset && declaredSize > kMaximumEntryBytes) {
-            wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+            RemoveDirectoryIfPresent(staging);
             if (message) *message = wxS("VSIX contains a file larger than the extraction limit.");
             return false;
         }
 
         const wxFileName outputFile(outputPath);
         if (!wxFileName::Mkdir(outputFile.GetPath(), wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL) && !wxDirExists(outputFile.GetPath())) {
-            wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+            RemoveDirectoryIfPresent(staging);
             if (message) *message = wxString::Format(wxS("Could not create VSIX directory: %s."), outputFile.GetPath());
             return false;
         }
 
         wxFFileOutputStream output(outputPath);
         if (!output.IsOk()) {
-            wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+            RemoveDirectoryIfPresent(staging);
             if (message) *message = wxString::Format(wxS("Could not create VSIX file: %s."), outputPath);
             return false;
         }
@@ -197,13 +203,13 @@ bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expe
             if (count == 0) break;
             if (entryBytes > kMaximumEntryBytes - static_cast<wxFileOffset>(count) ||
                 extractedBytes > kMaximumExtractedBytes - static_cast<wxFileOffset>(count)) {
-                wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+                RemoveDirectoryIfPresent(staging);
                 if (message) *message = wxS("VSIX exceeds the extraction size limit.");
                 return false;
             }
             output.Write(buffer, count);
             if (output.LastWrite() != count || !output.IsOk()) {
-                wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+                RemoveDirectoryIfPresent(staging);
                 if (message) *message = wxString::Format(wxS("Could not extract VSIX file: %s."), outputPath);
                 return false;
             }
@@ -211,14 +217,14 @@ bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expe
             extractedBytes += static_cast<wxFileOffset>(count);
         }
         if (!output.IsOk() || (declaredSize != wxInvalidOffset && declaredSize != entryBytes)) {
-            wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+            RemoveDirectoryIfPresent(staging);
             if (message) *message = wxString::Format(wxS("Could not extract VSIX file: %s."), outputPath);
             return false;
         }
     }
 
     if (archive.GetLastError() != wxSTREAM_NO_ERROR && archive.GetLastError() != wxSTREAM_EOF) {
-        wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+        RemoveDirectoryIfPresent(staging);
         if (message) *message = wxS("The VSIX archive is invalid or could not be read.");
         return false;
     }
@@ -229,7 +235,7 @@ bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expe
     ExtensionManifest manifest;
     if (!wxFileExists(manifestPath) || !ReadTextFile(manifestPath, &manifestJson) ||
         !ExtensionSecurity::ValidateManifest(manifestJson, &manifest, &securityError)) {
-        wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+        RemoveDirectoryIfPresent(staging);
         if (message) *message = securityError.empty() ? wxS("VSIX does not contain a valid package.json manifest.") : securityError;
         return false;
     }
@@ -238,25 +244,25 @@ bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expe
         wxS("{\"name\":\"%s\",\"publisher\":\"%s\",\"version\":\"%s\",\"sha256\":\"%s\",\"trusted\":false}\n"),
         manifest.name, manifest.publisher, manifest.version, actualSha256);
     if (!WriteTextFile(staging + wxFILE_SEP_PATH + wxS(".codium-manifest.json"), metadata)) {
-        wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+        RemoveDirectoryIfPresent(staging);
         if (message) *message = wxS("Could not write extension security metadata.");
         return false;
     }
 
     if (wxDirExists(destination)) {
         if (!wxRenameFile(destination, rollback, true)) {
-            wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+            RemoveDirectoryIfPresent(staging);
             if (message) *message = wxS("Could not stage the existing extension for rollback.");
             return false;
         }
     }
     if (!wxRenameFile(staging, destination, true)) {
         if (wxDirExists(rollback)) wxRenameFile(rollback, destination, true);
-        wxFileName::Rmdir(staging, wxPATH_RMDIR_RECURSIVE);
+        RemoveDirectoryIfPresent(staging);
         if (message) *message = wxS("Could not commit the extension installation.");
         return false;
     }
-    wxFileName::Rmdir(rollback, wxPATH_RMDIR_RECURSIVE);
+    RemoveDirectoryIfPresent(rollback);
 
     if (message) *message = wxString::Format(wxS("Extension %s.%s@%s installed at %s (SHA-256 %s)."),
                                              manifest.publisher, manifest.name, manifest.version, destination, actualSha256);

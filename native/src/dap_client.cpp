@@ -241,8 +241,12 @@ bool DapClient::Stop()
 {
     if (!process_) return true;
     if (IsRunning()) {
-        SendRequest(wxS("disconnect"), wxS("{\"restart\":false,\"terminateDebuggee\":true}"));
-        wxKill(pid_, wxSIGTERM, nullptr, wxKILL_CHILDREN);
+        const bool processExists = wxProcess::Exists(pid_);
+        wxOutputStream* output = process_->GetOutputStream();
+        if (processExists && output && output->IsOk()) {
+            SendRequest(wxS("disconnect"), wxS("{\"restart\":false,\"terminateDebuggee\":true}"));
+        }
+        if (processExists) wxKill(pid_, wxSIGTERM, nullptr, wxKILL_CHILDREN);
     }
     process_->Detach();
     delete process_;

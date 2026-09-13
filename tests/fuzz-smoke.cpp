@@ -9,6 +9,7 @@
 #include <wx/filename.h>
 #include <wx/init.h>
 #include <wx/stdpaths.h>
+#include <wx/utils.h>
 #include <wx/wfstream.h>
 #include <wx/zipstrm.h>
 
@@ -49,6 +50,20 @@ void WriteBytes(const wxString& path, const std::string& bytes)
 {
     std::ofstream output(path.ToStdString(), std::ios::binary | std::ios::trunc);
     output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+}
+
+bool RemoveTreeNoThrow(const wxString& path)
+{
+    std::error_code error;
+    std::filesystem::remove_all(path.ToStdString(), error);
+    return !error;
+}
+
+bool RemoveFileNoThrow(const wxString& path)
+{
+    std::error_code error;
+    std::filesystem::remove(path.ToStdString(), error);
+    return !error;
 }
 
 bool RunDapFuzz(const wxString& root, const wxString& tempRoot, int iterations,
@@ -102,6 +117,11 @@ bool RunDapFuzz(const wxString& root, const wxString& tempRoot, int iterations,
             if (!client.IsRunning()) break;
         }
         client.Stop();
+        if (!RemoveFileNoThrow(payloadPath)) {
+            std::cerr << "fuzz-smoke: could not clean DAP case at iteration "
+                      << iteration << "\n";
+            return false;
+        }
     }
     return true;
 }
@@ -245,6 +265,11 @@ bool RunVsixFuzz(const wxString& tempRoot, int iterations, std::mt19937& generat
                       << iteration << "\n";
             return false;
         }
+        if (!RemoveTreeNoThrow(installRoot) || !RemoveFileNoThrow(path)) {
+            std::cerr << "fuzz-smoke: could not clean VSIX case at iteration "
+                      << iteration << "\n";
+            return false;
+        }
     }
     return true;
 }
@@ -261,8 +286,12 @@ int main(int argc, char** argv)
 
     const wxString root = wxString::FromUTF8(argv[1]);
     const wxString tempRoot = wxStandardPaths::Get().GetTempDir() + wxFILE_SEP_PATH +
-                              wxS("codium-blocks-fuzz-smoke");
-    std::filesystem::remove_all(tempRoot.ToStdString());
+                              wxString::Format(wxS("codium-blocks-fuzz-smoke-%lu"),
+                                               wxGetProcessId());
+    if (!RemoveTreeNoThrow(tempRoot)) {
+        std::cerr << "fuzz-smoke: could not clean the temporary directory\n";
+        return 1;
+    }
     if (!wxFileName::Mkdir(tempRoot, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL)) {
         std::cerr << "fuzz-smoke: could not create temporary directory\n";
         return 1;
@@ -273,8 +302,12 @@ int main(int argc, char** argv)
     const bool ok = RunAnsiFuzz(iterations, generator) &&
                     RunDapFuzz(root, tempRoot, iterations, generator) &&
                     RunVsixFuzz(tempRoot, iterations, generator);
-    std::filesystem::remove_all(tempRoot.ToStdString());
+    const bool cleaned = RemoveTreeNoThrow(tempRoot);
     if (!ok) return 1;
+    if (!cleaned) {
+        std::cerr << "fuzz-smoke: could not clean the temporary directory\n";
+        return 1;
+    }
     std::cout << "fuzz-smoke: ok — bounded DAP, ANSI, and VSIX fuzzing; seed=0xC0D1 iterations="
               << iterations << "\n";
     return 0;
