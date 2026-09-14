@@ -65,9 +65,10 @@ jobs:
             echo 'The installed macOS bundle still references a package-manager path.' >&2
             exit 1
           fi
-          (cd build && cpack -C Release)
-          dmg=$(find build -maxdepth 1 -type f -name 'codium-blocks-*.dmg' -print -quit)
-          test -n "$dmg" && test -s "$dmg"
+          dmg="build/codium-blocks-${version}-Darwin-$(uname -m).dmg"
+          rm -f "$dmg"
+          hdiutil create -quiet -volname 'Codium::Blocks' -srcfolder "$staging" -format UDZO -ov "$dmg"
+          test -s "$dmg"
           hdiutil imageinfo "$dmg" >/dev/null
           mount_point="$RUNNER_TEMP/codium-blocks-dmg"
           rm -rf "$mount_point"
@@ -100,7 +101,7 @@ jobs:
           package_data="$RUNNER_TEMP/codium-blocks-package-data"
           rm -rf "$package_data"
           mkdir -p "$package_data"
-          CODIUM_BLOCKS_DATA="$package_data" "$packaged_app/Contents/MacOS/codium-blocks" \
+          CODIUM_BLOCKS_DATA="$package_data" "$app/Contents/MacOS/codium-blocks" \
             > build/codium-blocks-macos-package.log 2>&1 &
           app_pid=$!
           sleep 5
@@ -114,6 +115,16 @@ jobs:
             fi
           fi
           (cd build && shasum -a 256 "$(basename "$dmg")") > build/codium-blocks-macos.sha256
+
+      - name: Upload macOS package diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          if-no-files-found: ignore
+          name: codium-blocks-macos-package-diagnostics
+          path: |
+            build/codium-blocks-macos-package.log
+            build/codium-blocks-macos-dependencies.txt
 
       - name: Upload macOS package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

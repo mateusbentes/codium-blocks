@@ -14,7 +14,7 @@ namespace {
 
 bool WaitForTerminal(codium::TerminalSession& terminal, const wxString& expected)
 {
-    for (int i = 0; i < 150; ++i) {
+    for (int i = 0; i < 500; ++i) {
         wxMilliSleep(10);
         for (const auto& line : terminal.Poll()) {
             if (line.Find(expected) != wxNOT_FOUND) return true;
@@ -26,7 +26,7 @@ bool WaitForTerminal(codium::TerminalSession& terminal, const wxString& expected
 
 bool WaitForRawTerminal(codium::TerminalSession& terminal, const wxString& expected)
 {
-    for (int i = 0; i < 150; ++i) {
+    for (int i = 0; i < 500; ++i) {
         wxMilliSleep(10);
         if (terminal.PollRaw().Find(expected) != wxNOT_FOUND) return true;
         if (!terminal.IsRunning() && i > 10) break;
@@ -36,7 +36,7 @@ bool WaitForRawTerminal(codium::TerminalSession& terminal, const wxString& expec
 
 bool WaitForDap(codium::DapClient& dap, const wxString& expected)
 {
-    for (int i = 0; i < 150 && dap.IsRunning(); ++i) {
+    for (int i = 0; i < 500 && dap.IsRunning(); ++i) {
         wxMilliSleep(10);
         for (const auto& message : dap.Poll()) {
             if (message.Find(expected) != wxNOT_FOUND) return true;

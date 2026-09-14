@@ -79,7 +79,7 @@ jobs:
           cmake --install build --config Release --prefix $staging
           $package = Join-Path (Resolve-Path build) "codium-blocks-$version-Windows-portable.zip"
           Remove-Item -Force $package -ErrorAction SilentlyContinue
-          Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $package -CompressionLevel Optimal
+          Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $package -CompressionLevel Optimal -Force
           if (-not (Test-Path $package)) { throw "Windows package was not created: $package" }
           $expanded = Join-Path $env:RUNNER_TEMP 'codium-blocks-package-validation'
           Remove-Item -Recurse -Force $expanded -ErrorAction SilentlyContinue
@@ -99,9 +99,10 @@ jobs:
           $executable = (Get-ChildItem -Path $expanded -Recurse -Filter 'codium-blocks.exe' | Select-Object -First 1).FullName
           $stdout = Join-Path $env:RUNNER_TEMP 'codium-blocks-package.stdout.log'
           $stderr = Join-Path $env:RUNNER_TEMP 'codium-blocks-package.stderr.log'
+          $previousDataRoot = $env:CODIUM_BLOCKS_DATA
+          $env:CODIUM_BLOCKS_DATA = $dataRoot
           $process = Start-Process -FilePath $executable -WorkingDirectory (Split-Path $executable) -PassThru `
-            -RedirectStandardOutput $stdout -RedirectStandardError $stderr `
-            -Environment @{ CODIUM_BLOCKS_DATA = $dataRoot }
+            -RedirectStandardOutput $stdout -RedirectStandardError $stderr
           Start-Sleep -Seconds 4
           $process.Refresh()
           if ($process.HasExited) {
@@ -110,8 +111,20 @@ jobs:
             throw "Packaged executable exited during startup with code $($process.ExitCode)."
           }
           Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+          if ($null -eq $previousDataRoot) { Remove-Item Env:CODIUM_BLOCKS_DATA -ErrorAction SilentlyContinue }
+          else { $env:CODIUM_BLOCKS_DATA = $previousDataRoot }
           $hashes = Get-FileHash -Algorithm SHA256 $package
           $hashes | ForEach-Object { "$($_.Hash.ToLower())  $([System.IO.Path]::GetFileName($_.Path))" } | Set-Content build/codium-blocks-windows.sha256
+
+      - name: Upload Windows package diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          if-no-files-found: ignore
+          name: codium-blocks-windows-package-diagnostics
+          path: |
+            ${{ runner.temp }}/codium-blocks-package.stdout.log
+            ${{ runner.temp }}/codium-blocks-package.stderr.log
 
       - name: Upload Windows package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

@@ -208,7 +208,7 @@ async function probe(adapter) {
       variables: false,
       continued: false,
     };
-    await session.request('launch', {
+    const launchArguments = {
       name: `Codium::Blocks ${adapter.id} real debuggee`,
       type: adapter.id,
       request: 'launch',
@@ -218,7 +218,15 @@ async function probe(adapter) {
       stopOnEntry: true,
       stopAtBeginningOfMainSubprogram: true,
       noDebug: false,
-    });
+    };
+    if (adapter.id === 'lldb-dap') {
+      // LLDB-DAP documents debuggerRoot rather than the generic cwd field and
+      // does not implement GDB's stopAtBeginningOfMainSubprogram option.
+      launchArguments.debuggerRoot = dirname(debuggee);
+      delete launchArguments.cwd;
+      delete launchArguments.stopAtBeginningOfMainSubprogram;
+    }
+    await session.request('launch', launchArguments);
     if (supports(capabilities, 'supportsConfigurationDoneRequest')) await session.request('configurationDone');
     const firstEvent = await session.event(['stopped', 'terminated', 'exited'], 'initial stop');
     if (firstEvent.event !== 'stopped') {

@@ -23,7 +23,7 @@ A typical non-bundle installation therefore has this shape:
 | Platform | First package | CPack generator | Runtime boundary |
 |---|---|---|---|
 | Linux | Debian package and compressed tar archive | `DEB` and `TGZ` | The Debian package derives shared-library dependencies. The TGZ requires a compatible wxWidgets/GTK, OpenSSL, C++ runtime, and glibc environment. Node.js is recommended rather than required by the native core. |
-| macOS | Disk image containing the application bundle | `DragNDrop` | The install step applies CMake BundleUtilities fixup and the package workflow checks external dependencies. The bundle remains unsigned and unnotarized until a later distribution decision. |
+| macOS | Disk image containing the application bundle | `DragNDrop` locally; deterministic `hdiutil` image in CI | The install step applies CMake BundleUtilities fixup and the package workflow creates the CI image directly from the fresh staging prefix before checking external dependencies. The bundle remains unsigned and unnotarized until a later distribution decision. |
 | Windows | Portable ZIP archive | `ZIP` | The package workflow includes configured wxWidgets runtime DLLs and the x64 Microsoft Visual C++ runtime DLLs. The artifact is still validated only on the `windows-2022` runner and is not a signed installer. |
 
 The standard package is built with `CODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF`. The Code::Blocks adapter requires a matched SDK, resources, plugins, and ABI identity, so it remains a separately tested optional integration rather than a hidden dependency of the normal download.
@@ -83,6 +83,8 @@ cmake --build build-package --config Release --parallel
 ctest --test-dir build-package -C Release --output-on-failure
 (cd build-package && cpack -C Release)
 ```
+
+The local CPack command is useful for developer experimentation. The macOS package workflow intentionally creates its CI DMG with `hdiutil create -format UDZO` from a fresh install prefix, which avoids depending on CPack's host-specific DragNDrop staging details while preserving the same bundle contents.
 
 Mount the resulting DMG, copy `codium-blocks.app` to an application directory, and run it from there. The current artifact is unsigned and unnotarized; macOS security prompts and Gatekeeper behavior therefore remain a release concern rather than a solved claim.
 
