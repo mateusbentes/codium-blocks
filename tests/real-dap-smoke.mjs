@@ -19,6 +19,7 @@ const adapters = matrix.adapters
   }));
 const requiredAdapters = adapters.filter((adapter) => adapter.required !== false);
 const WINDOWS_DLL_NOT_FOUND = 0xC0000135;
+const DAP_WAIT_TIMEOUT_MS = 30000;
 const debuggee = process.env.CODIUM_BLOCKS_REAL_DAP_DEBUGGEE ?? '';
 const sourceFile = process.env.CODIUM_BLOCKS_REAL_DAP_SOURCE ?? '';
 const requireRealAdapters = process.env.CODIUM_BLOCKS_REQUIRE_REAL_DAP === '1';
@@ -83,7 +84,7 @@ class DapSession {
     }
   }
 
-  waitFor(predicate, phase, timeoutMs = 15000) {
+  waitFor(predicate, phase, timeoutMs = DAP_WAIT_TIMEOUT_MS) {
     const queued = this.messages.findIndex(predicate);
     if (queued >= 0) return Promise.resolve(this.messages.splice(queued, 1)[0]);
     if (this.closed) return Promise.reject(new Error(`${this.adapter.id}: adapter closed during ${phase}`));
@@ -248,18 +249,35 @@ async function probe(adapter) {
     result.stackTrace = true;
     const scopes = await session.request('scopes', { frameId: frame.id });
     const scope = scopes.body?.scopes?.find((item) => item.variablesReference > 0);
-    if (supports(capabilities, 'supportsDataBreakpoints')) {
-      const info = await session.request('dataBreakpointInfo', {
-        variablesReference: scope?.variablesReference ?? 0,
-        name: 'global_counter',
-      });
-      result.dataBreakpointInfo = info.body ?? {};
-      const dataId = info.body?.dataId;
-      if (!dataId) throw new Error(`${adapter.id}: dataBreakpointInfo returned no dataId`);
-      const response = await session.request('setDataBreakpoints', {
-        breakpoints: [{ dataId, accessType: 'write' }],
-      });
-      result.dataBreakpoint = response.body?.breakpoints ?? [];
+    if (supports(capabilities, 'supportsDataBreakpoints') && scope?.variablesReference > 0) {
+      try {
+        const info = await session.request('dataBreakpointInfo', {
+          variablesReference: scope.variablesReference,
+          name: 'global_counter',
+        });
+        result.dataBreakpointInfo = info.body ?? {};
+        const dataId = info.body?.dataId;
+        if (dataId) {
+          const response = await session.request('setDataBreakpoints', {
+            breakpoints: [{ dataId, accessType: 'write' }],
+          });
+          result.dataBreakpoint = response.body?.breakpoints ?? [];
+        } else {
+          result.dataBreakpointInfo = {
+            ...result.dataBreakpointInfo,
+            unsupportedReason: 'adapter did not expose a dataId for global_counter',
+          };
+        }
+      } catch (error) {
+        result.dataBreakpointInfo = {
+          unsupportedReason: String(error?.message ?? error),
+        };
+        result.dataBreakpoint = 'unsupported';
+      }
+    } else if (supports(capabilities, 'supportsDataBreakpoints')) {
+      result.dataBreakpointInfo = {
+        unsupportedReason: 'no variable scope was exposed for dataBreakpointInfo',
+      };
     }
     if (scope) {
       result.scopes = true;

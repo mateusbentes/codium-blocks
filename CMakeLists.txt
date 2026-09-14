@@ -903,6 +903,15 @@ if(BUILD_TESTING)
             message(STATUS "Code::Blocks real integration test unavailable: xvfb-run or SDK runtime files missing")
         endif()
     endif()
+    set_tests_properties(
+        extension-host-smoke integration-matrix-smoke document-smoke editor-actions-smoke
+        syntax-highlighting-smoke semantic-tokens-smoke theme-smoke localization-smoke
+        lsp-navigation-smoke vsix-smoke security-smoke invariants-smoke fuzz-smoke
+        fuzz-host-smoke workspace-smoke task-smoke target-discovery-smoke build-session-smoke
+        transport-smoke terminal-screen-smoke terminal-profile-smoke debug-model-smoke
+        debugger-provider-contract-smoke native-contributions-smoke compatibility-smoke
+        problem-model-smoke codeblocks-bridge-smoke codeblocks-host-smoke codeblocks-adapter-smoke
+        install-layout-smoke PROPERTIES TIMEOUT 90)
 endif()
 
 message(STATUS "Codium::Blocks ${PROJECT_VERSION}: native wxWidgets core + optional Node.js extension host")

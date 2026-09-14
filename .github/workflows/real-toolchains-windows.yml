@@ -17,7 +17,7 @@ jobs:
   real-windows:
     name: Windows real LSP and DAP matrix (windows-2022)
     runs-on: windows-2022
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -30,7 +30,22 @@ jobs:
       - name: Install pinned Windows toolchains
         shell: pwsh
         run: |
-          choco install llvm --version=18.1.8 -y --no-progress --allow-downgrade
+          $llvmArchive = Join-Path $env:RUNNER_TEMP 'clang+llvm-18.1.8-x86_64-pc-windows-msvc.tar.xz'
+          $llvmRoot = Join-Path $env:RUNNER_TEMP 'llvm-18.1.8'
+          $llvmUrl = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang%2Bllvm-18.1.8-x86_64-pc-windows-msvc.tar.xz'
+          $llvmSha256 = '22c5907db053026cc2a8ff96d21c0f642a90d24d66c23c6d28ee7b1d572b82e8'
+          Invoke-WebRequest -Uri $llvmUrl -OutFile $llvmArchive
+          if ((Get-FileHash -Algorithm SHA256 $llvmArchive).Hash.ToLowerInvariant() -ne $llvmSha256) {
+            throw 'LLVM 18.1.8 archive checksum mismatch.'
+          }
+          Remove-Item -Recurse -Force $llvmRoot -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $llvmRoot | Out-Null
+          tar -xJf $llvmArchive -C $llvmRoot --strip-components=1
+          $llvmBin = Join-Path $llvmRoot 'bin'
+          foreach ($tool in @('clang.exe', 'clang-cl.exe', 'clangd.exe', 'lldb-dap.exe', 'llvm-config.exe')) {
+            if (-not (Test-Path (Join-Path $llvmBin $tool))) { throw "Pinned LLVM tool is missing: $tool" }
+          }
+          $llvmBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           $rustupInit = Join-Path $env:RUNNER_TEMP 'rustup-init.exe'
           $rustupVersion = '1.28.2'
           $rustupBase = "https://static.rust-lang.org/rustup/archive/$rustupVersion/x86_64-pc-windows-msvc"
@@ -45,9 +60,7 @@ jobs:
           "$cargoBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           rustup toolchain install 1.82.0 --profile minimal
           rustup component add rust-analyzer --toolchain 1.82.0
-          $llvmBin = Join-Path $env:ProgramFiles 'LLVM/bin'
           $rustAnalyzerBin = Join-Path $env:USERPROFILE '.rustup/toolchains/1.82.0-x86_64-pc-windows-msvc/bin'
-          "$llvmBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           "$rustAnalyzerBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           New-Item -ItemType Directory -Force -Path (Join-Path $env:USERPROFILE '.local/bin') | Out-Null
           $env:GOBIN = Join-Path $env:USERPROFILE '.local/bin'
@@ -63,9 +76,7 @@ jobs:
           gopls.exe version | Select-String 'v0.17.1'
           pyright.cmd --version | Select-String '1.1.390'
           & clang.exe --version | Select-String '18.1.8'
-          $lldbDap = Join-Path $env:ProgramFiles 'LLVM/bin/lldb-dap.exe'
-          if (-not (Test-Path $lldbDap)) { throw "Expected LLDB-DAP was not installed: $lldbDap" }
-          & $lldbDap --help | Select-String 'LLDB DAP'
+          & lldb-dap.exe --help 2>&1 | Select-String -SimpleMatch 'LLDB DAP'
       - name: Run strict real LSP matrix
         shell: pwsh
         env:

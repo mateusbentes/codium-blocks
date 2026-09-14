@@ -68,10 +68,20 @@ jobs:
           (cd build && cpack -C Release)
           dmg=$(find build -maxdepth 1 -type f -name 'codium-blocks-*.dmg' -print -quit)
           test -n "$dmg" && test -s "$dmg"
+          hdiutil imageinfo "$dmg" >/dev/null
           mount_point="$RUNNER_TEMP/codium-blocks-dmg"
           rm -rf "$mount_point"
           mkdir -p "$mount_point"
-          hdiutil attach -nobrowse -readonly -mountpoint "$mount_point" "$dmg"
+          mounted=0
+          for attempt in 1 2 3; do
+            if hdiutil attach -nobrowse -noautoopen -noverify -noautofsck -readonly \
+                -mountpoint "$mount_point" "$dmg"; then
+              mounted=1
+              break
+            fi
+            sleep 2
+          done
+          test "$mounted" -eq 1
           cleanup() { hdiutil detach "$mount_point" >/dev/null || true; }
           trap cleanup EXIT
           packaged_app=$(find "$mount_point" -maxdepth 1 -type d -name '*.app' -print -quit)
@@ -87,14 +97,21 @@ jobs:
             echo 'The DMG contains a bundle with an external package-manager dependency.' >&2
             exit 1
           fi
-          "$packaged_app/Contents/MacOS/codium-blocks" > build/codium-blocks-macos-package.log 2>&1 &
+          package_data="$RUNNER_TEMP/codium-blocks-package-data"
+          rm -rf "$package_data"
+          mkdir -p "$package_data"
+          CODIUM_BLOCKS_DATA="$package_data" "$packaged_app/Contents/MacOS/codium-blocks" \
+            > build/codium-blocks-macos-package.log 2>&1 &
           app_pid=$!
           sleep 5
           if kill -0 "$app_pid" 2>/dev/null; then
             kill "$app_pid" 2>/dev/null || true
             wait "$app_pid" 2>/dev/null || true
           else
-            wait "$app_pid"
+            if ! wait "$app_pid"; then
+              cat build/codium-blocks-macos-package.log >&2 || true
+              exit 1
+            fi
           fi
           (cd build && shasum -a 256 "$(basename "$dmg")") > build/codium-blocks-macos.sha256
 
