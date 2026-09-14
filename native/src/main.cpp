@@ -72,6 +72,8 @@ enum : int {
     ID_RUN_DEMO,
     ID_INSTALL_VSIX,
     ID_LIST_EXTENSIONS,
+    ID_CHECK_EXTENSION_UPDATES,
+    ID_UPDATE_EXTENSION,
     ID_DISCOVER_CODEBLOCKS,
     ID_START_CODEBLOCKS_ADAPTER,
     ID_STOP_CODEBLOCKS_ADAPTER,
@@ -853,6 +855,8 @@ public:
         AddButton(extensionControls, T(wxS("button.runDemo")), [this](wxCommandEvent&) { ExecuteDemo(); }, outputPage);
         AddButton(extensionControls, T(wxS("button.installVsix")), [this](wxCommandEvent&) { InstallVsix(); }, outputPage);
         AddButton(extensionControls, T(wxS("button.searchOpenVsx")), [this](wxCommandEvent&) { SearchOpenVsx(); }, outputPage);
+        AddButton(extensionControls, T(wxS("button.checkExtensionUpdates")), [this](wxCommandEvent&) { CheckExtensionUpdates(); }, outputPage);
+        AddButton(extensionControls, T(wxS("button.updateExtension")), [this](wxCommandEvent&) { UpdateExtension(); }, outputPage);
         AddButton(extensionControls, T(wxS("button.discoverCodeBlocks")), [this](wxCommandEvent&) { DiscoverCodeBlocks(); }, outputPage);
         AddButton(extensionControls, T(wxS("button.startCbAdapter")), [this](wxCommandEvent&) { StartCodeBlocksAdapter(); }, outputPage);
         AddButton(extensionControls, T(wxS("button.stopCbAdapter")), [this](wxCommandEvent&) { StopCodeBlocksAdapter(); }, outputPage);
@@ -1015,6 +1019,8 @@ private:
         extensionMenu->Append(ID_RUN_DEMO, T(wxS("menu.runDemo")));
         extensionMenu->Append(ID_INSTALL_VSIX, T(wxS("menu.installVsix")));
         extensionMenu->Append(ID_LIST_EXTENSIONS, T(wxS("menu.listExtensions")));
+        extensionMenu->Append(ID_CHECK_EXTENSION_UPDATES, T(wxS("menu.checkExtensionUpdates")));
+        extensionMenu->Append(ID_UPDATE_EXTENSION, T(wxS("menu.updateExtension")));
         extensionMenu->Append(ID_DISCOVER_CODEBLOCKS, T(wxS("menu.discoverCodeBlocks")));
         extensionMenu->Append(ID_START_CODEBLOCKS_ADAPTER, T(wxS("menu.startCodeBlocksAdapter")));
         extensionMenu->Append(ID_STOP_CODEBLOCKS_ADAPTER, T(wxS("menu.stopCodeBlocksAdapter")));
@@ -1079,6 +1085,8 @@ private:
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { ExecuteDemo(); }, ID_RUN_DEMO);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { InstallVsix(); }, ID_INSTALL_VSIX);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { ListExtensions(); }, ID_LIST_EXTENSIONS);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { CheckExtensionUpdates(); }, ID_CHECK_EXTENSION_UPDATES);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { UpdateExtension(); }, ID_UPDATE_EXTENSION);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { DiscoverCodeBlocks(); }, ID_DISCOVER_CODEBLOCKS);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StartCodeBlocksAdapter(); }, ID_START_CODEBLOCKS_ADAPTER);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { StopCodeBlocksAdapter(); }, ID_STOP_CODEBLOCKS_ADAPTER);
@@ -1907,6 +1915,8 @@ private:
                 effectiveTask.arguments.Add(selectedTarget);
             }
         }
+        effectiveTask.configuration = selected ? selected->configuration : wxString(wxS("Debug"));
+        if (effectiveTask.targetName.empty()) effectiveTask.targetName = selectedTarget;
         if (IsBuildLikeTask(effectiveTask)) {
             lastBuildTask_ = effectiveTask;
             hasLastBuildTask_ = true;
@@ -1931,7 +1941,7 @@ private:
             wxString::Format(T(wxS("message.buildHeader")), effectiveTask.name,
                              selected ? selected->name : T(wxS("status.default"))) + wxS("\n"));
         wxString error;
-        if (taskRunner_.Run(effectiveTask, &error)) {
+        if (taskRunner_.Run(effectiveTask, &error, WorkspaceDirectory())) {
             AppendLog(wxString::Format(T(wxS("message.taskStarted")), effectiveTask.name));
             if (buildOutput_) buildOutput_->AppendText(wxString::Format(T(wxS("message.taskStartedLine")), effectiveTask.name) + wxS("\n"));
             if (GetStatusBar()) SetStatusText(T(wxS("status.building")), 1);
@@ -3984,11 +3994,126 @@ private:
         wxString catalog;
         wxString error;
         if (extensionRegistry_.SearchOpenVsx(wxS("https://open-vsx.org"), dialog.GetValue(), &catalog, &error)) {
+            std::vector<codium::ExtensionCatalogEntry> entries;
+            if (!extensionRegistry_.ParseOpenVsxCatalog(catalog, &entries, &error)) {
+                AppendLog(T(wxS("message.openVsxError")) + error);
+                return;
+            }
             AppendLog(wxString::Format(T(wxS("message.openVsxCatalogReceived")),
                                        static_cast<unsigned long>(catalog.length())));
+            if (entries.empty()) {
+                AppendLog(T(wxS("message.openVsxNoResults")));
+                return;
+            }
+            for (auto& entry : entries) entry.registry = wxS("https://open-vsx.org");
+            wxArrayString choices;
+            for (const auto& entry : entries) {
+                const wxString title = entry.displayName.empty() ? entry.Identifier() : entry.displayName;
+                choices.Add(wxString::Format(wxS("%s — %s (%s)"), title, entry.Identifier(), entry.version));
+            }
+            wxSingleChoiceDialog choose(this, T(wxS("dialog.chooseOpenVsxExtension")),
+                                        T(wxS("dialog.extensionRegistry")), choices);
+            if (choose.ShowModal() != wxID_OK) return;
+            const auto& selected = entries[static_cast<size_t>(choose.GetSelection())];
+            const wxString downloadDirectory = extensions_.ExtensionRoot() + wxFILE_SEP_PATH + wxS(".downloads");
+            const wxString filename = selected.namespaceName + wxS(".") + selected.name + wxS("-") + selected.version + wxS(".vsix");
+            const wxString destination = downloadDirectory + wxFILE_SEP_PATH + filename;
+            wxString digest;
+            if (!extensionRegistry_.DownloadArtifact(wxS("https://open-vsx.org"), selected, destination, &digest, &error)) {
+                AppendLog(T(wxS("message.openVsxError")) + error);
+                return;
+            }
+            wxString installMessage;
+            if (!extensions_.InstallVerified(destination, digest, &installMessage)) {
+                AppendLog(T(wxS("message.errorPrefix")) + installMessage);
+                return;
+            }
+            AppendLog(wxString::Format(T(wxS("message.openVsxInstalled")), selected.Identifier(), digest));
+            AppendLog(T(wxS("message.openVsxCompatibilityWritten")));
         } else {
             AppendLog(T(wxS("message.openVsxError")) + error);
         }
+    }
+
+    void CheckExtensionUpdates()
+    {
+        if (!EnsureWorkspaceTrusted()) return;
+        const auto installed = extensions_.ListInstalledInfo();
+        if (installed.empty()) {
+            AppendLog(T(wxS("dialog.noVsix")));
+            return;
+        }
+        bool foundUpdate = false;
+        for (const auto& extension : installed) {
+            codium::ExtensionCatalogEntry latest;
+            wxString error;
+            if (!extensionRegistry_.FetchOpenVsxMetadata(wxS("https://open-vsx.org"),
+                                                         extension.manifest.publisher,
+                                                         extension.manifest.name, wxEmptyString,
+                                                         &latest, &error)) {
+                AppendLog(wxString::Format(T(wxS("message.openVsxUpdateError")),
+                                           extension.manifest.publisher + wxS(".") + extension.manifest.name, error));
+                continue;
+            }
+            if (codium::ExtensionRegistry::IsNewerVersion(latest.version, extension.manifest.version)) {
+                foundUpdate = true;
+                AppendLog(wxString::Format(T(wxS("message.openVsxUpdateAvailable")),
+                                           extension.manifest.publisher + wxS(".") + extension.manifest.name,
+                                           extension.manifest.version, latest.version));
+            } else {
+                AppendLog(wxString::Format(T(wxS("message.openVsxUpToDate")),
+                                           extension.manifest.publisher + wxS(".") + extension.manifest.name,
+                                           extension.manifest.version));
+            }
+        }
+        if (!foundUpdate) AppendLog(T(wxS("message.openVsxNoUpdates")));
+    }
+
+    void UpdateExtension()
+    {
+        if (!EnsureWorkspaceTrusted()) return;
+        const auto installed = extensions_.ListInstalledInfo();
+        std::vector<codium::ExtensionCatalogEntry> updates;
+        for (const auto& extension : installed) {
+            codium::ExtensionCatalogEntry latest;
+            wxString error;
+            if (extensionRegistry_.FetchOpenVsxMetadata(wxS("https://open-vsx.org"),
+                                                         extension.manifest.publisher,
+                                                         extension.manifest.name, wxEmptyString,
+                                                         &latest, &error) &&
+                codium::ExtensionRegistry::IsNewerVersion(latest.version, extension.manifest.version)) {
+                latest.registry = wxS("https://open-vsx.org");
+                updates.push_back(latest);
+            }
+        }
+        if (updates.empty()) {
+            AppendLog(T(wxS("message.openVsxNoUpdates")));
+            return;
+        }
+        wxArrayString choices;
+        for (const auto& update : updates) {
+            choices.Add(wxString::Format(wxS("%s — %s"), update.Identifier(), update.version));
+        }
+        wxSingleChoiceDialog choose(this, T(wxS("dialog.chooseOpenVsxUpdate")),
+                                    T(wxS("dialog.extensionRegistry")), choices);
+        if (choose.ShowModal() != wxID_OK || choose.GetSelection() == wxNOT_FOUND) return;
+        const auto& selected = updates[static_cast<size_t>(choose.GetSelection())];
+        const wxString destination = extensions_.ExtensionRoot() + wxFILE_SEP_PATH + wxS(".downloads") +
+            wxFILE_SEP_PATH + selected.namespaceName + wxS(".") + selected.name + wxS("-") + selected.version + wxS(".vsix");
+        wxString error;
+        wxString digest;
+        if (!extensionRegistry_.DownloadArtifact(wxS("https://open-vsx.org"), selected,
+                                                  destination, &digest, &error)) {
+            AppendLog(T(wxS("message.openVsxError")) + error);
+            return;
+        }
+        wxString installMessage;
+        if (!extensions_.InstallVerified(destination, digest, &installMessage)) {
+            AppendLog(T(wxS("message.errorPrefix")) + installMessage);
+            return;
+        }
+        AppendLog(wxString::Format(T(wxS("message.openVsxUpdated")), selected.Identifier(), selected.version));
+        AppendLog(T(wxS("message.openVsxCompatibilityWritten")));
     }
 
     void RegisterContributedCommand(const wxString& line)

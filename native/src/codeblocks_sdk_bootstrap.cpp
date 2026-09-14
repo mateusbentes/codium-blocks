@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Codium::Blocks Contributors
 
 #include "codium/codeblocks_sdk_bootstrap.hpp"
+#include "codium/codeblocks_debugger_provider_validation.hpp"
 #include "codium/codeblocks_debugger_headless.hpp"
 
 #include <wx/app.h>
@@ -283,26 +284,14 @@ bool CodeBlocksSdkBootstrap::LoadDebuggerProvider(const wxString& providerPath, 
         return false;
     }
     const CodeBlocksDebuggerProviderApi* api = getApi();
-    if (!api || api->apiMajor != 1 || api->apiMinor != 0 || !api->attach || !api->detach ||
-        !api->snapshot || !api->freeString) {
-        Fail(wxS("The DebuggerGDB provider exposes an unsupported or incomplete ABI."), error);
-        debuggerProviderLibrary_.reset();
-        return false;
-    }
-    if (api->sdkMajor != kSdkMajor || api->sdkMinor != kSdkMinor || api->sdkRelease != kSdkRelease) {
-        Fail(wxS("The DebuggerGDB provider SDK tuple does not match the adapter."), error);
-        debuggerProviderLibrary_.reset();
-        return false;
-    }
-    if (!api->sourceRevision || wxString::FromUTF8(api->sourceRevision) !=
-            wxString(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_REVISION)) {
-        Fail(wxS("The DebuggerGDB provider source revision does not match the adapter."), error);
-        debuggerProviderLibrary_.reset();
-        return false;
-    }
-    if (!api->abiIdentity || wxString::FromUTF8(api->abiIdentity) !=
-            wxString(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_ABI_IDENTITY)) {
-        Fail(wxS("The DebuggerGDB provider ABI identity does not match the adapter."), error);
+    const CodeBlocksDebuggerProviderExpectation expected{
+        static_cast<std::uint32_t>(kSdkMajor), static_cast<std::uint32_t>(kSdkMinor),
+        static_cast<std::uint32_t>(kSdkRelease),
+        wxString(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_SOURCE_REVISION),
+        wxString(CODIUM_BLOCKS_CODEBLOCKS_DEBUGGERGDB_ABI_IDENTITY)};
+    wxString validationError;
+    if (!ValidateCodeBlocksDebuggerProviderApi(api, expected, &validationError)) {
+        Fail(validationError, error);
         debuggerProviderLibrary_.reset();
         return false;
     }

@@ -52,6 +52,7 @@ struct ProjectTask final {
     wxString targetName;
     ProjectTaskKind kind = ProjectTaskKind::Generic;
     wxString toolchain;
+    wxString configuration;
 };
 
 struct ProjectScheme final {
@@ -84,6 +85,17 @@ public:
                                             const wxString& overridePath = wxEmptyString);
     static wxString DiscoverArtifact(const ProjectTarget& target, const wxString& configuration,
                                      const wxString& overridePath = wxEmptyString);
+    static wxString ExpandTaskValue(const wxString& value, const ProjectTask& task,
+                                    const wxString& configuration = wxEmptyString,
+                                    const wxString& target = wxEmptyString,
+                                    const wxString& toolchain = wxEmptyString,
+                                    const wxString& file = wxEmptyString,
+                                    const wxString& workspaceFolder = wxEmptyString);
+    static ProjectTask ExpandTask(const ProjectTask& task, const wxString& configuration = wxEmptyString,
+                                  const wxString& target = wxEmptyString,
+                                  const wxString& toolchain = wxEmptyString,
+                                  const wxString& file = wxEmptyString,
+                                  const wxString& workspaceFolder = wxEmptyString);
 
     const wxArrayString& Toolchains() const { return toolchains_; }
     const std::vector<ProjectTarget>& Targets() const { return targets_; }

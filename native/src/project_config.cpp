@@ -9,6 +9,7 @@
 #include <wx/regex.h>
 #include <wx/tokenzr.h>
 #include <wx/xml/xml.h>
+#include <wx/utils.h>
 
 #include <algorithm>
 #include <initializer_list>
@@ -20,7 +21,7 @@ ProjectTask Task(const wxString& name, const wxString& program,
                  std::initializer_list<wxString> arguments, const wxString& workingDirectory)
 {
     ProjectTask task{name, program, {}, workingDirectory, wxEmptyString, wxEmptyString,
-                     ProjectTaskKind::Generic, wxEmptyString};
+                     ProjectTaskKind::Generic, wxEmptyString, wxEmptyString};
     for (const auto& argument : arguments) task.arguments.Add(argument);
     task.toolchain = program;
     if (name.Contains(wxS("Configure"))) task.kind = ProjectTaskKind::Configure;
@@ -291,7 +292,7 @@ void ProjectConfig::AddBuiltInTasks(const wxString& workspaceRoot)
     if (!ninjaDirectory.empty() && wxFileExists(ninjaDirectory + wxFILE_SEP_PATH + wxS("build.ninja"))) {
         AddUnique(&toolchains_, wxS("Ninja"));
         tasks_.push_back(ProjectTask{wxS("Ninja: Build"), wxS("ninja"), {}, ninjaDirectory,
-                                      wxEmptyString, wxEmptyString, ProjectTaskKind::Build, wxS("Ninja")});
+                                      wxEmptyString, wxEmptyString, ProjectTaskKind::Build, wxS("Ninja"), wxEmptyString});
         LoadNinjaTargets(workspaceRoot, ninjaDirectory);
     }
 
@@ -349,7 +350,7 @@ void ProjectConfig::AddBuildTaskForTarget(const ProjectTarget& target, const wxS
         if (task.name == target.buildTaskName && task.targetName == target.name) return;
     }
     ProjectTask task{target.buildTaskName, program, arguments, target.workingDirectory,
-                     target.projectFile, target.name, ProjectTaskKind::Build, target.toolchain};
+                     target.projectFile, target.name, ProjectTaskKind::Build, target.toolchain, wxEmptyString};
     tasks_.push_back(task);
 }
 
@@ -675,9 +676,10 @@ void ProjectConfig::LoadCustomTasks(const wxString& workspaceRoot)
         ProjectTask task{fields[0], fields[1], wxSplit(fields[2], wxChar('\x1f')), fields[3],
                          fields.size() > 4 ? fields[4] : wxString(wxEmptyString),
                          fields.size() > 5 ? fields[5] : wxString(wxEmptyString),
-                         ProjectTaskKind::Generic, wxEmptyString};
+                         ProjectTaskKind::Generic, wxEmptyString, wxEmptyString};
         task.kind = fields.size() > 6 ? TaskKindFromValue(fields[6]) : ProjectTaskKind::Generic;
         task.toolchain = fields.size() > 7 && !fields[7].empty() ? fields[7] : wxS("Custom");
+        task.configuration = fields.size() > 8 ? fields[8] : wxString(wxEmptyString);
         tasks_.push_back(task);
         if (toolchains_.Index(wxS("Custom")) == wxNOT_FOUND) toolchains_.Add(wxS("Custom"));
     }
@@ -739,6 +741,75 @@ wxString ProjectConfig::DiscoverArtifact(const ProjectTarget& target, const wxSt
         if (wxFileExists(candidate)) return candidate;
     }
     return wxEmptyString;
+}
+
+wxString ProjectConfig::ExpandTaskValue(const wxString& value, const ProjectTask& task,
+                                        const wxString& configuration, const wxString& target,
+                                        const wxString& toolchain, const wxString& file,
+                                        const wxString& workspaceFolder)
+{
+    const wxString workspace = workspaceFolder.empty() ? task.workingDirectory : workspaceFolder;
+    wxString resolvedCwd = task.workingDirectory;
+    resolvedCwd.Replace(wxS("${workspaceFolder}"), workspace);
+    resolvedCwd.Replace(wxS("${workspaceRoot}"), workspace);
+    const wxString resolvedConfiguration = configuration.empty()
+        ? (task.configuration.empty() ? wxString(wxS("Debug")) : task.configuration) : configuration;
+    const wxString resolvedTarget = target.empty() ? task.targetName : target;
+    const wxString resolvedToolchain = toolchain.empty() ? task.toolchain : toolchain;
+    wxString result = value;
+    const wxString replacements[][2] = {
+        {wxS("${workspaceFolder}"), workspace}, {wxS("${workspaceRoot}"), workspace},
+        {wxS("${cwd}"), resolvedCwd}, {wxS("${configuration}"), resolvedConfiguration},
+        {wxS("${config}"), resolvedConfiguration}, {wxS("${presetName}"), resolvedConfiguration},
+        {wxS("$<CONFIG>"), resolvedConfiguration}, {wxS("${target}"), resolvedTarget},
+        {wxS("${toolchain}"), resolvedToolchain}, {wxS("${file}"), file},
+        {wxS("${fileDirname}"), file.empty() ? wxString() : wxFileName(file).GetPath()},
+        {wxS("${fileBasename}"), file.empty() ? wxString() : wxFileName(file).GetFullName()}
+    };
+    for (const auto& replacement : replacements) result.Replace(replacement[0], replacement[1]);
+
+    wxString expanded;
+    for (size_t index = 0; index < result.length();) {
+        if (result.Mid(index).StartsWith(wxS("${env:"))) {
+            const int endRelative = result.Mid(index + 6).Find(wxChar('}'));
+            if (endRelative != wxNOT_FOUND) {
+                const wxString variable = result.Mid(index + 6, endRelative);
+                wxString environment;
+                if (wxGetEnv(variable, &environment)) expanded += environment;
+                index += static_cast<size_t>(endRelative + 7);
+                continue;
+            }
+        }
+        if (result.Mid(index).StartsWith(wxS("$ENV{"))) {
+            const int endRelative = result.Mid(index + 5).Find(wxChar('}'));
+            if (endRelative != wxNOT_FOUND) {
+                const wxString variable = result.Mid(index + 5, endRelative);
+                wxString environment;
+                if (wxGetEnv(variable, &environment)) expanded += environment;
+                index += static_cast<size_t>(endRelative + 6);
+                continue;
+            }
+        }
+        expanded += result[index++];
+    }
+    return expanded;
+}
+
+ProjectTask ProjectConfig::ExpandTask(const ProjectTask& task, const wxString& configuration,
+                                      const wxString& target, const wxString& toolchain,
+                                      const wxString& file, const wxString& workspaceFolder)
+{
+    ProjectTask expanded = task;
+    expanded.program = ExpandTaskValue(task.program, task, configuration, target, toolchain, file, workspaceFolder);
+    expanded.workingDirectory = ExpandTaskValue(task.workingDirectory, task, configuration, target, toolchain, file, workspaceFolder);
+    expanded.projectFile = ExpandTaskValue(task.projectFile, task, configuration, target, toolchain, file, workspaceFolder);
+    expanded.targetName = ExpandTaskValue(task.targetName, task, configuration, target, toolchain, file, workspaceFolder);
+    expanded.toolchain = ExpandTaskValue(task.toolchain, task, configuration, target, toolchain, file, workspaceFolder);
+    expanded.configuration = configuration.empty() ? task.configuration : configuration;
+    for (auto& argument : expanded.arguments) {
+        argument = ExpandTaskValue(argument, task, configuration, target, toolchain, file, workspaceFolder);
+    }
+    return expanded;
 }
 
 bool ProjectConfig::LoadPreferences(const wxString& workspaceRoot, ProjectPreferences* preferences,

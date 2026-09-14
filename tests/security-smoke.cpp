@@ -12,6 +12,7 @@
 
 #include <filesystem>
 #include <iostream>
+#include <vector>
 
 #if defined(CODIUM_BLOCKS_HAVE_OPENSSL)
 #define CODIUM_BLOCKS_SIGNATURE_TEST_ENABLED 1
@@ -79,13 +80,33 @@ int main()
         std::cerr << "security-smoke: Open VSX cache read failed\n";
         return 8;
     }
+    std::vector<codium::ExtensionCatalogEntry> entries;
+    const wxString catalog = wxS("{\"extensions\":[{\"namespace\":\"demo\",\"name\":\"tools\",\"version\":\"1.2.3\",\"displayName\":\"Demo Tools\",\"files\":{\"sha256\":\"https://open-vsx.org/api/demo/tools/1.2.3/file/demo.tools-1.2.3.vsix.sha256\",\"download\":\"https://open-vsx.org/api/demo/tools/1.2.3/file/demo.tools-1.2.3.vsix\"}}]}");
+    if (!registry.ParseOpenVsxCatalog(catalog, &entries, &error) || entries.size() != 1 ||
+        entries[0].Identifier() != wxS("demo.tools") || entries[0].version != wxS("1.2.3") ||
+        entries[0].downloadUrl.Find(wxS("https://open-vsx.org/api/")) != 0 ||
+        !entries[0].sha256.empty() || entries[0].sha256Url.Find(wxS(".vsix.sha256")) == wxNOT_FOUND ||
+        registry.ParseOpenVsxCatalog(wxS("{\"extensions\":[{\"namespace\":\"../bad\"}]}"), &entries, &error) ||
+        registry.ParseOpenVsxCatalog(wxS("{\"extensions\":[}"), &entries, &error) ||
+        !codium::ExtensionRegistry::IsNewerVersion(wxS("1.10.0"), wxS("1.9.9")) ||
+        codium::ExtensionRegistry::IsNewerVersion(wxS("1.2.0"), wxS("1.2.0"))) {
+        std::cerr << "security-smoke: Open VSX catalog parsing or version comparison failed: " << error.ToStdString() << "\n";
+        return 9;
+    }
+    codium::ExtensionCatalogEntry externalDownload = entries[0];
+    externalDownload.downloadUrl = wxS("https://malicious.example/extension.vsix");
+    if (registry.DownloadArtifact(wxS("https://open-vsx.org"), externalDownload,
+                                  root + wxFILE_SEP_PATH + wxS("unexpected.vsix"), &digest, &error)) {
+        std::cerr << "security-smoke: cross-origin download was accepted\n";
+        return 9;
+    }
     if (codium::SignatureVerifier::VerifyEd25519File(
             sample,
             wxS("0000000000000000000000000000000000000000000000000000000000000000"),
             wxS("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
             &error)) {
         std::cerr << "security-smoke: invalid Ed25519 signature was accepted\n";
-        return 9;
+        return 10;
     }
 #if defined(CODIUM_BLOCKS_SIGNATURE_TEST_ENABLED)
     if (!codium::SignatureVerifier::VerifyEd25519File(
@@ -95,7 +116,7 @@ int main()
                 "5fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b"),
             &error)) {
         std::cerr << "security-smoke: RFC 8032 Ed25519 vector failed: " << error.ToStdString() << "\n";
-        return 10;
+        return 11;
     }
 #endif
 

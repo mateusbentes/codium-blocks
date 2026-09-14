@@ -28,6 +28,7 @@ User tasks are loaded from `.codium-blocks/tasks.tsv` when that file exists. The
 | `targetName` | Optional target associated with the task |
 | `kind` | `generic`, `configure`, `build`, `run`, or `test` |
 | `toolchain` | Optional scheme/toolchain label; defaults to `Custom` |
+| `configuration` | Optional default configuration; the selected scheme overrides it at execution time |
 
 A task's `program` and each argument are passed directly to the native process API. The format does not interpret shell syntax. Users who need a pipeline, redirection, or a shell-specific feature must declare the shell executable explicitly as the task program and pass its script arguments explicitly.
 
@@ -39,7 +40,9 @@ CMake configure Debug\tcmake\t-S <U+001F> /path/to/workspace <U+001F> -B <U+001F
 
 In the physical file, each `<U+001F>` marker above is the literal unit-separator character between adjacent argument values; spaces around the marker are shown only to keep the example readable.
 
-The current loader preserves escaped tabs, newlines, and backslashes. Workspace variable expansion in user task arguments is intentionally limited; paths should be written explicitly until a versioned variable contract is added.
+The loader preserves escaped tabs, newlines, and backslashes. At execution time, the native runner expands the versioned, non-shell token set `${workspaceFolder}`, `${workspaceRoot}`, `${cwd}`, `${configuration}`, `${config}`, `${presetName}`, `$<CONFIG>`, `${target}`, `${toolchain}`, `${file}`, `${fileDirname}`, `${fileBasename}`, `${env:NAME}`, and `$ENV{NAME}`. `${workspaceFolder}` and `${workspaceRoot}` refer to the workspace root supplied by the workbench; `${cwd}` refers to the task's working directory. Missing environment variables expand to an empty string. Expansion is applied independently to the executable, working directory, project file, target name, and each argument; no shell quoting, command substitution, globbing, redirection, or arbitrary command token is evaluated.
+
+The workbench supplies the selected Debug or Release configuration and target context before execution. A task can therefore remain portable across workspaces without turning its argument vector into a shell command. The exact expansion behavior is covered by the native task smoke and remains subject to workspace trust.
 
 ## User-defined schemes
 

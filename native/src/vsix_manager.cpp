@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Codium::Blocks Contributors
 
 #include "codium/vsix_manager.hpp"
+#include "codium/compatibility_report.hpp"
 #include "codium/extension_security.hpp"
 #include "codium/signature_verifier.hpp"
 
@@ -61,6 +62,68 @@ bool WriteTextFile(const wxString& path, const wxString& text)
     return file.Write(bytes.data(), bytes.length()) == bytes.length();
 }
 
+wxString JsonEscape(const wxString& value)
+{
+    wxString result;
+    for (const wxChar character : value) {
+        if (character == wxChar('\\')) result += wxS("\\\\");
+        else if (character == wxChar('"')) result += wxS("\\\"");
+        else if (character == wxChar('\n')) result += wxS("\\n");
+        else if (character == wxChar('\r')) result += wxS("\\r");
+        else if (character == wxChar('\t')) result += wxS("\\t");
+        else result += character;
+    }
+    return result;
+}
+
+wxString JsonArray(const wxArrayString& values)
+{
+    wxString result = wxS("[");
+    for (size_t index = 0; index < values.size(); ++index) {
+        if (index) result += wxS(",");
+        result += wxS("\"") + JsonEscape(values[index]) + wxS("\"");
+    }
+    result += wxS("]");
+    return result;
+}
+
+wxString JsonTextField(const wxString& json, const wxString& field)
+{
+    const wxString marker = wxString::Format(wxS("\"%s\":"), field);
+    const int markerStart = json.Find(marker);
+    if (markerStart == wxNOT_FOUND) return wxEmptyString;
+    int cursor = markerStart + static_cast<int>(marker.length());
+    while (cursor < static_cast<int>(json.length()) && json[cursor] == wxChar(' ')) ++cursor;
+    if (cursor >= static_cast<int>(json.length()) || json[cursor] != wxChar('"')) return wxEmptyString;
+    ++cursor;
+    wxString result;
+    bool escaped = false;
+    for (; cursor < static_cast<int>(json.length()); ++cursor) {
+        const wxChar character = json[cursor];
+        if (!escaped && character == wxChar('"')) return result;
+        if (escaped) {
+            result += character == wxChar('n') ? wxChar('\n') :
+                      character == wxChar('r') ? wxChar('\r') :
+                      character == wxChar('t') ? wxChar('\t') : character;
+            escaped = false;
+        } else if (character == wxChar('\\')) {
+            escaped = true;
+        } else {
+            result += character;
+        }
+    }
+    return wxEmptyString;
+}
+
+wxString CompatibilityJson(const CompatibilityReport& report)
+{
+    return wxString::Format(
+        wxS("{\"extensionId\":\"%s\",\"manifestValid\":%s,\"activationSupported\":%s,\"supportedFeatures\":%s,\"unsupportedFeatures\":%s,\"warnings\":%s}\n"),
+        JsonEscape(report.extensionId), report.manifestValid ? wxS("true") : wxS("false"),
+        report.activationSupported ? wxS("true") : wxS("false"), JsonArray(report.supportedFeatures),
+        JsonArray(report.unsupportedFeatures), JsonArray(report.warnings));
+}
+
 bool IsSha256Digest(const wxString& digest)
 {
     if (digest.length() != 64) return false;
@@ -74,6 +137,30 @@ bool RemoveDirectoryIfPresent(const wxString& path)
 {
     if (!wxDirExists(path)) return true;
     return wxFileName::Rmdir(path, wxPATH_RMDIR_RECURSIVE);
+}
+
+void RemoveLegacyInstallations(const wxString& root, const wxString& extensionId, const wxString& canonical)
+{
+    wxArrayString legacy;
+    wxDir directory(root);
+    if (!directory.IsOpened()) return;
+    wxString name;
+    bool keepGoing = directory.GetFirst(&name, wxEmptyString, wxDIR_DIRS);
+    while (keepGoing) {
+        const wxString candidate = root + wxFILE_SEP_PATH + name;
+        if (!name.StartsWith(wxS(".")) && candidate != canonical) {
+            wxString metadata;
+            ExtensionManifest manifest;
+            wxString error;
+            if (ReadTextFile(candidate + wxFILE_SEP_PATH + wxS(".codium-manifest.json"), &metadata) &&
+                ExtensionSecurity::ValidateManifest(metadata, &manifest, &error) &&
+                manifest.publisher + wxS(".") + manifest.name == extensionId) {
+                legacy.Add(candidate);
+            }
+        }
+        keepGoing = directory.GetNext(&name);
+    }
+    for (const auto& candidate : legacy) RemoveDirectoryIfPresent(candidate);
 }
 
 } // namespace
@@ -102,10 +189,16 @@ bool VsixManager::InstallSigned(const wxString& vsixPath, const wxString& expect
         if (message) *message = signatureError;
         return false;
     }
-    return InstallVerified(vsixPath, expectedSha256, message);
+    return InstallVerifiedInternal(vsixPath, expectedSha256, true, message);
 }
 
 bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expectedSha256, wxString* message)
+{
+    return InstallVerifiedInternal(vsixPath, expectedSha256, false, message);
+}
+
+bool VsixManager::InstallVerifiedInternal(const wxString& vsixPath, const wxString& expectedSha256,
+                                          bool trusted, wxString* message)
 {
     if (!wxFileExists(vsixPath) || !vsixPath.Lower().EndsWith(wxS(".vsix"))) {
         if (message) *message = wxS("The file must exist and have a .vsix extension.");
@@ -128,11 +221,8 @@ bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expe
     }
 
     const wxFileName source(vsixPath);
-    const wxString destination = extensionRoot_ + wxFILE_SEP_PATH + source.GetName();
     const wxString staging = extensionRoot_ + wxFILE_SEP_PATH + wxS(".staging-") + source.GetName();
-    const wxString rollback = extensionRoot_ + wxFILE_SEP_PATH + wxS(".rollback-") + source.GetName();
     RemoveDirectoryIfPresent(staging);
-    RemoveDirectoryIfPresent(rollback);
     if (!wxFileName::Mkdir(staging, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL)) {
         if (message) *message = wxString::Format(wxS("Could not create VSIX staging directory: %s."), staging);
         return false;
@@ -240,12 +330,24 @@ bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expe
         return false;
     }
 
+    const wxString extensionId = manifest.publisher + wxS(".") + manifest.name;
+    const wxString destination = extensionRoot_ + wxFILE_SEP_PATH + extensionId;
+    const wxString rollback = extensionRoot_ + wxFILE_SEP_PATH + wxS(".rollback-") + extensionId;
+    RemoveDirectoryIfPresent(rollback);
+    const CompatibilityReport compatibility = CompatibilityReporter::Analyze(manifestJson);
     const wxString metadata = wxString::Format(
-        wxS("{\"name\":\"%s\",\"publisher\":\"%s\",\"version\":\"%s\",\"sha256\":\"%s\",\"trusted\":false}\n"),
-        manifest.name, manifest.publisher, manifest.version, actualSha256);
+        wxS("{\"name\":\"%s\",\"publisher\":\"%s\",\"version\":\"%s\",\"sha256\":\"%s\",\"trusted\":%s}\n"),
+        JsonEscape(manifest.name), JsonEscape(manifest.publisher), JsonEscape(manifest.version),
+        actualSha256, trusted ? wxS("true") : wxS("false"));
     if (!WriteTextFile(staging + wxFILE_SEP_PATH + wxS(".codium-manifest.json"), metadata)) {
         RemoveDirectoryIfPresent(staging);
         if (message) *message = wxS("Could not write extension security metadata.");
+        return false;
+    }
+    if (!WriteTextFile(staging + wxFILE_SEP_PATH + wxS(".codium-compatibility.json"),
+                       CompatibilityJson(compatibility))) {
+        RemoveDirectoryIfPresent(staging);
+        if (message) *message = wxS("Could not write the extension compatibility report.");
         return false;
     }
 
@@ -263,6 +365,7 @@ bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expe
         return false;
     }
     RemoveDirectoryIfPresent(rollback);
+    RemoveLegacyInstallations(extensionRoot_, extensionId, destination);
 
     if (message) *message = wxString::Format(wxS("Extension %s.%s@%s installed at %s (SHA-256 %s)."),
                                              manifest.publisher, manifest.name, manifest.version, destination, actualSha256);
@@ -272,13 +375,47 @@ bool VsixManager::InstallVerified(const wxString& vsixPath, const wxString& expe
 wxArrayString VsixManager::ListInstalled() const
 {
     wxArrayString result;
+    for (const auto& extension : ListInstalledInfo()) {
+        result.Add(extension.manifest.publisher + wxS(".") + extension.manifest.name);
+    }
+    return result;
+}
+
+std::vector<InstalledExtensionInfo> VsixManager::ListInstalledInfo() const
+{
+    std::vector<InstalledExtensionInfo> result;
     wxDir dir(extensionRoot_);
     if (!dir.IsOpened()) return result;
 
     wxString name;
     bool keepGoing = dir.GetFirst(&name, wxEmptyString, wxDIR_DIRS);
     while (keepGoing) {
-        if (!name.StartsWith(wxS("."))) result.Add(name);
+        if (!name.StartsWith(wxS("."))) {
+            const wxString directory = extensionRoot_ + wxFILE_SEP_PATH + name;
+            const wxString metadataPath = directory + wxFILE_SEP_PATH + wxS(".codium-manifest.json");
+            wxString metadata;
+            if (ReadTextFile(metadataPath, &metadata)) {
+                ExtensionManifest manifest;
+                wxString error;
+                if (ExtensionSecurity::ValidateManifest(metadata, &manifest, &error)) {
+                    InstalledExtensionInfo info;
+                    info.manifest = manifest;
+                    info.directory = directory;
+                    info.digest = JsonTextField(metadata, wxS("sha256"));
+                    info.trusted = metadata.Find(wxS("\"trusted\":true")) != wxNOT_FOUND;
+                    const wxString extensionId = manifest.publisher + wxS(".") + manifest.name;
+                    auto existing = std::find_if(result.begin(), result.end(),
+                        [&extensionId](const InstalledExtensionInfo& candidate) {
+                            return candidate.manifest.publisher + wxS(".") + candidate.manifest.name == extensionId;
+                        });
+                    if (existing == result.end()) {
+                        result.push_back(info);
+                    } else if (wxFileName(directory).GetName() == extensionId) {
+                        *existing = info;
+                    }
+                }
+            }
+        }
         keepGoing = dir.GetNext(&name);
     }
     return result;

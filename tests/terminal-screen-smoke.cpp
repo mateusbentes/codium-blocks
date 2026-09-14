@@ -80,6 +80,18 @@ int main()
     screen.Feed(wxString::FromUTF8("\xF0\x9F\x87\xA7\xF0\x9F\x87\xB7"));
     if (screen.CellAt(0, 0).text.length() < 2 || screen.CursorColumn() != 2) return 20;
 
+    screen.Reset();
+    screen.Feed(wxString::FromUTF8("\xF0\x9F\x91\x8D\xF0\x9F\x8F\xBD"));
+    if (screen.CellAt(0, 0).text.length() < 2 || screen.CursorColumn() != 2) return 21;
+
+    screen.Reset();
+    screen.Feed(wxString::FromUTF8("\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA7"));
+    if (screen.CellAt(0, 0).text.length() < 3 || screen.CursorColumn() != 2) return 22;
+
+    screen.Reset();
+    screen.Feed(wxString::FromUTF8("\xF0\xA0\x80\x80"));
+    if (screen.CellAt(0, 0).width != 2 || !screen.CellAt(1, 0).continuation) return 23;
+
     std::cout << "terminal-screen-smoke: ok — VT, scrollback, mouse, paste, Unicode, links, sync, and graphics policy\n";
     return 0;
 }

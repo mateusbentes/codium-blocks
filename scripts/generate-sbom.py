@@ -18,12 +18,14 @@ SKIP_PARTS = {
     ".git", ".quality-venv", ".venv", "__pycache__", "artifacts", "build", "build-fuzz",
     "build-sanitized", "build-libfuzzer", "coverage", "node_modules",
 }
+SKIP_PREFIXES = ("build-", "coverage-")
 LICENSE_FILES = {"LICENSE", "COPYING"}
 
 
 def iter_files(root: Path):
     for path in sorted(root.rglob("*")):
-        if not path.is_file() or any(part in SKIP_PARTS for part in path.relative_to(root).parts):
+        parts = path.relative_to(root).parts
+        if not path.is_file() or any(part in SKIP_PARTS or part.startswith(SKIP_PREFIXES) for part in parts):
             continue
         yield path
 

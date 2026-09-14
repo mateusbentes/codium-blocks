@@ -7,6 +7,7 @@
 #include <wx/filename.h>
 #include <wx/init.h>
 #include <wx/stdpaths.h>
+#include <wx/utils.h>
 
 #include <filesystem>
 #include <fstream>
@@ -92,15 +93,34 @@ int main()
         loadedPreferences.schemeName != savedPreferences.schemeName ||
         loadedPreferences.target != savedPreferences.target) return 2;
 
+    wxSetEnv(wxS("CODIUM_BLOCKS_TASK_TEST"), wxS("environment-ok"));
+    codium::ProjectTask expansionTask;
+    expansionTask.program = wxS("${env:CODIUM_BLOCKS_TASK_TEST}");
+    expansionTask.arguments = {wxS("${workspaceFolder}"), wxS("${cwd}"), wxS("${configuration}"), wxS("${target}"), wxS("$ENV{CODIUM_BLOCKS_TASK_TEST}")};
+    expansionTask.workingDirectory = root + wxFILE_SEP_PATH + wxS("build");
+    expansionTask.configuration = wxS("Release");
+    expansionTask.targetName = wxS("demo");
+    expansionTask.toolchain = wxS("CMake");
+    const codium::ProjectTask expanded = codium::ProjectConfig::ExpandTask(
+        expansionTask, wxEmptyString, wxEmptyString, wxEmptyString, wxEmptyString, root);
+    if (expanded.program != wxS("environment-ok") || expanded.arguments.size() != 5 ||
+        expanded.arguments[0] != root || expanded.arguments[1] != root + wxFILE_SEP_PATH + wxS("build") ||
+        expanded.arguments[2] != wxS("Release") || expanded.arguments[3] != wxS("demo") ||
+        expanded.arguments[4] != wxS("environment-ok") ||
+        expanded.workingDirectory != root + wxFILE_SEP_PATH + wxS("build")) {
+        std::cerr << "task-smoke: variable expansion failed\n";
+        return 3;
+    }
+
     codium::ProjectTask task;
     task.name = wxS("test task");
     task.program = wxS("cmake");
-    task.arguments = {wxS("-E"), wxS("echo"), wxS("task-ok")};
-    task.workingDirectory = root;
+    task.arguments = {wxS("-E"), wxS("echo"), wxS("${workspaceFolder}"), wxS("${cwd}")};
+    task.workingDirectory = root + wxFILE_SEP_PATH + wxS("build");
     codium::TaskRunner runner(nullptr, wxID_HIGHEST + 500);
-    if (!runner.Run(task, &error)) {
+    if (!runner.Run(task, &error, root)) {
         std::cerr << "task-smoke: task launch failed: " << error.ToStdString() << "\n";
-        return 3;
+        return 4;
     }
 
     wxArrayString output;
@@ -111,10 +131,11 @@ int main()
     }
     for (const auto& line : runner.Poll()) output.Add(line);
     bool sawOutput = false;
-    for (const auto& line : output) if (line == wxS("task-ok")) sawOutput = true;
+    const wxString expectedOutput = root + wxS(" ") + root + wxFILE_SEP_PATH + wxS("build");
+    for (const auto& line : output) if (line == expectedOutput) sawOutput = true;
     if (!sawOutput || runner.LastExitCode() != 0) {
         std::cerr << "task-smoke: output or exit code failed\n";
-        return 4;
+        return 5;
     }
 
     std::filesystem::remove_all(root.ToStdString());

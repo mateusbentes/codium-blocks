@@ -50,12 +50,61 @@ int main()
         return 1;
     }
 
-    const wxString extracted = installRoot + wxFILE_SEP_PATH + wxS("demo") +
+    const wxString extracted = installRoot + wxFILE_SEP_PATH + wxS("test.demo") +
                                wxFILE_SEP_PATH + wxS("extension/package.json");
-    if (!wxFileExists(extracted) || manager.ListInstalled().GetCount() != 1) {
+    const wxString compatibility = installRoot + wxFILE_SEP_PATH + wxS("test.demo") +
+                                   wxFILE_SEP_PATH + wxS(".codium-compatibility.json");
+    const auto installed = manager.ListInstalledInfo();
+    if (!wxFileExists(extracted) || !wxFileExists(compatibility) || manager.ListInstalled().GetCount() != 1 ||
+        installed.size() != 1 || installed[0].digest != digest || installed[0].trusted) {
         std::cerr << "vsix-smoke: extracted file or listing missing\n";
         return 1;
     }
+    wxString compatibilityText;
+    wxFile compatibilityFile(compatibility, wxFile::read);
+    if (!compatibilityFile.ReadAll(&compatibilityText) ||
+        compatibilityText.Find(wxS("test.demo")) == wxNOT_FOUND ||
+        compatibilityText.Find(wxS("Node.js main activation")) == wxNOT_FOUND) {
+        std::cerr << "vsix-smoke: compatibility report missing\n";
+        return 1;
+    }
+
+    const wxString legacyDirectory = installRoot + wxFILE_SEP_PATH + wxS("demo");
+    wxFileName::Mkdir(legacyDirectory, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+    const wxString legacyMetadata = wxString::Format(
+        wxS("{\"name\":\"demo\",\"publisher\":\"test\",\"version\":\"1.0.0\",\"sha256\":\"%s\",\"trusted\":false}\n"),
+        digest);
+    {
+        wxFile legacyFile(legacyDirectory + wxFILE_SEP_PATH + wxS(".codium-manifest.json"), wxFile::write);
+        legacyFile.Write(legacyMetadata.utf8_str().data(), legacyMetadata.utf8_str().length());
+    }
+
+    const wxString updatedPath = root + wxFILE_SEP_PATH + wxS("demo-update.vsix");
+    {
+        wxFFileOutputStream output(updatedPath);
+        wxZipOutputStream archive(output);
+        archive.PutNextEntry(wxS("extension/package.json"));
+        const wxString manifest = wxS("{\"name\":\"demo\",\"publisher\":\"test\",\"version\":\"1.1.0\"}\n");
+        archive.Write(manifest.utf8_str().data(), manifest.utf8_str().length());
+        archive.PutNextEntry(wxS("extension/extension.js"));
+        const wxString script = wxS("module.exports = { updated: true };\n");
+        archive.Write(script.utf8_str().data(), script.utf8_str().length());
+        archive.Close();
+    }
+    wxString updatedDigest;
+    if (!codium::ExtensionSecurity::ComputeSha256(updatedPath, &updatedDigest, &message) ||
+        !manager.InstallVerified(updatedPath, updatedDigest, &message) ||
+        manager.ListInstalledInfo().size() != 1 || wxDirExists(legacyDirectory)) {
+        std::cerr << "vsix-smoke: update did not replace the canonical installation\n";
+        return 1;
+    }
+    wxString updatedManifest;
+    wxFile updatedManifestFile(extracted, wxFile::read);
+    if (!updatedManifestFile.ReadAll(&updatedManifest) || updatedManifest.Find(wxS("1.1.0")) == wxNOT_FOUND) {
+        std::cerr << "vsix-smoke: updated manifest was not committed\n";
+        return 1;
+    }
+
     if (manager.InstallVerified(vsixPath, wxS("0000000000000000000000000000000000000000000000000000000000000000"), &message)) {
         std::cerr << "vsix-smoke: invalid checksum was accepted\n";
         return 1;
@@ -99,6 +148,7 @@ int main()
     }
 
     std::remove(vsixPath.utf8_str().data());
+    std::remove(updatedPath.utf8_str().data());
     std::remove(maliciousPath.utf8_str().data());
     std::remove(crowdedPath.utf8_str().data());
     std::cout << "vsix-smoke: ok — cross-platform ZIP extraction\n";

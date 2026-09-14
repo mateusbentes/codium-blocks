@@ -490,6 +490,7 @@ target_link_libraries(codium-blocks-lsp-navigation-smoke PRIVATE ${wxWidgets_LIB
 add_executable(codium-blocks-vsix-smoke
     native/src/vsix_manager.cpp
     native/src/extension_security.cpp
+    native/src/compatibility_report.cpp
     native/src/signature_verifier.cpp
     tests/vsix-smoke.cpp
 )
@@ -523,6 +524,7 @@ add_executable(codium-blocks-fuzz-smoke
     native/src/extension_security.cpp
     native/src/terminal_screen.cpp
     native/src/vsix_manager.cpp
+    native/src/compatibility_report.cpp
     native/src/signature_verifier.cpp
     tests/fuzz-smoke.cpp
 )
@@ -618,6 +620,13 @@ add_executable(codium-blocks-debug-model-smoke
 target_include_directories(codium-blocks-debug-model-smoke PRIVATE native/include)
 codium_blocks_enable_warnings(codium-blocks-debug-model-smoke)
 target_link_libraries(codium-blocks-debug-model-smoke PRIVATE ${wxWidgets_LIBRARIES})
+
+add_executable(codium-blocks-debugger-provider-contract-smoke
+    tests/codeblocks-debugger-provider-contract-smoke.cpp
+)
+target_include_directories(codium-blocks-debugger-provider-contract-smoke PRIVATE native/include)
+codium_blocks_enable_warnings(codium-blocks-debugger-provider-contract-smoke)
+target_link_libraries(codium-blocks-debugger-provider-contract-smoke PRIVATE ${wxWidgets_LIBRARIES})
 
 add_executable(codium-blocks-native-contributions-smoke
     native/src/native_contributions.cpp
@@ -837,6 +846,7 @@ if(BUILD_TESTING)
     add_test(NAME terminal-screen-smoke COMMAND codium-blocks-terminal-screen-smoke)
     add_test(NAME terminal-profile-smoke COMMAND codium-blocks-terminal-profile-smoke)
     add_test(NAME debug-model-smoke COMMAND codium-blocks-debug-model-smoke)
+    add_test(NAME debugger-provider-contract-smoke COMMAND codium-blocks-debugger-provider-contract-smoke)
     add_test(NAME native-contributions-smoke COMMAND codium-blocks-native-contributions-smoke)
     add_test(NAME compatibility-smoke COMMAND codium-blocks-compatibility-smoke)
     add_test(NAME problem-model-smoke COMMAND codium-blocks-problem-model-smoke)

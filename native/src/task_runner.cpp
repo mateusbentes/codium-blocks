@@ -17,7 +17,7 @@ TaskRunner::~TaskRunner()
     Stop();
 }
 
-bool TaskRunner::Run(const ProjectTask& task, wxString* error)
+bool TaskRunner::Run(const ProjectTask& task, wxString* error, const wxString& workspaceFolder)
 {
     if (IsRunning()) {
         if (error) *error = wxS("A task is already running.");
@@ -28,7 +28,12 @@ bool TaskRunner::Run(const ProjectTask& task, wxString* error)
         return false;
     }
 
-    currentTask_ = task;
+    currentTask_ = ProjectConfig::ExpandTask(task, task.configuration, task.targetName, task.toolchain,
+                                             wxEmptyString, workspaceFolder);
+    if (currentTask_.program.empty()) {
+        if (error) *error = wxS("The task executable became empty after variable expansion.");
+        return false;
+    }
     outputBuffer_.clear();
     errorBuffer_.clear();
     lastExitCode_ = 0;
@@ -36,20 +41,20 @@ bool TaskRunner::Run(const ProjectTask& task, wxString* error)
     process_->Redirect();
 
     wxArrayString argvStrings;
-    argvStrings.Add(task.program);
-    for (const auto& argument : task.arguments) argvStrings.Add(argument);
+    argvStrings.Add(currentTask_.program);
+    for (const auto& argument : currentTask_.arguments) argvStrings.Add(argument);
     std::vector<const wxChar*> argv;
     argv.reserve(argvStrings.GetCount() + 1);
     for (const auto& argument : argvStrings) argv.push_back(argument.wx_str());
     argv.push_back(nullptr);
 
     wxExecuteEnv environment;
-    environment.cwd = task.workingDirectory;
+    environment.cwd = currentTask_.workingDirectory;
     pid_ = wxExecute(argv.data(), wxEXEC_ASYNC, process_, &environment);
     if (pid_ == 0) {
         delete process_;
         process_ = nullptr;
-        if (error) *error = wxString::Format(wxS("Could not start task: %s."), task.name);
+        if (error) *error = wxString::Format(wxS("Could not start task: %s."), currentTask_.name);
         return false;
     }
     return true;

@@ -80,6 +80,7 @@ private:
     static bool IsCombiningCodepoint(uint32_t codepoint);
     static bool IsWideCodepoint(uint32_t codepoint);
     static bool IsRegionalIndicatorCodepoint(uint32_t codepoint);
+    static bool IsEmojiModifierCodepoint(uint32_t codepoint);
     int Parameter(size_t index, int fallback = 1) const;
 
     int columns_;

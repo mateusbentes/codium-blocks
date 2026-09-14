@@ -487,3 +487,18 @@ label.themeSystem	Sistema
 message.codeBlocksLoadPolicy	Somente pré-verificação: o Codium::Blocks não carrega bibliotecas compartilhadas do Code::Blocks até que um host com ABI de SDK compatível seja conectado. Plugins nativos dependem de Manager, PluginManager, cbPlugin e da infraestrutura de eventos.
 dialog.vsixVerification	Verificar pacote VSIX
 input.vsixSha256	Digest SHA-256 esperado do VSIX (64 caracteres hexadecimais):
+menu.checkExtensionUpdates	Verificar atualizações de extensões
+button.checkExtensionUpdates	Verificar atualizações
+dialog.chooseOpenVsxExtension	Escolha uma extensão do Open VSX para baixar e instalar.
+message.openVsxNoResults	O Open VSX não retornou extensões compatíveis.
+message.openVsxInstalled	%s foi instalada do Open VSX com SHA-256 %s.
+message.openVsxCompatibilityWritten	Relatório de compatibilidade gravado ao lado da extensão instalada.
+message.openVsxUpdateError	Não foi possível verificar atualizações de %s: %s
+message.openVsxUpdateAvailable	Atualização disponível para %s: %s → %s
+message.openVsxUpToDate	%s está atualizada na versão %s.
+message.openVsxNoUpdates	Nenhuma atualização de extensão está disponível.
+menu.updateExtension	Atualizar extensão selecionada
+action.updateExtension	Atualizar extensão selecionada
+button.updateExtension	Atualizar extensão
+dialog.chooseOpenVsxUpdate	Escolha uma atualização do Open VSX para baixar e instalar.
+message.openVsxUpdated	%s foi atualizada para a versão %s.

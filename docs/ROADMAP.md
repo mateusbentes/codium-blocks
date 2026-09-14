@@ -22,7 +22,7 @@ The Code::Blocks boundary is implemented as an optional isolated process [4](htt
 
 ## Current delivery status
 
-The current increment completes the quality outcomes below and adds the first native installation and packaging foundation. Their status is summarized below.
+The current increment completes the quality outcomes below and adds native registry installation, compatibility evidence, and packaging automation. Their status is summarized below.
 
 | Outcome | Implemented evidence | Deliberate boundary |
 |---|---|---|
@@ -30,6 +30,7 @@ The current increment completes the quality outcomes below and adds the first na
 | Native themes | The native UI has System, Light, Dark, and High contrast palettes. The selected theme updates panels, editor defaults, terminal surfaces, syntax colors, gutter markers, and status text. Dedicated workflows capture a high-contrast workbench at a large runner display resolution. | Human comparison of screenshots and complete system high-contrast detection remain validation work. |
 | Accessibility signals | Gutter markers expose letter glyphs in addition to color, controls use native wxWidgets focus behavior, the high-contrast palette provides strong text/background separation, and each platform workflow produces a visual validation artifact. | A full accessibility audit still needs platform-specific keyboard, font-scaling, screen-reader, focus-restoration, and high-DPI checks. |
 | Extension API depth | The Node host now supports workspace document open/change/save events, `workspace.textDocuments`, `TreeItem`, Tree Data Providers, and native Tree View event forwarding. | SCM provider methods, custom-editor activation, webviews, and broader VS Code API compatibility remain bounded follow-up work. |
+| Extension registry and compatibility | The native registry parses bounded Open VSX search results, caches catalogs, enforces HTTPS and same-origin downloads, verifies a published digest when present, installs transactionally, writes `.codium-compatibility.json`, checks installed versions, and lets the user select an update to install. | Detached signatures, operator-managed allowlists, private-registry authentication, and unattended background updates remain explicit policy work. |
 | Advanced DAP requests | The native client serializes `setFunctionBreakpoints` and `setDataBreakpoints`; configured entries persist per workspace, adapter rejection messages are retained, the fake DAP validates payloads, and the real probe runs launch/stop/stack/scopes/variables/continue/disconnect scenarios when capabilities permit. | Adapter-specific data-ID discovery, richer rejection UX, and broader LLDB/OpenDebugAD7 behavior remain validation work. |
 | Platform CI isolation | Linux, macOS, Windows, and Code::Blocks Linux integration are separate workflow files. Each file mentions and executes only its own environment. Separate package workflows now stage Linux, macOS, and Windows artifacts with CPack and checksums. | Package artifacts are not signed, notarized, or published automatically. Clean-environment installation and human release review remain required. |
 
@@ -61,7 +62,7 @@ Webviews and image-rendering backends remain optional. They must not load during
 
 ### Native packaging and distribution
 
-The installation foundation is implemented. CMake now stages relocatable resources relative to the executable, keeps user-installed extensions outside read-only installation prefixes, installs Linux desktop metadata and icon sizes, embeds the macOS icon in an application bundle, and can include configured Windows wxWidgets runtime DLLs. Isolated package workflows produce Linux Debian/tar artifacts, a macOS disk image, and a Windows portable ZIP with SHA-256 checksums.
+The installation foundation is implemented. CMake now stages relocatable resources relative to the executable, keeps user-installed extensions outside read-only installation prefixes, installs Linux desktop metadata and icon sizes, embeds the macOS icon in an application bundle, and can include configured Windows wxWidgets runtime DLLs. Isolated package workflows produce Linux Debian/tar artifacts, a macOS disk image, and a Windows portable ZIP with SHA-256 checksums; the evidence workflows run on release tags, manual dispatch, and weekly schedules.
 
 The next distribution work is deliberately narrower than feature development. It must test each artifact in a clean environment, decide the supported dependency policy for Node.js and wxWidgets, add signing and notarization when release infrastructure is available, and create a reviewed draft release before public publication. A package artifact is not yet a stable release.
 

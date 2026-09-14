@@ -18,10 +18,12 @@ IGNORED_PARTS = {
     ".git", ".quality-venv", ".venv", "__pycache__", "artifacts", "build", "build-fuzz",
     "build-libfuzzer", "build-sanitized", "coverage", "node_modules",
 }
+IGNORED_PREFIXES = ("build-", "coverage-")
 
 
 def ignored(path: Path, root: Path) -> bool:
-    return any(part in IGNORED_PARTS for part in path.relative_to(root).parts)
+    return any(part in IGNORED_PARTS or part.startswith(IGNORED_PREFIXES)
+               for part in path.relative_to(root).parts)
 
 
 def main() -> int:

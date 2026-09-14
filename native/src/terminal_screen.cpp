@@ -175,7 +175,8 @@ bool TerminalScreen::IsCombiningCodepoint(uint32_t code)
     return (code >= 0x0300 && code <= 0x036f) || (code >= 0x1ab0 && code <= 0x1aff) ||
            (code >= 0x1dc0 && code <= 0x1dff) || (code >= 0x20d0 && code <= 0x20ff) ||
            (code >= 0xfe00 && code <= 0xfe0f) || (code >= 0xfe20 && code <= 0xfe2f) ||
-           code == 0x200c || code == 0x200d || (code >= 0xe0100 && code <= 0xe01ef);
+           code == 0x200c || code == 0x200d || (code >= 0xe0020 && code <= 0xe007f) ||
+           (code >= 0xe0100 && code <= 0xe01ef) || IsEmojiModifierCodepoint(code);
 }
 
 bool TerminalScreen::IsWide(wxChar character)
@@ -189,7 +190,8 @@ bool TerminalScreen::IsWideCodepoint(uint32_t code)
            (code >= 0x2e80 && code <= 0xa4cf) || (code >= 0xac00 && code <= 0xd7a3) ||
            (code >= 0xf900 && code <= 0xfaff) || (code >= 0xfe10 && code <= 0xfe19) ||
            (code >= 0xfe30 && code <= 0xfe6f) || (code >= 0xff00 && code <= 0xff60) ||
-           (code >= 0xffe0 && code <= 0xffe6) || (code >= 0x1f300 && code <= 0x1faff);
+           (code >= 0xffe0 && code <= 0xffe6) || (code >= 0x1f300 && code <= 0x1faff) ||
+           (code >= 0x20000 && code <= 0x3fffd);
 }
 
 bool TerminalScreen::IsRegionalIndicator(wxChar character)
@@ -200,6 +202,11 @@ bool TerminalScreen::IsRegionalIndicator(wxChar character)
 bool TerminalScreen::IsRegionalIndicatorCodepoint(uint32_t code)
 {
     return code >= 0x1f1e6 && code <= 0x1f1ff;
+}
+
+bool TerminalScreen::IsEmojiModifierCodepoint(uint32_t code)
+{
+    return code >= 0x1f3fb && code <= 0x1f3ff;
 }
 
 void TerminalScreen::PushScrollbackRow()
@@ -247,7 +254,8 @@ void TerminalScreen::PutText(const wxString& text, uint32_t codepoint)
 {
     if (text.empty() || codepoint < 0x20) return;
     const bool regionalIndicator = IsRegionalIndicatorCodepoint(codepoint);
-    const bool joinsPrevious = IsCombiningCodepoint(codepoint) || graphemeJoinPending_ ||
+    const bool joinsPrevious = IsCombiningCodepoint(codepoint) || IsEmojiModifierCodepoint(codepoint) ||
+        graphemeJoinPending_ ||
         (regionalIndicator && regionalIndicatorPending_);
     if (joinsPrevious && cursorColumn_ > 0) {
         int baseColumn = cursorColumn_ - 1;

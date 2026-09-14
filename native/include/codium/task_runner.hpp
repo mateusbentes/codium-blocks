@@ -18,7 +18,8 @@ public:
     TaskRunner(wxEvtHandler* owner, int processId);
     ~TaskRunner();
 
-    bool Run(const ProjectTask& task, wxString* error = nullptr);
+    bool Run(const ProjectTask& task, wxString* error = nullptr,
+             const wxString& workspaceFolder = wxEmptyString);
     void Stop();
     void HandleProcessExit(long pid, int exitCode);
     bool IsRunning() const { return process_ != nullptr && pid_ != 0; }
