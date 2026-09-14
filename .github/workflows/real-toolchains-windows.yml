@@ -71,7 +71,7 @@ jobs:
       - name: Build real DAP debuggee
         shell: pwsh
         run: |
-          clang++.exe -std=c++17 -g tests/fixtures/real-dap-debuggee.cpp -o "$env:RUNNER_TEMP/codium-blocks-real-dap-debuggee.exe"
+          clang-cl.exe /nologo /std:c++17 /Od /Zi /EHsc /MT /Fe:"$env:RUNNER_TEMP/codium-blocks-real-dap-debuggee.exe" tests/fixtures/real-dap-debuggee.cpp /link /DEBUG
       - name: Run strict real DAP matrix
         shell: pwsh
         env:

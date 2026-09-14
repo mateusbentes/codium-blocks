@@ -62,7 +62,7 @@ Webviews remain bounded and optional. The host does not execute extension-provid
 
 ### Native packaging and distribution
 
-The installation foundation is implemented. CMake now stages relocatable resources relative to the executable, keeps user-installed extensions outside read-only installation prefixes, installs Linux desktop metadata and icon sizes, embeds the macOS icon in an application bundle, and can include configured Windows wxWidgets runtime DLLs. Isolated package workflows produce Linux Debian/tar artifacts, a macOS disk image, and a Windows portable ZIP with SHA-256 checksums; the evidence workflows run on every push, release tags, manual dispatch, and weekly schedules.
+The installation foundation is implemented. CMake now stages relocatable resources relative to the executable, keeps user-installed extensions outside read-only installation prefixes, installs Linux desktop metadata and icon sizes, embeds the macOS icon in an application bundle, and can include configured Windows wxWidgets runtime DLLs. Isolated package workflows produce Linux Debian/tar artifacts, a macOS disk image, and a Windows portable ZIP with SHA-256 checksums; the evidence workflows run on every push, manual dispatch, and weekly schedules.
 
 The remaining distribution work is release governance rather than missing package automation. Each push now builds and validates the package evidence workflows; signing, notarization, clean-machine trust prompts, and a reviewed release remain intentionally human-controlled. A package artifact is not yet a stable release.
 

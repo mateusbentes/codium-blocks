@@ -70,7 +70,8 @@ jobs:
         run: node tests/real-lsp-smoke.mjs
       - name: Build real DAP debuggee
         run: |
-          clang++ -std=c++17 -g tests/fixtures/real-dap-debuggee.cpp -o /tmp/codium-blocks-real-dap-debuggee
+          xcrun --find clang++
+          xcrun clang++ -std=c++17 -g -O0 tests/fixtures/real-dap-debuggee.cpp -o /tmp/codium-blocks-real-dap-debuggee
       - name: Run strict real DAP matrix
         env:
           CODIUM_BLOCKS_REQUIRE_REAL_DAP: '1'

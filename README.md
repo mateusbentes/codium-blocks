@@ -12,7 +12,7 @@ The automated quality layer also includes a deterministic property-style `invari
 
 ## Current status
 
-The current `1.0.1` development snapshot builds on the completed `0.9.0` baseline and provides the following. It is not a stable release until a matching `v1.0.1` tag, clean package validation, and human release review have been completed. See [`CHANGELOG.md`](CHANGELOG.md) for the version history:
+The current `1.0.1` development snapshot builds on the completed `0.9.0` baseline and provides the following. It is not a stable release until clean package validation and human release review have been completed. See [`CHANGELOG.md`](CHANGELOG.md) for the version history:
 
 - a native C++/wxWidgets window;
 - no Electron dependency or linkage;
