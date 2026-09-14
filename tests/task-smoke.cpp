@@ -24,6 +24,7 @@ int main()
     const wxString root = wxStandardPaths::Get().GetTempDir() + wxFILE_SEP_PATH + wxS("codium-blocks-task-smoke");
     std::filesystem::remove_all(root.ToStdString());
     wxFileName::Mkdir(root, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+    wxFileName::Mkdir(root + wxFILE_SEP_PATH + wxS("build"), wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
     std::ofstream(root.ToStdString() + "/CMakeLists.txt")
         << "cmake_minimum_required(VERSION 3.20)\nproject(demo LANGUAGES CXX)\nadd_executable(demo main.cpp)\n";
     std::ofstream(root.ToStdString() + "/main.cpp") << "int main() { return 0; }\n";

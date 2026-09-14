@@ -68,6 +68,7 @@ int main()
         std::cerr << "vsix-smoke: compatibility report missing\n";
         return 1;
     }
+    compatibilityFile.Close();
 
     const wxString legacyDirectory = installRoot + wxFILE_SEP_PATH + wxS("demo");
     wxFileName::Mkdir(legacyDirectory, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
