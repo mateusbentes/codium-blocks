@@ -65,6 +65,9 @@ try {
   assert.equal(ready.capabilities.includes('configuration'), true);
   assert.equal(ready.capabilities.includes('workspace-events'), true);
   assert.equal(ready.capabilities.includes('tree-views'), true);
+  assert.equal(ready.capabilities.includes('scm-providers'), true);
+  assert.equal(ready.capabilities.includes('custom-editors'), true);
+  assert.equal(ready.capabilities.includes('bounded-webviews'), true);
   assert.equal(ready.capabilities.includes('lsp-process-manager'), true);
 
   send({ id: 1, type: 'hello' });
@@ -87,6 +90,18 @@ try {
   const treeView = await waitFor((message) => message.type === 'event' && message.event === 'treeView' &&
     message.viewId === 'hello.codium.views');
   assert.deepEqual(treeView.items.map((item) => item.label), ['Greeting: Hello from Codium::Blocks', 'Electron-free host']);
+  const scmProvider = await waitFor((message) => message.type === 'event' && message.event === 'scmProvider' &&
+    message.sourceControlId === 'hello.codium.scm');
+  assert.equal(scmProvider.label, 'Hello SCM');
+  const scmResources = await waitFor((message) => message.type === 'event' && message.event === 'scmResources' &&
+    message.sourceControlId === 'hello.codium.scm');
+  assert.equal(scmResources.resources[0].state, 'modified');
+  await waitFor((message) => message.type === 'event' && message.event === 'customEditorProvider' &&
+    message.viewType === 'hello.codium.json');
+  const webviewHtml = await waitFor((message) => message.type === 'event' && message.event === 'webviewHtml' &&
+    message.viewType === 'hello.codium.preview');
+  assert.equal(webviewHtml.html.includes('<script>'), false);
+  assert.equal(webviewHtml.html.includes('onclick='), false);
 
   send({ id: 3, type: 'executeCommand', command: 'hello.codium' });
   const executed = await waitFor((message) => message.type === 'response' && message.id === 3);

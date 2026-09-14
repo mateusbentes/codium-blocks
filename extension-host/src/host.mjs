@@ -23,6 +23,8 @@ const documentListeners = {
   save: new Set(),
 };
 const documents = new Map();
+const scmProviders = new Map();
+const customEditorProviders = new Map();
 let activeExtension = null;
 let languageServer = null;
 const languageRequestMethods = new Map();
@@ -155,6 +157,25 @@ async function publishTreeView(extension, viewId, provider, element) {
   return items;
 }
 
+function sanitizeWebviewHtml(value) {
+  return String(value)
+    .replace(/<\/?(script|iframe|object|embed)\b[^>]*>/gi, '')
+    .replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/javascript\s*:/gi, 'blocked:');
+}
+
+async function publishScmProvider(extension, sourceControlId, provider) {
+  const resources = typeof provider.provideResources === 'function'
+    ? await provider.provideResources()
+    : [];
+  send({ type: 'event', event: 'scmResources', extension: extension.id, sourceControlId,
+    resources: (resources ?? []).map((resource) => ({
+      uri: String(resource.uri ?? resource.path ?? ''),
+      state: String(resource.state ?? 'modified'),
+      originalUri: resource.originalUri ? String(resource.originalUri) : undefined,
+    })) });
+}
+
 const vscode = {
   version: '0.2.0-codium-blocks',
   env: {
@@ -221,6 +242,66 @@ const vscode = {
       if (!provider) throw new Error(`Tree view ${viewId} requires a treeDataProvider.`);
       const disposableRegistration = this.registerTreeDataProvider(viewId, provider);
       return { id: viewId, onDidChangeVisibility: () => disposable(() => {}), dispose: disposableRegistration.dispose };
+    },
+    createSourceControl(sourceControlId, label, rootUri) {
+      const extension = currentExtension();
+      const sourceControl = {
+        id: String(sourceControlId),
+        label: String(label),
+        rootUri,
+        resourceGroups: [],
+        dispose() { scmProviders.delete(`${extension.id}:${sourceControlId}`); },
+      };
+      scmProviders.set(`${extension.id}:${sourceControlId}`, sourceControl);
+      send({ type: 'event', event: 'scmProvider', extension: extension.id,
+        sourceControlId: String(sourceControlId), label: String(label) });
+      return sourceControl;
+    },
+    registerScmProvider(sourceControlId, provider, label = sourceControlId) {
+      const extension = currentExtension();
+      if (!provider || typeof provider.provideResources !== 'function') {
+        throw new Error(`SCM provider for ${sourceControlId} must implement provideResources().`);
+      }
+      scmProviders.set(`${extension.id}:${sourceControlId}`, provider);
+      send({ type: 'event', event: 'scmProvider', extension: extension.id,
+        sourceControlId: String(sourceControlId), label: String(label) });
+      void publishScmProvider(extension, sourceControlId, provider).catch((error) => {
+        send({ type: 'event', event: 'scmProviderError', extension: extension.id,
+          sourceControlId, message: error.message });
+      });
+      return disposable(() => scmProviders.delete(`${extension.id}:${sourceControlId}`));
+    },
+    registerCustomEditorProvider(viewType, provider, options = {}) {
+      const extension = currentExtension();
+      if (!provider || typeof provider.openCustomDocument !== 'function' ||
+          typeof provider.resolveCustomEditor !== 'function') {
+        throw new Error(`Custom editor ${viewType} must implement openCustomDocument() and resolveCustomEditor().`);
+      }
+      customEditorProviders.set(`${extension.id}:${viewType}`, { provider, options });
+      send({ type: 'event', event: 'customEditorProvider', extension: extension.id,
+        viewType: String(viewType), supportsMultipleEditorsPerDocument: options.supportsMultipleEditorsPerDocument === true });
+      return disposable(() => customEditorProviders.delete(`${extension.id}:${viewType}`));
+    },
+    createWebviewPanel(viewType, title, showOptions, options = {}) {
+      const extension = currentExtension();
+      let html = '';
+      const webview = {
+        options: { enableScripts: options.enableScripts === true },
+        cspSource: `codium-blocks://${extension.id}`,
+        postMessage(message) {
+          send({ type: 'event', event: 'webviewMessage', extension: extension.id, viewType, message });
+          return Promise.resolve(true);
+        },
+      };
+      Object.defineProperty(webview, 'html', {
+        get: () => html,
+        set: (value) => {
+          html = sanitizeWebviewHtml(value);
+          send({ type: 'event', event: 'webviewHtml', extension: extension.id, viewType, title, html });
+        },
+      });
+      send({ type: 'event', event: 'webviewPanel', extension: extension.id, viewType, title, showOptions });
+      return { viewType, title, webview, dispose() {} };
     },
   },
   workspace: {
@@ -503,6 +584,12 @@ async function handle(request) {
       for (const view of extension.contributes.views?.['codium-blocks'] ?? []) {
         send({ type: 'event', event: 'contribution', kind: 'view', viewId: view.id, title: view.name });
       }
+      for (const sourceControl of extension.contributes.scm ?? []) {
+        send({ type: 'event', event: 'contribution', kind: 'scm', sourceControlId: sourceControl.id, label: sourceControl.label });
+      }
+      for (const editor of extension.contributes.customEditors ?? []) {
+        send({ type: 'event', event: 'contribution', kind: 'customEditor', viewType: editor.viewType, displayName: editor.displayName });
+      }
       return;
     }
     case 'executeCommand':
@@ -564,6 +651,6 @@ send({
   protocol: 2,
   runtime: 'node',
   electron: false,
-  api: ['commands', 'window', 'workspace', 'languages', 'extensions', 'Uri', 'TreeItem'],
-  capabilities: ['configuration', 'documents', 'workspace-events', 'tree-views', 'lsp-process-manager'],
+  api: ['commands', 'window', 'workspace', 'languages', 'extensions', 'Uri', 'TreeItem', 'SCM', 'CustomEditors', 'Webviews'],
+  capabilities: ['configuration', 'documents', 'workspace-events', 'tree-views', 'scm-providers', 'custom-editors', 'bounded-webviews', 'lsp-process-manager'],
 });

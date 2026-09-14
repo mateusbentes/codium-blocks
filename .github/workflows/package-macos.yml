@@ -3,7 +3,6 @@ name: Codium::Blocks macOS Package
 on:
   workflow_dispatch:
   push:
-    tags: ['v*']
   schedule:
     - cron: '23 3 * * 1'
 

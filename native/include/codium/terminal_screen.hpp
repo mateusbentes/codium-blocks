@@ -25,6 +25,17 @@ struct TerminalCell final {
     bool continuation = false;
 };
 
+enum class TerminalGraphicsKind {
+    Sixel,
+    Kitty,
+};
+
+struct TerminalGraphicsPayload final {
+    TerminalGraphicsKind kind = TerminalGraphicsKind::Sixel;
+    size_t bytes = 0;
+    bool truncated = false;
+};
+
 class TerminalScreen final {
 public:
     TerminalScreen(int columns = 120, int rows = 32);
@@ -50,6 +61,7 @@ public:
     bool BracketedPaste() const { return bracketedPaste_; }
     bool SynchronizedUpdates() const { return synchronizedUpdates_; }
     bool GraphicsDiscarded() const { return graphicsDiscarded_; }
+    const std::vector<TerminalGraphicsPayload>& GraphicsPayloads() const { return graphicsPayloads_; }
 
     static wxColour PaletteColor(int index, bool bold = false);
 
@@ -73,6 +85,7 @@ private:
     void HandleMode(bool set);
     void SwitchAlternateScreen(bool enable);
     void HandleOsc();
+    void FinishGraphicsPayload();
     void PushScrollbackRow();
     static bool IsCombining(wxChar character);
     static bool IsWide(wxChar character);
@@ -99,6 +112,9 @@ private:
     bool bracketedPaste_ = false;
     bool synchronizedUpdates_ = false;
     bool graphicsDiscarded_ = false;
+    TerminalGraphicsKind graphicsKind_ = TerminalGraphicsKind::Sixel;
+    size_t graphicsBytes_ = 0;
+    bool graphicsTruncated_ = false;
     ParserState parserState_ = ParserState::Ground;
     wxString csiParameters_;
     wxString oscBuffer_;
@@ -114,6 +130,7 @@ private:
     std::vector<TerminalCell> primaryGrid_;
     std::vector<TerminalCell> alternateGrid_;
     std::deque<std::vector<TerminalCell>> scrollback_;
+    std::vector<TerminalGraphicsPayload> graphicsPayloads_;
     int scrollOffset_ = 0;
     size_t maxScrollback_ = 2000;
 };

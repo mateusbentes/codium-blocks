@@ -1,6 +1,7 @@
 name: Codium::Blocks macOS real toolchain matrix
 
 on:
+  push:
   workflow_dispatch:
   schedule:
     - cron: '53 4 * * 0'

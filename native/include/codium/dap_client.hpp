@@ -4,6 +4,7 @@
 #pragma once
 
 #include <wx/process.h>
+#include <wx/arrstr.h>
 #include <wx/string.h>
 
 #include <string>
@@ -31,6 +32,16 @@ struct DapDataBreakpointRequest final {
     wxString hitCondition;
 };
 
+struct DapAdapterCapabilities final {
+    bool supportsFunctionBreakpoints = false;
+    bool supportsDataBreakpoints = false;
+    bool supportsConditionalBreakpoints = false;
+    bool supportsLogPoints = false;
+    wxArrayString unsupportedReasons;
+
+    static DapAdapterCapabilities ParseInitializeResponse(const wxString& json);
+};
+
 class DapClient final {
 public:
     DapClient(wxEvtHandler* owner, int processId);
@@ -43,6 +54,7 @@ public:
     bool SetBreakpoints(const wxString& sourcePath, const std::vector<DapBreakpointRequest>& breakpoints);
     bool SetFunctionBreakpoints(const std::vector<DapFunctionBreakpointRequest>& breakpoints);
     bool SetDataBreakpoints(const std::vector<DapDataBreakpointRequest>& breakpoints);
+    bool RequestDataBreakpointInfo(int variablesReference, const wxString& name);
     bool ConfigurationDone();
     bool RequestThreads();
     bool RequestStackTrace(int threadId = 1);

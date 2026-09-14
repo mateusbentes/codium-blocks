@@ -2,7 +2,6 @@ name: Codium::Blocks quality and security
 
 on:
   push:
-    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -64,8 +63,10 @@ jobs:
           mkdir -p artifacts
           SOURCE_DATE_EPOCH=0 python3 scripts/generate-sbom.py --root . --output artifacts/codium-blocks-source.spdx.json
           python3 scripts/audit-dependencies.py --root . --strict --output artifacts/codium-blocks-dependency-audit.json
+          python3 scripts/audit-workflows.py --root . --output artifacts/codium-blocks-workflow-audit.json
           python3 -m json.tool artifacts/codium-blocks-source.spdx.json >/dev/null
           python3 -m json.tool artifacts/codium-blocks-dependency-audit.json >/dev/null
+          python3 -m json.tool artifacts/codium-blocks-workflow-audit.json >/dev/null
       - name: Upload source audit artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

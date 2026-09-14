@@ -3,7 +3,6 @@ name: Codium::Blocks Windows Package
 on:
   workflow_dispatch:
   push:
-    tags: ['v*']
   schedule:
     - cron: '29 3 * * 1'
 

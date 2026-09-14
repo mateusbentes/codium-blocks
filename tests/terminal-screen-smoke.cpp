@@ -74,23 +74,29 @@ int main()
 
     screen.Reset();
     screen.Feed(wxString::FromUTF8("\x1bPq1;2;3;4;5\x1b\\"));
-    if (!screen.GraphicsDiscarded() || !Cell(screen, 0, 0, ' ')) return 19;
+    if (!screen.GraphicsDiscarded() || screen.GraphicsPayloads().size() != 1 ||
+        screen.GraphicsPayloads()[0].kind != codium::TerminalGraphicsKind::Sixel ||
+        screen.GraphicsPayloads()[0].bytes == 0 || !Cell(screen, 0, 0, ' ')) return 19;
+    screen.Reset();
+    screen.Feed(wxString::FromUTF8("\x1b_Gf=100,a=T;AAAA\x1b\\"));
+    if (screen.GraphicsPayloads().size() != 1 ||
+        screen.GraphicsPayloads()[0].kind != codium::TerminalGraphicsKind::Kitty) return 20;
 
     screen.Reset();
     screen.Feed(wxString::FromUTF8("\xF0\x9F\x87\xA7\xF0\x9F\x87\xB7"));
-    if (screen.CellAt(0, 0).text.length() < 2 || screen.CursorColumn() != 2) return 20;
-
-    screen.Reset();
-    screen.Feed(wxString::FromUTF8("\xF0\x9F\x91\x8D\xF0\x9F\x8F\xBD"));
     if (screen.CellAt(0, 0).text.length() < 2 || screen.CursorColumn() != 2) return 21;
 
     screen.Reset();
+    screen.Feed(wxString::FromUTF8("\xF0\x9F\x91\x8D\xF0\x9F\x8F\xBD"));
+    if (screen.CellAt(0, 0).text.length() < 2 || screen.CursorColumn() != 2) return 22;
+
+    screen.Reset();
     screen.Feed(wxString::FromUTF8("\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA7"));
-    if (screen.CellAt(0, 0).text.length() < 3 || screen.CursorColumn() != 2) return 22;
+    if (screen.CellAt(0, 0).text.length() < 3 || screen.CursorColumn() != 2) return 23;
 
     screen.Reset();
     screen.Feed(wxString::FromUTF8("\xF0\xA0\x80\x80"));
-    if (screen.CellAt(0, 0).width != 2 || !screen.CellAt(1, 0).continuation) return 23;
+    if (screen.CellAt(0, 0).width != 2 || !screen.CellAt(1, 0).continuation) return 24;
 
     std::cout << "terminal-screen-smoke: ok — VT, scrollback, mouse, paste, Unicode, links, sync, and graphics policy\n";
     return 0;

@@ -3,7 +3,6 @@ name: Codium::Blocks Linux Packages
 on:
   workflow_dispatch:
   push:
-    tags: ['v*']
   schedule:
     - cron: '17 3 * * 1'
 

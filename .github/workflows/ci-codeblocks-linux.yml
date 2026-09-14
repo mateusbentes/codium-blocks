@@ -2,7 +2,6 @@ name: Codium::Blocks Code::Blocks Linux CI
 
 on:
   push:
-    branches: [main]
   pull_request:
     branches: [main]
 

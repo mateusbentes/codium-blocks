@@ -1,6 +1,7 @@
 name: Codium::Blocks coverage-guided fuzzing
 
 on:
+  push:
   workflow_dispatch:
   schedule:
     - cron: '13 5 * * 0'

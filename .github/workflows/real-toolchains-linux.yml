@@ -1,6 +1,7 @@
 name: Codium::Blocks Linux real toolchain matrix
 
 on:
+  push:
   workflow_dispatch:
   schedule:
     - cron: '41 4 * * 0'

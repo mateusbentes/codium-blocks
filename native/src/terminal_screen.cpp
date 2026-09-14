@@ -91,6 +91,10 @@ void TerminalScreen::Reset()
     bracketedPaste_ = false;
     synchronizedUpdates_ = false;
     graphicsDiscarded_ = false;
+    graphicsKind_ = TerminalGraphicsKind::Sixel;
+    graphicsBytes_ = 0;
+    graphicsTruncated_ = false;
+    graphicsPayloads_.clear();
     scrollOffset_ = 0;
     scrollback_.clear();
     ClearGrid(primaryGrid_);
@@ -426,6 +430,16 @@ void TerminalScreen::HandleOsc()
     oscBuffer_.clear();
 }
 
+void TerminalScreen::FinishGraphicsPayload()
+{
+    if (graphicsBytes_ > 0) {
+        graphicsPayloads_.push_back(TerminalGraphicsPayload{graphicsKind_, graphicsBytes_, graphicsTruncated_});
+    }
+    graphicsBytes_ = 0;
+    graphicsTruncated_ = false;
+    parserState_ = ParserState::Ground;
+}
+
 void TerminalScreen::HandleMode(bool set)
 {
     const wxString parameters = csiParameters_.StartsWith(wxS("?")) ? csiParameters_.Mid(1) : csiParameters_;
@@ -506,8 +520,8 @@ bool TerminalScreen::Feed(const wxString& bytes)
         case ParserState::Escape:
             if (character == wxChar('[')) { csiParameters_.clear(); parserState_ = ParserState::Csi; }
             else if (character == wxChar(']')) { oscBuffer_.clear(); parserState_ = ParserState::Osc; }
-            else if (character == wxChar('P')) { oscBuffer_.clear(); parserState_ = ParserState::Dcs; graphicsDiscarded_ = true; }
-            else if (character == wxChar('_')) { oscBuffer_.clear(); parserState_ = ParserState::Apc; graphicsDiscarded_ = true; }
+            else if (character == wxChar('P')) { graphicsKind_ = TerminalGraphicsKind::Sixel; graphicsBytes_ = 0; graphicsTruncated_ = false; parserState_ = ParserState::Dcs; graphicsDiscarded_ = true; }
+            else if (character == wxChar('_')) { graphicsKind_ = TerminalGraphicsKind::Kitty; graphicsBytes_ = 0; graphicsTruncated_ = false; parserState_ = ParserState::Apc; graphicsDiscarded_ = true; }
             else if (character == wxChar('7')) { savedColumn_ = cursorColumn_; savedRow_ = cursorRow_; parserState_ = ParserState::Ground; }
             else if (character == wxChar('8')) { MoveCursor(savedColumn_, savedRow_); parserState_ = ParserState::Ground; }
             else if (character == wxChar('D')) { LineFeed(); parserState_ = ParserState::Ground; }
@@ -530,15 +544,21 @@ bool TerminalScreen::Feed(const wxString& bytes)
             break;
         case ParserState::Dcs:
             if (character == wxChar(0x1b)) parserState_ = ParserState::DcsEscape;
+            else if (graphicsBytes_ < 1024U * 1024U) ++graphicsBytes_;
+            else graphicsTruncated_ = true;
             break;
         case ParserState::DcsEscape:
-            parserState_ = character == wxChar('\\') ? ParserState::Ground : ParserState::Dcs;
+            if (character == wxChar('\\')) FinishGraphicsPayload();
+            else { parserState_ = ParserState::Dcs; if (graphicsBytes_ < 1024U * 1024U) ++graphicsBytes_; else graphicsTruncated_ = true; }
             break;
         case ParserState::Apc:
             if (character == wxChar(0x1b)) parserState_ = ParserState::ApcEscape;
+            else if (graphicsBytes_ < 1024U * 1024U) ++graphicsBytes_;
+            else graphicsTruncated_ = true;
             break;
         case ParserState::ApcEscape:
-            parserState_ = character == wxChar('\\') ? ParserState::Ground : ParserState::Apc;
+            if (character == wxChar('\\')) FinishGraphicsPayload();
+            else { parserState_ = ParserState::Apc; if (graphicsBytes_ < 1024U * 1024U) ++graphicsBytes_; else graphicsTruncated_ = true; }
             break;
         }
     }

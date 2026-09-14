@@ -40,6 +40,24 @@
           "name": "Hello items"
         }
       ]
+    },
+    "scm": [
+      {
+        "id": "hello.codium.scm",
+        "label": "Hello SCM"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "hello.codium.json",
+        "displayName": "Hello JSON Editor",
+        "selector": [{ "filenamePattern": "*.json" }]
+      }
+    ],
+    "webviews": {
+      "hello.codium.preview": {
+        "enableScripts": false
+      }
     }
   }
 }

@@ -68,6 +68,20 @@ int main()
         std::cerr << "security-smoke: registry or artifact verification failed: " << error.ToStdString() << "\n";
         return 6;
     }
+    if (registry.SetBearerToken(wxS("https://open-vsx.org/api"), wxS("bad\ntoken"), &error) ||
+        !registry.SetBearerToken(wxS("https://open-vsx.org/api"), wxS("test-token"), &error)) {
+        std::cerr << "security-smoke: private registry token policy failed\n";
+        return 7;
+    }
+    codium::ExtensionRegistryPolicy policy;
+    policy.allowUnattendedUpdates = true;
+    policy.requirePublishedSha256 = true;
+    if (!registry.SetPolicy(wxS("https://open-vsx.org/api"), policy, &error) ||
+        !registry.CanRunUnattendedUpdates(wxS("https://open-vsx.org/api")) ||
+        !registry.Policy(wxS("https://open-vsx.org/api")).requirePublishedSha256) {
+        std::cerr << "security-smoke: registry policy failed: " << error.ToStdString() << "\n";
+        return 8;
+    }
     if (registry.OpenVsxSearchUrl(wxS("https://open-vsx.org"), wxS("C++ tools")) !=
             wxS("https://open-vsx.org/api/-/search?query=C%2B%2B+tools") ||
         !registry.CacheCatalog(wxS("https://open-vsx.org"), wxS("C++ tools"), wxS("{\"extensions\":[]}"), &error)) {
@@ -81,11 +95,12 @@ int main()
         return 8;
     }
     std::vector<codium::ExtensionCatalogEntry> entries;
-    const wxString catalog = wxS("{\"extensions\":[{\"namespace\":\"demo\",\"name\":\"tools\",\"version\":\"1.2.3\",\"displayName\":\"Demo Tools\",\"files\":{\"sha256\":\"https://open-vsx.org/api/demo/tools/1.2.3/file/demo.tools-1.2.3.vsix.sha256\",\"download\":\"https://open-vsx.org/api/demo/tools/1.2.3/file/demo.tools-1.2.3.vsix\"}}]}");
+    const wxString catalog = wxS("{\"extensions\":[{\"namespace\":\"demo\",\"name\":\"tools\",\"version\":\"1.2.3\",\"displayName\":\"Demo Tools\",\"signature\":\"deadbeef\",\"files\":{\"sha256\":\"https://open-vsx.org/api/demo/tools/1.2.3/file/demo.tools-1.2.3.vsix.sha256\",\"download\":\"https://open-vsx.org/api/demo/tools/1.2.3/file/demo.tools-1.2.3.vsix\"}}]}");
     if (!registry.ParseOpenVsxCatalog(catalog, &entries, &error) || entries.size() != 1 ||
         entries[0].Identifier() != wxS("demo.tools") || entries[0].version != wxS("1.2.3") ||
         entries[0].downloadUrl.Find(wxS("https://open-vsx.org/api/")) != 0 ||
         !entries[0].sha256.empty() || entries[0].sha256Url.Find(wxS(".vsix.sha256")) == wxNOT_FOUND ||
+        entries[0].signatureHex != wxS("deadbeef") ||
         registry.ParseOpenVsxCatalog(wxS("{\"extensions\":[{\"namespace\":\"../bad\"}]}"), &entries, &error) ||
         registry.ParseOpenVsxCatalog(wxS("{\"extensions\":[}"), &entries, &error) ||
         !codium::ExtensionRegistry::IsNewerVersion(wxS("1.10.0"), wxS("1.9.9")) ||

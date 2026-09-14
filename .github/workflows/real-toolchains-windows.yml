@@ -1,6 +1,7 @@
 name: Codium::Blocks Windows real toolchain matrix
 
 on:
+  push:
   workflow_dispatch:
   schedule:
     - cron: '7 5 * * 0'

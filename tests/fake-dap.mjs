@@ -45,6 +45,12 @@ function handle(request) {
     const optionsAccepted = first.dataId === 'counter' && first.accessType === 'write';
     send({ type: 'response', request_seq: request.seq, success: true, command: request.command,
       body: { optionsAccepted, breakpoints: (request.arguments?.breakpoints ?? []).map((item, index) => ({ id: index + 20, verified: true, message: item.dataId })) } });
+  } else if (request.command === 'dataBreakpointInfo') {
+    send({ type: 'response', request_seq: request.seq, success: true, command: request.command,
+      body: { dataId: request.arguments?.name === 'counter' ? 'counter' : null,
+        description: request.arguments?.name === 'counter' ? 'counter' : 'Data breakpoint unavailable',
+        accessTypes: request.arguments?.name === 'counter' ? ['read', 'write', 'readWrite'] : [],
+        canPersist: request.arguments?.name === 'counter' } });
   } else if (request.command === 'stackTrace') {
     send({ type: 'response', request_seq: request.seq, success: true, command: request.command,
       body: { stackFrames: [{ id: 7, name: 'main', line: 12, column: 1, source: { path: 'demo.cpp' } }] } });

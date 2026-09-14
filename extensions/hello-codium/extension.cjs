@@ -25,6 +25,17 @@ function activate(context) {
       return [new vscode.TreeItem(`Greeting: ${greeting}`), new vscode.TreeItem('Electron-free host')];
     },
   });
+  const scm = vscode.window.registerScmProvider('hello.codium.scm', {
+    provideResources() {
+      return [{ uri: 'file:///workspace/demo.txt', state: 'modified' }];
+    },
+  }, 'Hello SCM');
+  const customEditor = vscode.window.registerCustomEditorProvider('hello.codium.json', {
+    openCustomDocument(uri) { return { uri }; },
+    resolveCustomEditor() {},
+  }, { supportsMultipleEditorsPerDocument: true });
+  const panel = vscode.window.createWebviewPanel('hello.codium.preview', 'Hello preview', 1, { enableScripts: false });
+  panel.webview.html = '<script>blocked()</script><p onclick="blocked()">Safe preview</p>';
   const onOpen = vscode.workspace.onDidOpenTextDocument((document) => {
     output.appendLine(`Opened document: ${document.fileName}`);
   });
@@ -35,7 +46,7 @@ function activate(context) {
     output.appendLine(`Saved document: ${document.fileName}`);
   });
 
-  context.subscriptions.push(helloCommand, configureCommand, tree, onOpen, onChange, onSave);
+  context.subscriptions.push(helloCommand, configureCommand, tree, scm, customEditor, onOpen, onChange, onSave);
   output.appendLine(`Activated in ${vscode.env.appName} (${vscode.env.appHost}).`);
   output.appendLine(`Configured greeting: ${greeting}`);
 }

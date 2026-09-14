@@ -59,6 +59,23 @@ void IgnoreBrokenPipe()
 
 } // namespace
 
+DapAdapterCapabilities DapAdapterCapabilities::ParseInitializeResponse(const wxString& json)
+{
+    const auto hasTrue = [&json](const wxString& key) {
+        return json.Find(wxS("\"") + key + wxS("\":true")) != wxNOT_FOUND;
+    };
+    DapAdapterCapabilities capabilities;
+    capabilities.supportsFunctionBreakpoints = hasTrue(wxS("supportsFunctionBreakpoints"));
+    capabilities.supportsDataBreakpoints = hasTrue(wxS("supportsDataBreakpoints"));
+    capabilities.supportsConditionalBreakpoints = hasTrue(wxS("supportsConditionalBreakpoints"));
+    capabilities.supportsLogPoints = hasTrue(wxS("supportsLogPoints"));
+    if (!capabilities.supportsFunctionBreakpoints) capabilities.unsupportedReasons.Add(wxS("Function breakpoints are not supported by this adapter."));
+    if (!capabilities.supportsDataBreakpoints) capabilities.unsupportedReasons.Add(wxS("Data breakpoints require adapter dataId discovery."));
+    if (!capabilities.supportsConditionalBreakpoints) capabilities.unsupportedReasons.Add(wxS("Conditional breakpoints are not supported by this adapter."));
+    if (!capabilities.supportsLogPoints) capabilities.unsupportedReasons.Add(wxS("Logpoints are not supported by this adapter."));
+    return capabilities;
+}
+
 DapClient::DapClient(wxEvtHandler* owner, int processId)
     : owner_(owner), processId_(processId)
 {
@@ -204,6 +221,12 @@ bool DapClient::SetDataBreakpoints(const std::vector<DapDataBreakpointRequest>& 
     }
     json += wxS("]}");
     return SendRequest(wxS("setDataBreakpoints"), json);
+}
+
+bool DapClient::RequestDataBreakpointInfo(int variablesReference, const wxString& name)
+{
+    return SendRequest(wxS("dataBreakpointInfo"), wxString::Format(
+        wxS("{\"variablesReference\":%d,\"name\":\"%s\"}"), variablesReference, JsonEscape(name)));
 }
 
 bool DapClient::ConfigurationDone()

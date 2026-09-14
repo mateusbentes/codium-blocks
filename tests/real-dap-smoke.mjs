@@ -200,6 +200,7 @@ async function probe(adapter) {
       sourceBreakpoint: [],
       functionBreakpoint: 'unsupported',
       dataBreakpoint: 'unsupported',
+      dataBreakpointInfo: 'unsupported',
       stopped: false,
       stackTrace: false,
       scopes: false,
@@ -232,13 +233,6 @@ async function probe(adapter) {
       });
       result.functionBreakpoint = response.body?.breakpoints ?? [];
     }
-    if (supports(capabilities, 'supportsDataBreakpoints')) {
-      const response = await session.request('setDataBreakpoints', {
-        breakpoints: [{ dataId: 'global_counter', accessType: 'write' }],
-      });
-      result.dataBreakpoint = response.body?.breakpoints ?? [];
-    }
-
     const threads = await session.request('threads');
     const threadId = threads.body?.threads?.[0]?.id;
     if (!threadId) throw new Error(`${adapter.id}: threads response contained no thread`);
@@ -250,6 +244,19 @@ async function probe(adapter) {
     result.stackTrace = true;
     const scopes = await session.request('scopes', { frameId: frame.id });
     const scope = scopes.body?.scopes?.find((item) => item.variablesReference > 0);
+    if (supports(capabilities, 'supportsDataBreakpoints')) {
+      const info = await session.request('dataBreakpointInfo', {
+        variablesReference: scope?.variablesReference ?? 0,
+        name: 'global_counter',
+      });
+      result.dataBreakpointInfo = info.body ?? {};
+      const dataId = info.body?.dataId;
+      if (!dataId) throw new Error(`${adapter.id}: dataBreakpointInfo returned no dataId`);
+      const response = await session.request('setDataBreakpoints', {
+        breakpoints: [{ dataId, accessType: 'write' }],
+      });
+      result.dataBreakpoint = response.body?.breakpoints ?? [];
+    }
     if (scope) {
       result.scopes = true;
       const variables = await session.request('variables', { variablesReference: scope.variablesReference });

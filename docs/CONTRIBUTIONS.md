@@ -6,11 +6,11 @@ The out-of-process Node.js Extension Host supports `window.registerTreeDataProvi
 
 Workspace document lifecycle events are also versioned at the process boundary. The native client sends `open`, `change`, and `save` events with a URI, language identifier, version, and text snapshot. The host updates `workspace.textDocuments` and invokes `workspace.onDidOpenTextDocument`, `workspace.onDidChangeTextDocument`, and `workspace.onDidSaveTextDocument` listeners. Listener failures are reported as extension events instead of terminating the host.
 
-`ScmModel` detects a Git worktree and invokes `git status --porcelain` with an explicit working directory. The result is shown in the Source Control panel. A clean repository is reported explicitly, while non-Git workspaces remain usable and show a diagnostic instead of failing startup.
+`ScmModel` detects a Git worktree and invokes `git status --porcelain` with an explicit working directory and argv-based process execution. The result is shown in the Source Control panel, and stage, unstage, and discard operations reject paths outside the workspace. A clean repository is reported explicitly, while non-Git workspaces remain usable and show a diagnostic instead of failing startup.
 
-`CustomEditorRegistry` maps file extensions to editor identifiers. The current native surface still uses the wxWidgets text editor for registered files, but records the selected custom-editor identifier and exposes the registry in the UI. This is the compatibility seam for future binary, notebook, image, and domain-specific editors.
+`CustomEditorRegistry` maps file extensions to editor identifiers. The current native surface still uses the wxWidgets text editor for registered files, but records the selected custom-editor identifier and exposes the registry in the UI. The Extension Host can activate a custom-editor provider and exchange value-owned lifecycle events. This is the compatibility seam for future binary, notebook, image, and domain-specific editors.
 
-These registries remain smaller than the VS Code contribution API. They provide stable native foundations while JavaScript contribution points are progressively added to the Extension Host. SCM provider methods, custom-editor activation, webviews, arbitrary renderer APIs, and complete VS Code compatibility remain outside this increment. The deterministic native-contributions test and Extension Host smoke test cover the currently supported boundaries.
+These registries remain smaller than the VS Code contribution API. They provide stable native foundations while JavaScript contribution points are progressively added to the Extension Host. SCM resources, custom-editor activation, and sanitized webview metadata are supported; arbitrary browser renderer APIs, unrestricted scripts, and complete VS Code compatibility remain outside this increment. The deterministic native-contributions test and Extension Host smoke test cover the currently supported boundaries.
 
 ## Reproducible quality commands
 
@@ -31,6 +31,7 @@ The bounded native fuzz target replays the checked-in seeds under `tests/corpus/
 CODIUM_BLOCKS_FUZZ_ITERATIONS=512 ctest --test-dir build-fuzz -R '^fuzz-smoke$' --output-on-failure
 SOURCE_DATE_EPOCH=0 python3 scripts/generate-sbom.py --root . --output codium-blocks-source.spdx.json
 python3 scripts/audit-dependencies.py --strict --output codium-blocks-dependency-audit.json
+python3 scripts/audit-workflows.py --output codium-blocks-workflow-audit.json
 ```
 
 Coverage, static analysis, package evidence, and real external-server matrices are intentionally separate from the ordinary portable build. A passing automated command does not establish accessibility, release signing, notarization, or clean-machine installation behavior.

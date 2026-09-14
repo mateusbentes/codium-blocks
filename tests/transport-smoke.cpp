@@ -159,6 +159,15 @@ int main(int argc, char** argv)
 #endif
     wxUnsetEnv(wxS("CODIUM_BLOCKS_DISABLE_CONPTY"));
 
+    const codium::DapAdapterCapabilities capabilities = codium::DapAdapterCapabilities::ParseInitializeResponse(
+        wxS("{\"supportsFunctionBreakpoints\":true,\"supportsDataBreakpoints\":true,"
+            "\"supportsConditionalBreakpoints\":true,\"supportsLogPoints\":true}"));
+    if (!capabilities.supportsFunctionBreakpoints || !capabilities.supportsDataBreakpoints ||
+        !capabilities.unsupportedReasons.IsEmpty()) {
+        std::cerr << "transport-smoke: DAP capability parsing failed\n";
+        return 1;
+    }
+
     codium::DapClient dap(nullptr, wxID_HIGHEST + 701);
     wxArrayString dapArguments;
     dapArguments.Add(fakeDap);
@@ -194,6 +203,8 @@ int main(int argc, char** argv)
         !WaitForDap(dap, wxS("\"optionsAccepted\":true,\"breakpoints\"")) ||
         !dap.SetFunctionBreakpoints(functionBreakpoints) ||
         !WaitForDap(dap, wxS("\"optionsAccepted\":true,\"breakpoints\"")) ||
+        !dap.RequestDataBreakpointInfo(42, wxS("counter")) ||
+        !WaitForDap(dap, wxS("\"dataId\":\"counter\"")) ||
         !dap.SetDataBreakpoints(dataBreakpoints) ||
         !WaitForDap(dap, wxS("\"optionsAccepted\":true,\"breakpoints\"")) ||
         !dap.RequestStackTrace(1) || !WaitForDap(dap, wxS("\"stackFrames\"")) ||
