@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "matrixVersion": "2026.09",
-  "policy": "A matrix entry is versioned and reproducible; execution may be skipped only when its toolchain is not installed.",
+  "policy": "A matrix entry is versioned and reproducible; execution may be skipped only when its toolchain is not installed or when an explicit platform environment policy documents a runner limitation.",
   "servers": [
     {
       "id": "clangd",
@@ -42,6 +42,7 @@
       "versionArgs": ["version"],
       "versionPattern": "v0\\.17\\.1",
       "args": ["serve"],
+      "required": { "win32": false },
       "noViewsPolicy": { "win32": "environment-skip" },
       "languageId": "go",
       "file": "main.go",

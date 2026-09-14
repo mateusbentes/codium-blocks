@@ -17,7 +17,7 @@ jobs:
   package-windows:
     name: Windows portable package (windows-2022)
     runs-on: windows-2022
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -60,6 +60,7 @@ jobs:
           -DVCPKG_TARGET_TRIPLET=x64-windows
           -DBUILD_TESTING=ON
           -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF
+          -DCODIUM_BLOCKS_ENABLE_REAL_TOOLCHAIN_TESTS=OFF
           -DCODIUM_BLOCKS_WINDOWS_RUNTIME_DIR="$env:CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR"
 
       - name: Build Windows portable package

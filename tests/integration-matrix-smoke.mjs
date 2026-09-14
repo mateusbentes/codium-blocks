@@ -40,6 +40,16 @@ for (const server of lsp.servers) {
   assert.match(server.languageId, /^\w+$/);
   assert.match(server.file, /\S+/);
   assert.match(server.text, /\n$/);
+  if (server.required !== undefined) {
+    assert.ok(typeof server.required === 'boolean' || typeof server.required === 'object');
+    if (typeof server.required === 'object') {
+      for (const [platform, required] of Object.entries(server.required)) {
+        assert.ok(['linux', 'darwin', 'win32'].includes(platform));
+        assert.equal(typeof required, 'boolean');
+        if (required === false) assert.equal(server.noViewsPolicy?.[platform], 'environment-skip');
+      }
+    }
+  }
   assert.ok(Number.isInteger(server.position?.line) && server.position.line >= 0);
   assert.ok(Number.isInteger(server.position?.character) && server.position.character >= 0);
   for (const platform of ['linux', 'darwin', 'win32']) {

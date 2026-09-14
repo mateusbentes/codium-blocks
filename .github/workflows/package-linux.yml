@@ -47,7 +47,7 @@ jobs:
           sudo apt-get install -y build-essential cmake pkg-config libwxgtk3.2-dev libssl-dev imagemagick xvfb
 
       - name: Configure Linux package build
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF -DCODIUM_BLOCKS_ENABLE_REAL_TOOLCHAIN_TESTS=OFF
 
       - name: Build Linux package
         run: cmake --build build --parallel 2

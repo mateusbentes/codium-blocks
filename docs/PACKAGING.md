@@ -37,7 +37,8 @@ sudo apt-get install build-essential cmake pkg-config libwxgtk3.2-dev libssl-dev
 cmake -S . -B build-package \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=ON \
-  -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF
+  -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF \
+  -DCODIUM_BLOCKS_ENABLE_REAL_TOOLCHAIN_TESTS=OFF
 cmake --build build-package --parallel
 ctest --test-dir build-package --output-on-failure
 (cd build-package && cpack -G TGZ && cpack -G DEB)
@@ -76,6 +77,7 @@ cmake -S . -B build-package \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=ON \
   -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF \
+  -DCODIUM_BLOCKS_ENABLE_REAL_TOOLCHAIN_TESTS=OFF \
   -DCODIUM_BLOCKS_MACOS_BUNDLE=ON
 cmake --build build-package --config Release --parallel
 ctest --test-dir build-package -C Release --output-on-failure
@@ -92,6 +94,7 @@ cmake -S . -B build-package -G "Visual Studio 17 2022" -A x64 `
   -DVCPKG_TARGET_TRIPLET=x64-windows `
   -DBUILD_TESTING=ON `
   -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF `
+  -DCODIUM_BLOCKS_ENABLE_REAL_TOOLCHAIN_TESTS=OFF `
   -DCODIUM_BLOCKS_WINDOWS_RUNTIME_DIR="$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/bin"
 cmake --build build-package --config Release --parallel
 ctest --test-dir build-package -C Release --output-on-failure
@@ -112,7 +115,7 @@ The package workflows are isolated by platform:
 * `package-macos.yml` builds the macOS application bundle and disk image on `macos-15`.
 * `package-windows.yml` builds the Windows portable archive on `windows-2022`.
 
-Each workflow runs on `workflow_dispatch` and on version tags matching `v*`. A tag build fails unless the tag matches the CMake project version, for example `v1.0.1` for `PROJECT_VERSION 1.0.1`. Manual runs are validation runs and are not release publication. Each workflow runs its own tests, generates its own package checksum and SPDX inventory, and uploads its own artifacts. The workflows are maintained in the public project repository [3](https://github.com/mateusbentes/codium-blocks). No package workflow publishes a release or assumes that another operating system has already completed.
+Each workflow runs on every push, on `workflow_dispatch`, and on a weekly schedule. Version-tag runs also validate that the tag matches the CMake project version, for example `v1.0.1` for `PROJECT_VERSION 1.0.1`; a mismatched tag fails before packaging. Package validation uses the portable CTest suite, while the separate real-toolchain workflows own external LSP/DAP execution. Manual and push runs are validation runs and are not release publication. Each workflow runs its own tests, generates its own package checksum and SPDX inventory, and uploads its own artifacts. The workflows are maintained in the public project repository [3](https://github.com/mateusbentes/codium-blocks). No package workflow publishes a release or assumes that another operating system has already completed.
 
 The first release process should create a draft release from reviewed artifacts. Before public publication, a human should inspect package contents, run the application from a clean environment, verify documented dependencies, review high-contrast screenshots, and confirm the license and changelog. Automated packaging reduces repetitive work, but it cannot replace that final product check.
 

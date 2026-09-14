@@ -34,9 +34,20 @@ jobs:
           cache: false
       - name: Install pinned macOS toolchains
         run: |
+          test "$(uname -m)" = "arm64"
           brew update
-          brew install llvm@18 rustup cmake
-          echo "$(brew --prefix llvm@18)/bin" >> "$GITHUB_PATH"
+          brew install rustup cmake
+          llvm_archive="clang+llvm-18.1.8-arm64-apple-macos11.tar.xz"
+          llvm_url="https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang%2Bllvm-18.1.8-arm64-apple-macos11.tar.xz"
+          llvm_sha256="4573b7f25f46d2a9c8882993f091c52f416c83271db6f5b213c93f0bd0346a10"
+          curl --fail --location --retry 3 --retry-delay 2 --output "$RUNNER_TEMP/$llvm_archive" "$llvm_url"
+          echo "$llvm_sha256  $RUNNER_TEMP/$llvm_archive" | shasum -a 256 --check
+          mkdir -p "$RUNNER_TEMP/llvm-18.1.8"
+          tar -xJf "$RUNNER_TEMP/$llvm_archive" -C "$RUNNER_TEMP/llvm-18.1.8" --strip-components=1
+          for tool in clangd clang++ lldb-dap llvm-config; do
+            test -x "$RUNNER_TEMP/llvm-18.1.8/bin/$tool"
+          done
+          echo "$RUNNER_TEMP/llvm-18.1.8/bin" >> "$GITHUB_PATH"
           echo "$(brew --prefix rustup)/bin" >> "$GITHUB_PATH"
           export PATH="$(brew --prefix rustup)/bin:$PATH"
           rustup toolchain install 1.82.0 --profile minimal

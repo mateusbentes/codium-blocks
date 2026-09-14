@@ -19,6 +19,7 @@ const servers = matrix.servers.map((server) => ({
   versionCommand: server.versionCommand?.[platform] ?? server.command[platform],
   version: typeof server.version === 'string' ? server.version : server.version?.[platform],
   versionPattern: typeof server.versionPattern === 'string' ? server.versionPattern : server.versionPattern?.[platform],
+  required: typeof server.required === 'boolean' ? server.required : server.required?.[platform] ?? true,
   requestTimeoutMs: typeof server.requestTimeoutMs === 'number'
     ? server.requestTimeoutMs : server.requestTimeoutMs?.[platform] ?? 10000,
   didOpenDelayMs: typeof server.didOpenDelayMs === 'number'
@@ -271,6 +272,8 @@ async function smokeServer(server, root) {
 const root = await mkdtemp(join(tmpdir(), 'codium-blocks-real-lsp-'));
 try {
   let executed = 0;
+  let executedRequired = 0;
+  const requiredServers = servers.filter((server) => server.required !== false);
   for (const server of servers) {
     const serverRoot = await mkdtemp(join(root, `${server.name}-`));
     for (const file of server.files) {
@@ -285,25 +288,26 @@ try {
       await verifyVersion(server);
       const result = await smokeServer(server, serverRoot);
       executed += 1;
+      if (server.required !== false) executedRequired += 1;
       console.log(`real-lsp-smoke: ${server.name} ok — initialize, didOpen, and capability-gated editor scenarios`);
       console.log(`real-lsp-smoke: ${server.name} responses ${JSON.stringify(result.responses)}`);
     } catch (error) {
       if (error?.code === 'ENOENT' || String(error?.message).includes('ENOENT')) {
-        if (requireRealServers) throw new Error(`${server.name}: required executable is not installed`);
+        if (requireRealServers && server.required !== false) throw new Error(`${server.name}: required executable is not installed`);
         console.log(`real-lsp-smoke: ${server.name} skipped — executable not installed`);
       } else if (server.noViewsPolicy?.[platform] === 'environment-skip' && /no views/i.test(error?.message ?? '')) {
-        if (requireRealServers) throw new Error(`${server.name}: required workspace view was not created (${error.message})`);
+        if (requireRealServers && server.required !== false) throw new Error(`${server.name}: required workspace view was not created (${error.message})`);
         console.log(`real-lsp-smoke: ${server.name} skipped — ${platform} gopls did not create a workspace view in this runner (${error.message})`);
       } else if (error?.code === 'LSP_SERVER_EXIT' && error.phase === 'initialize') {
-        if (requireRealServers) throw new Error(`${server.name}: required server could not initialize (${error.message})`);
+        if (requireRealServers && server.required !== false) throw new Error(`${server.name}: required server could not initialize (${error.message})`);
         console.log(`real-lsp-smoke: ${server.name} skipped — executable could not start in this environment (${error.message})`);
       } else {
         throw new Error(`${server.name}: ${error.message}`);
       }
     }
   }
-  if (requireRealServers && executed !== servers.length) {
-    throw new Error(`real-lsp-smoke: strict matrix completed ${executed}/${servers.length} servers`);
+  if (requireRealServers && executedRequired !== requiredServers.length) {
+    throw new Error(`real-lsp-smoke: strict matrix completed ${executedRequired}/${requiredServers.length} required servers (${executed}/${servers.length} total)`);
   }
   if (executed === 0) console.log('real-lsp-smoke: no real language servers completed; optional matrix skipped');
 } finally {

@@ -44,7 +44,7 @@ jobs:
           echo "PKG_CONFIG_PATH=$(brew --prefix wxwidgets)/lib/pkgconfig" >> "$GITHUB_ENV"
 
       - name: Configure macOS application bundle
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF -DCODIUM_BLOCKS_MACOS_BUNDLE=ON
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF -DCODIUM_BLOCKS_ENABLE_REAL_TOOLCHAIN_TESTS=OFF -DCODIUM_BLOCKS_MACOS_BUNDLE=ON
 
       - name: Build macOS application bundle
         run: cmake --build build --config Release --parallel 2
