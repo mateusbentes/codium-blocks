@@ -64,6 +64,7 @@ jobs:
           gopls version | grep -F 'v0.17.1'
           pyright --version | grep -F '1.1.390'
           llvm-config --version | grep -F '18.1.8'
+          lldb-dap --help | grep -F 'LLDB DAP'
       - name: Run strict real LSP matrix
         env:
           CODIUM_BLOCKS_REQUIRE_REAL_LSP: '1'
@@ -75,6 +76,7 @@ jobs:
       - name: Run strict real DAP matrix
         env:
           CODIUM_BLOCKS_REQUIRE_REAL_DAP: '1'
+          CODIUM_BLOCKS_REAL_DAP_TRACE: '1'
           CODIUM_BLOCKS_REAL_DAP_DEBUGGEE: /tmp/codium-blocks-real-dap-debuggee
           CODIUM_BLOCKS_REAL_DAP_SOURCE: ${{ github.workspace }}/tests/fixtures/real-dap-debuggee.cpp
         run: node tests/real-dap-smoke.mjs

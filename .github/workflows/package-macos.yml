@@ -68,8 +68,10 @@ jobs:
           (cd build && cpack -C Release)
           dmg=$(find build -maxdepth 1 -type f -name 'codium-blocks-*.dmg' -print -quit)
           test -n "$dmg" && test -s "$dmg"
-          mount_point=$(hdiutil attach -nobrowse -readonly "$dmg" | sed -n 's#.*\(/Volumes/.*\)$#\1#p' | tail -n 1)
-          test -n "$mount_point"
+          mount_point="$RUNNER_TEMP/codium-blocks-dmg"
+          rm -rf "$mount_point"
+          mkdir -p "$mount_point"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount_point" "$dmg"
           cleanup() { hdiutil detach "$mount_point" >/dev/null || true; }
           trap cleanup EXIT
           packaged_app=$(find "$mount_point" -maxdepth 1 -type d -name '*.app' -print -quit)

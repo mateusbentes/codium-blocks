@@ -63,6 +63,9 @@ jobs:
           gopls.exe version | Select-String 'v0.17.1'
           pyright.cmd --version | Select-String '1.1.390'
           & clang.exe --version | Select-String '18.1.8'
+          $lldbDap = Join-Path $env:ProgramFiles 'LLVM/bin/lldb-dap.exe'
+          if (-not (Test-Path $lldbDap)) { throw "Expected LLDB-DAP was not installed: $lldbDap" }
+          & $lldbDap --help | Select-String 'LLDB DAP'
       - name: Run strict real LSP matrix
         shell: pwsh
         env:
@@ -76,6 +79,7 @@ jobs:
         shell: pwsh
         env:
           CODIUM_BLOCKS_REQUIRE_REAL_DAP: '1'
+          CODIUM_BLOCKS_REAL_DAP_TRACE: '1'
           CODIUM_BLOCKS_REAL_DAP_DEBUGGEE: ${{ runner.temp }}/codium-blocks-real-dap-debuggee.exe
           CODIUM_BLOCKS_REAL_DAP_SOURCE: ${{ github.workspace }}/tests/fixtures/real-dap-debuggee.cpp
         run: node tests/real-dap-smoke.mjs

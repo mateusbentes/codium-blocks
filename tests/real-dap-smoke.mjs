@@ -208,8 +208,12 @@ async function probe(adapter) {
       continued: false,
     };
     await session.request('launch', {
+      name: `Codium::Blocks ${adapter.id} real debuggee`,
+      type: adapter.id,
+      request: 'launch',
       program: debuggee,
       cwd: dirname(debuggee),
+      sourcePath: dirname(sourceFile),
       stopOnEntry: true,
       stopAtBeginningOfMainSubprogram: true,
       noDebug: false,
