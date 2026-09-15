@@ -254,9 +254,10 @@ try {
   const fakeStopped = await waitFor((message) => message.type === 'response' && message.id === 21);
   assert.equal(fakeStopped.stopped, true);
 
+  const childExit = once(child, 'exit');
   send({ id: 22, type: 'shutdown' });
   await waitFor((message) => message.type === 'response' && message.id === 22);
-  await once(child, 'exit');
+  await childExit;
   console.log('host-smoke: ok — commands, configuration, contributions, and LSP process manager without Electron');
 } finally {
   if (!child.killed) child.kill('SIGTERM');

@@ -67,16 +67,19 @@ jobs:
             }
             Remove-Item -Recurse -Force $llvmRoot -ErrorAction SilentlyContinue
             New-Item -ItemType Directory -Force -Path $llvmRoot | Out-Null
+            $sevenZipCandidates = @()
+            $programFiles = [Environment]::GetEnvironmentVariable('ProgramFiles')
+            $programFilesX86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+            if ($programFiles) { $sevenZipCandidates += Join-Path $programFiles '7-Zip\7z.exe' }
+            if ($programFilesX86) { $sevenZipCandidates += Join-Path $programFilesX86 '7-Zip\7z.exe' }
             $sevenZipCommand = Get-Command 7z.exe -ErrorAction SilentlyContinue
-            $sevenZipCandidates = @(
-              (Join-Path $env:ProgramFiles '7-Zip/7z.exe'),
-              (Join-Path ${env:ProgramFiles(x86)} '7-Zip/7z.exe')
-            )
-            if ($sevenZipCommand) { $sevenZipCandidates += $sevenZipCommand.Source }
+            if ($sevenZipCommand) { $sevenZipCandidates += $sevenZipCommand.Path }
             $sevenZip = $sevenZipCandidates |
               Where-Object { $_ -and (Test-Path -LiteralPath $_) } |
               Select-Object -First 1
-            if (-not $sevenZip) { throw '7-Zip was not found on the windows-2022 runner.' }
+            if (-not $sevenZip) {
+              throw "7-Zip was not found on the windows-2022 runner. Checked: $($sevenZipCandidates -join '; ')"
+            }
             $extractProcess = Start-Process -FilePath $sevenZip -ArgumentList @('x', $llvmInstaller, "-o$llvmRoot", '-y', '-aoa') -PassThru -NoNewWindow
             if (-not $extractProcess.WaitForExit(900000)) {
               taskkill.exe /PID $extractProcess.Id /T /F | Out-Null

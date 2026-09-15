@@ -265,9 +265,9 @@ async function probe(adapter) {
       // configuration requests, and configurationDone without awaiting one
       // response before issuing the next request. Breakpoints are allowed to
       // be pending before the target exists and resolve when it is created.
-      // Use the source breakpoint as the first stop rather than relying on
-      // platform-specific stopOnEntry behavior from debugserver.
-      launchArguments.stopOnEntry = false;
+      // Keep the debuggee stopped at entry so stack, scopes, and variables
+      // are inspected before the smoke resumes it.
+      launchArguments.stopOnEntry = true;
       const launchResponse = session.request('launch', launchArguments);
       const sourceBreakpointResponse = session.request('setBreakpoints', {
         source: { path: sourceFile },

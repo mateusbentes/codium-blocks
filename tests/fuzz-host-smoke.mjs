@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { createInterface } from 'node:readline';
+import { once } from 'node:events';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -135,14 +136,14 @@ async function runIteration(iteration, state) {
     const stopped = await host.waitFor((message) => message.type === 'response' && message.id === 3);
     assert.equal(stopped.ok, true);
 
+    const exited = once(host.child, 'exit');
     host.send({ id: 4, type: 'shutdown' });
     const shutdown = await host.waitFor((message) => message.type === 'response' && message.id === 4);
     assert.equal(shutdown.shuttingDown, true);
-    await new Promise((resolvePromise, reject) => {
-      const timer = setTimeout(() => reject(new Error('Extension Host did not exit after fuzz shutdown')), 2000);
-      host.child.once('exit', () => { clearTimeout(timer); resolvePromise(); });
-      host.child.once('error', reject);
-    });
+    await Promise.race([
+      exited,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Extension Host did not exit after fuzz shutdown')), 2000)),
+    ]);
   } finally {
     if (!host.child.killed && host.child.exitCode === null) host.child.kill('SIGTERM');
   }

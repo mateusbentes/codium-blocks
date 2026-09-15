@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 
 def main() -> int:
@@ -28,15 +28,26 @@ def main() -> int:
             name for name in directory_names
             if not os.path.islink(os.path.join(directory, name))
         )
-        files.extend(Path(directory, name) for name in sorted(file_names))
+        files.extend(
+            Path(directory, name)
+            for name in sorted(file_names)
+            if not os.path.islink(os.path.join(directory, name))
+        )
     files.sort(key=lambda path: path.relative_to(root).as_posix())
     if not files:
         raise SystemExit(f"staging directory is empty: {root}")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.unlink(missing_ok=True)
-    with ZipFile(output, "w", compression=ZIP_DEFLATED, compresslevel=6, strict_timestamps=False) as archive:
+    with ZipFile(output, "w", compression=ZIP_DEFLATED, compresslevel=6) as archive:
         for path in files:
-            archive.write(path, path.relative_to(root).as_posix())
+            archive_name = path.relative_to(root).as_posix()
+            info = ZipInfo(archive_name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = ZIP_DEFLATED
+            info.external_attr = 0o100644 << 16
+            try:
+                archive.writestr(info, path.read_bytes())
+            except OSError as error:
+                raise SystemExit(f"portable ZIP could not read {path}: {error}") from error
     with ZipFile(output, "r") as archive:
         corrupt = archive.testzip()
     if corrupt is not None:
