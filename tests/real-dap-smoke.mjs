@@ -219,10 +219,6 @@ async function probe(adapter) {
     if (adapter.scenario === 'initialize-only' || !debuggee || !sourceFile) {
       return { skipped: false, scenario: 'initialize-only', capabilities };
     }
-    if (adapter.requiresInitializedEvent !== false) {
-      await session.event(['initialized'], 'adapter initialized');
-    }
-
     const result = {
       scenario: adapter.scenario,
       capabilities,
@@ -260,18 +256,19 @@ async function probe(adapter) {
       delete launchArguments.stopAtBeginningOfMainSubprogram;
     }
     if (adapter.id === 'lldb-dap') {
-      // LLVM 18 can defer the launch response until configuration is complete,
-      // while some builds do not emit an initialized event. Keep the target
-      // stopped at entry, send configurationDone alongside launch, and defer
-      // breakpoint requests until the target exists. This avoids relying on
-      // pending pre-target breakpoints whose behavior differs across macOS,
-      // Linux, and Windows builds of the same LLDB-DAP release.
-      const launchResponse = session.request('launch', launchArguments);
-      const configurationDoneResponse = supports(capabilities, 'supportsConfigurationDoneRequest')
-        ? session.request('configurationDone')
-        : Promise.resolve();
-      await Promise.all([launchResponse, configurationDoneResponse]);
+      // LLVM 18 launches synchronously, emits the initialized event after its
+      // launch response, and resumes a stop-at-entry process only after
+      // configurationDone. Keep this order explicit so configurationDone
+      // cannot race launch on macOS or Windows.
+      await session.request('launch', launchArguments);
+      await session.event(['initialized'], 'adapter initialized');
+      if (supports(capabilities, 'supportsConfigurationDoneRequest')) {
+        await session.request('configurationDone');
+      }
     } else {
+      if (adapter.requiresInitializedEvent !== false) {
+        await session.event(['initialized'], 'adapter initialized');
+      }
       await session.request('launch', launchArguments);
       if (supports(capabilities, 'supportsConfigurationDoneRequest')) await session.request('configurationDone');
     }
