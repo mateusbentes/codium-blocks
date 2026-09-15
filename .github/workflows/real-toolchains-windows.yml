@@ -56,24 +56,20 @@ jobs:
             -not (Test-Path (Join-Path $llvmBin $_))
           }).Count -eq 0)
           if (-not $cacheComplete) {
-            $llvmArchive = Join-Path $env:RUNNER_TEMP 'clang+llvm-18.1.8-x86_64-pc-windows-msvc.tar.xz'
-            $llvmUrl = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang%2Bllvm-18.1.8-x86_64-pc-windows-msvc.tar.xz'
-            $llvmSha256 = '22c5907db053026cc2a8ff96d21c0f642a90d24d66c23c6d28ee7b1d572b82e8'
-            curl.exe --fail --location --retry 3 --retry-delay 2 --output $llvmArchive $llvmUrl
-            if ((Get-FileHash -Algorithm SHA256 $llvmArchive).Hash.ToLowerInvariant() -ne $llvmSha256) {
-              throw 'LLVM 18.1.8 Windows archive checksum mismatch.'
+            $llvmInstaller = Join-Path $env:RUNNER_TEMP 'LLVM-18.1.8-win64.exe'
+            $llvmUrl = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/LLVM-18.1.8-win64.exe'
+            $llvmSha256 = '94af030060d88cc17e9f00ef1663ebdc1126b35e16bebdfa1e807984b70abd8f'
+            curl.exe --fail --location --retry 3 --retry-delay 2 --connect-timeout 30 --max-time 600 --output $llvmInstaller $llvmUrl
+            if ((Get-FileHash -Algorithm SHA256 $llvmInstaller).Hash.ToLowerInvariant() -ne $llvmSha256) {
+              throw 'LLVM 18.1.8 Windows installer checksum mismatch.'
             }
             Remove-Item -Recurse -Force $llvmRoot -ErrorAction SilentlyContinue
-            $extractRoot = Join-Path $env:RUNNER_TEMP 'llvm-18.1.8-extracted'
-            Remove-Item -Recurse -Force $extractRoot -ErrorAction SilentlyContinue
-            New-Item -ItemType Directory -Force -Path $extractRoot | Out-Null
-            tar.exe -xJf $llvmArchive -C $extractRoot
-            if ($LASTEXITCODE -ne 0) { throw "LLVM archive extraction failed with exit code $LASTEXITCODE." }
-            $archiveRoot = Get-ChildItem -LiteralPath $extractRoot -Directory | Select-Object -First 1
-            if (-not $archiveRoot) { throw 'LLVM archive did not contain a top-level directory.' }
-            New-Item -ItemType Directory -Force -Path $llvmRoot | Out-Null
-            Copy-Item -Recurse -Force (Join-Path $archiveRoot.FullName '*') $llvmRoot
-            Remove-Item -Recurse -Force $extractRoot
+            $installerProcess = Start-Process -FilePath $llvmInstaller -ArgumentList @('/S', '/NCRC', "/D=$llvmRoot") -PassThru -NoNewWindow
+            if (-not $installerProcess.WaitForExit(900000)) {
+              taskkill.exe /PID $installerProcess.Id /T /F | Out-Null
+              throw 'LLVM 18.1.8 installer exceeded the 15-minute timeout.'
+            }
+            if ($installerProcess.ExitCode -ne 0) { throw "LLVM installer failed with exit code $($installerProcess.ExitCode)." }
           }
           foreach ($tool in $requiredTools) {
             if (-not (Test-Path (Join-Path $llvmBin $tool))) { throw "Pinned LLVM tool is missing: $tool" }
