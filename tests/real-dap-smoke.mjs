@@ -91,7 +91,8 @@ class DapSession {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.waiters = this.waiters.filter((waiter) => waiter.resolve !== resolve);
-        reject(new Error(`${this.adapter.id}: timeout during ${phase}; stderr=${this.stderr.trim()}`));
+        const pending = this.messages.slice(-6).map((message) => JSON.stringify(message)).join(' | ');
+        reject(new Error(`${this.adapter.id}: timeout during ${phase}; stderr=${this.stderr.trim()}; pending=${pending}`));
       }, timeoutMs);
       this.waiters.push({ predicate, phase, resolve, reject, timeout });
     });
@@ -223,6 +224,11 @@ async function probe(adapter) {
       // LLDB-DAP documents debuggerRoot rather than the generic cwd field and
       // does not implement GDB's stopAtBeginningOfMainSubprogram option.
       launchArguments.debuggerRoot = dirname(debuggee);
+      // LLVM 18 can consult debuginfod while resolving the first stop. A
+      // public CI runner must not block on external symbol servers during a
+      // bounded protocol smoke; the fixture already contains its own debug
+      // information.
+      launchArguments.initCommands = ['settings set symbols.enable-external-lookup 0'];
       delete launchArguments.cwd;
       delete launchArguments.stopAtBeginningOfMainSubprogram;
     }

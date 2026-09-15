@@ -6,12 +6,13 @@ import assert from 'node:assert/strict';
 import { createInterface } from 'node:readline';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(process.env.CODIUM_BLOCKS_ROOT ?? fileURLToPath(new URL('../', import.meta.url)));
 const hostScript = join(root, 'extension-host', 'src', 'host.mjs');
-const tempRoot = join(process.env.TMPDIR ?? '/tmp', 'codium-blocks-host-fuzz');
+const tempRoot = join(process.env.TMPDIR ?? tmpdir(), 'codium-blocks-host-fuzz');
 const iterations = Math.max(16, Math.min(256, Number.parseInt(process.env.CODIUM_BLOCKS_FUZZ_ITERATIONS ?? '64', 10) || 64));
 const seed = 0xBADC0DE;
 

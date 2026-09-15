@@ -19,9 +19,27 @@ bool IsWithin(const wxString& candidate, const wxString& root);
 wxString QuoteArgument(const wxString& value)
 {
 #if defined(__WXMSW__)
-    wxString escaped = value;
-    escaped.Replace(wxS("\\"), wxS("\\\\"));
-    escaped.Replace(wxS("\""), wxS("\\\""));
+    // wxExecute receives one command line on Windows. Backslashes are only
+    // special immediately before a quote or at the end of a quoted argument;
+    // doubling every path separator produces invalid paths for some Git
+    // builds on the hosted runner.
+    wxString escaped;
+    size_t backslashes = 0;
+    for (const wxUniChar character : value) {
+        if (character == wxUniChar('\\')) {
+            ++backslashes;
+            continue;
+        }
+        if (character == wxUniChar('"')) {
+            escaped.Append(wxUniChar('\\'), backslashes * 2 + 1);
+            escaped += character;
+        } else {
+            escaped.Append(wxUniChar('\\'), backslashes);
+            escaped += character;
+        }
+        backslashes = 0;
+    }
+    escaped.Append(wxUniChar('\\'), backslashes * 2);
     return wxS("\"") + escaped + wxS("\"");
 #else
     wxString escaped = value;

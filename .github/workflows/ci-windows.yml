@@ -65,7 +65,21 @@ jobs:
 
       - name: Run Windows CTest
         shell: pwsh
-        run: ctest --test-dir build -C Release -LE conpty --output-on-failure
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          ctest --test-dir build -C Release -LE conpty --output-on-failure 2>&1 |
+            Tee-Object -FilePath artifacts/windows-ctest.log
+          $ctestExit = $LASTEXITCODE
+          ctest --test-dir build -C Release -LE conpty -N -V *> artifacts/windows-ctest-plan.log
+          if ($ctestExit -ne 0) { exit $ctestExit }
+
+      - name: Upload Windows CTest diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          if-no-files-found: ignore
+          name: codium-blocks-windows-ctest-diagnostics
+          path: artifacts/windows-ctest*.log
 
       - name: Run Windows ConPTY smoke
         shell: pwsh

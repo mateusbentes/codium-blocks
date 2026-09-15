@@ -24,7 +24,8 @@ int main()
         return 2;
     }
 
-    const wxString root = wxFileName::GetTempDir() + wxFILE_SEP_PATH + wxS("codium-blocks-contributions-smoke");
+    const wxString root = wxFileName::GetTempDir() + wxFILE_SEP_PATH +
+        wxS("codium-blocks contributions smoke");
     std::filesystem::remove_all(root.ToStdString());
     wxFileName::Mkdir(root, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
     const std::string initCommand = std::string("git -C \"") + root.ToStdString() + "\" init -q";

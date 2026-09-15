@@ -87,15 +87,14 @@ jobs:
           $package = Join-Path $buildDir "codium-blocks-$version-Windows-portable.zip"
           Remove-Item -Force $package -ErrorAction SilentlyContinue
           try {
-            Add-Type -AssemblyName System.IO.Compression.FileSystem
-            [System.IO.Compression.ZipFile]::CreateFromDirectory(
-              $staging,
-              $package,
-              [System.IO.Compression.CompressionLevel]::Optimal,
-              $false)
+            $tar = Join-Path ([Environment]::SystemDirectory) 'tar.exe'
+            if (-not (Test-Path -LiteralPath $tar)) { $tar = (Get-Command tar.exe -ErrorAction Stop).Source }
+            & $tar -c -f $package --format=zip -C $staging .
+            if ($LASTEXITCODE -ne 0) { throw "tar.exe returned exit code $LASTEXITCODE." }
           } catch {
-            Write-Warning "System.IO.Compression.ZipFile failed; using Compress-Archive fallback: $($_.Exception.Message)"
-            Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $package -CompressionLevel Optimal -Force
+            Write-Warning "tar.exe failed; using Compress-Archive fallback: $($_.Exception.Message)"
+            Remove-Item -Force $package -ErrorAction SilentlyContinue
+            Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $package -CompressionLevel Optimal -Force -ErrorAction Stop
           }
           if (-not (Test-Path $package)) { throw "Windows package was not created: $package" }
           $expanded = Join-Path $env:RUNNER_TEMP 'codium-blocks-package-validation'

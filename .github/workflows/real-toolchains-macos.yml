@@ -84,6 +84,16 @@ jobs:
           CODIUM_BLOCKS_REAL_DAP_TRACE: '1'
           CODIUM_BLOCKS_REAL_DAP_DEBUGGEE: /tmp/codium-blocks-real-dap-debuggee
           CODIUM_BLOCKS_REAL_DAP_SOURCE: ${{ github.workspace }}/tests/fixtures/real-dap-debuggee.cpp
-        run: node tests/real-dap-smoke.mjs
+        run: |
+          set -o pipefail
+          node tests/real-dap-smoke.mjs 2>&1 | tee "$RUNNER_TEMP/codium-blocks-real-dap.log"
+
+      - name: Upload macOS DAP diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          if-no-files-found: ignore
+          name: codium-blocks-macos-dap-diagnostics
+          path: ${{ runner.temp }}/codium-blocks-real-dap.log
       - name: Validate matrix contracts
         run: node tests/integration-matrix-smoke.mjs
