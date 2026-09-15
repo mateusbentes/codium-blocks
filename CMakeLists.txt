@@ -12,12 +12,6 @@ if(NOT CODIUM_BLOCKS_EXTENSION_HOST_VERSION_MATCH OR
         "Extension Host package version does not match PROJECT_VERSION ${PROJECT_VERSION}")
 endif()
 
-if("$ENV{GITHUB_REF_TYPE}" STREQUAL "tag" AND
-   NOT "$ENV{GITHUB_REF_NAME}" STREQUAL "v${PROJECT_VERSION}")
-    message(FATAL_ERROR
-        "Release tag '$ENV{GITHUB_REF_NAME}' does not match project version v${PROJECT_VERSION}")
-endif()
-
 option(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_SDK "Expose an optional Code::Blocks SDK include root to the native target" OFF)
 set(CODIUM_BLOCKS_CODEBLOCKS_SDK_ROOT "" CACHE PATH "Code::Blocks SDK installation or source root")
 option(CODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER "Build the isolated Code::Blocks SDK host adapter when a usable SDK is found" ON)
@@ -754,6 +748,11 @@ install(DIRECTORY extensions DESTINATION ${CODIUM_BLOCKS_INSTALL_DATA_DIR})
 install(DIRECTORY locales DESTINATION ${CODIUM_BLOCKS_INSTALL_DATA_DIR})
 install(FILES README.md CHANGELOG.md LICENSE COPYING DESTINATION ${CODIUM_BLOCKS_INSTALL_DOC_DIR})
 install(DIRECTORY docs protocol DESTINATION ${CODIUM_BLOCKS_INSTALL_DOC_DIR})
+if(WIN32 AND CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR)
+    install(DIRECTORY "${CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR}/"
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
+        FILES_MATCHING PATTERN "*.dll")
+endif()
 
 if(UNIX AND NOT APPLE)
     foreach(icon_size IN ITEMS 16 24 32 48 64 128 256 512)

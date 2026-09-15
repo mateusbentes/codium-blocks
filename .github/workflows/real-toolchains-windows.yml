@@ -27,22 +27,34 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
+      - name: Restore pinned LLVM toolchain cache
+        id: llvm-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ runner.temp }}/llvm-18.1.8
+          key: codium-blocks-real-windows-llvm-18.1.8-${{ runner.os }}-${{ runner.arch }}-${{ github.ref_name }}
       - name: Install pinned Windows toolchains
         shell: pwsh
         run: |
-          $llvmArchive = Join-Path $env:RUNNER_TEMP 'clang+llvm-18.1.8-x86_64-pc-windows-msvc.tar.xz'
           $llvmRoot = Join-Path $env:RUNNER_TEMP 'llvm-18.1.8'
-          $llvmUrl = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang%2Bllvm-18.1.8-x86_64-pc-windows-msvc.tar.xz'
-          $llvmSha256 = '22c5907db053026cc2a8ff96d21c0f642a90d24d66c23c6d28ee7b1d572b82e8'
-          Invoke-WebRequest -Uri $llvmUrl -OutFile $llvmArchive
-          if ((Get-FileHash -Algorithm SHA256 $llvmArchive).Hash.ToLowerInvariant() -ne $llvmSha256) {
-            throw 'LLVM 18.1.8 archive checksum mismatch.'
-          }
-          Remove-Item -Recurse -Force $llvmRoot -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force -Path $llvmRoot | Out-Null
-          tar -xJf $llvmArchive -C $llvmRoot --strip-components=1
           $llvmBin = Join-Path $llvmRoot 'bin'
-          foreach ($tool in @('clang.exe', 'clang-cl.exe', 'clangd.exe', 'lldb-dap.exe', 'llvm-config.exe')) {
+          $requiredTools = @('clang.exe', 'clang-cl.exe', 'clangd.exe', 'lldb-dap.exe', 'llvm-config.exe')
+          $cacheComplete = (Test-Path $llvmBin) -and (($requiredTools | Where-Object {
+            -not (Test-Path (Join-Path $llvmBin $_))
+          }).Count -eq 0)
+          if (-not $cacheComplete) {
+            $llvmInstaller = Join-Path $env:RUNNER_TEMP 'LLVM-18.1.8-win64.exe'
+            $llvmUrl = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/LLVM-18.1.8-win64.exe'
+            $llvmSha256 = '94af030060d88cc17e9f00ef1663ebdc1126b35e16bebdfa1e807984b70abd8f'
+            curl.exe --fail --location --retry 3 --retry-delay 2 --output $llvmInstaller $llvmUrl
+            if ((Get-FileHash -Algorithm SHA256 $llvmInstaller).Hash.ToLowerInvariant() -ne $llvmSha256) {
+              throw 'LLVM 18.1.8 installer checksum mismatch.'
+            }
+            Remove-Item -Recurse -Force $llvmRoot -ErrorAction SilentlyContinue
+            $installer = Start-Process -FilePath $llvmInstaller -ArgumentList @('/S', "/D=$llvmRoot") -Wait -PassThru
+            if ($installer.ExitCode -ne 0) { throw "LLVM installer failed with exit code $($installer.ExitCode)." }
+          }
+          foreach ($tool in $requiredTools) {
             if (-not (Test-Path (Join-Path $llvmBin $tool))) { throw "Pinned LLVM tool is missing: $tool" }
           }
           $llvmBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
@@ -68,6 +80,12 @@ jobs:
           go install golang.org/x/tools/gopls@v0.17.1
           $env:GOBIN | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           npm install --global pyright@1.1.390
+      - name: Save pinned LLVM toolchain cache
+        if: steps.llvm-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ runner.temp }}/llvm-18.1.8
+          key: codium-blocks-real-windows-llvm-18.1.8-${{ runner.os }}-${{ runner.arch }}-${{ github.ref_name }}
       - name: Verify pinned versions
         shell: pwsh
         run: |

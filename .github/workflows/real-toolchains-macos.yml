@@ -60,7 +60,6 @@ jobs:
       - name: Verify pinned versions
         run: |
           clangd --version | grep -F '18.1.8'
-          clang++ --version | grep -F '18.1.8'
           rust-analyzer --version | grep -F '1.82.0'
           gopls version | grep -F 'v0.17.1'
           pyright --version | grep -F '1.1.390'
@@ -72,7 +71,13 @@ jobs:
         run: node tests/real-lsp-smoke.mjs
       - name: Build real DAP debuggee
         run: |
-          clang++ -std=c++17 -g -O0 tests/fixtures/real-dap-debuggee.cpp -o /tmp/codium-blocks-real-dap-debuggee
+          apple_clang=$(xcrun --sdk macosx --find clang++)
+          macos_sdk=$(xcrun --sdk macosx --show-sdk-path)
+          test -x "$apple_clang"
+          test -d "$macos_sdk"
+          "$apple_clang" -isysroot "$macos_sdk" -mmacosx-version-min=11.0 \
+            -std=c++17 -g -O0 tests/fixtures/real-dap-debuggee.cpp \
+            -o /tmp/codium-blocks-real-dap-debuggee
       - name: Run strict real DAP matrix
         env:
           CODIUM_BLOCKS_REQUIRE_REAL_DAP: '1'

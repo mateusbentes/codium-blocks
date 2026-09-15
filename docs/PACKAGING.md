@@ -88,16 +88,23 @@ The local CPack command is useful for developer experimentation. The macOS packa
 
 Mount the resulting DMG, copy `codium-blocks.app` to an application directory, and run it from there. The current artifact is unsigned and unnotarized; macOS security prompts and Gatekeeper behavior therefore remain a release concern rather than a solved claim.
 
-On Windows, configure wxWidgets through vcpkg and pass the directory containing its runtime DLLs:
+On Windows, configure wxWidgets through vcpkg and pass a private directory containing the wxWidgets and matching Microsoft Visual C++ runtime DLLs:
 
 ```powershell
+$runtimeDir = Join-Path $env:TEMP 'codium-blocks-runtime'
+Remove-Item -Recurse -Force $runtimeDir -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
+Copy-Item "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/bin/*.dll" $runtimeDir -Force
+# Copy the x64 Microsoft.VC143.CRT DLLs from the Visual Studio installation.
+# The exact redist path is versioned by the installed Visual Studio toolset.
+Copy-Item 'C:/path/to/Microsoft.VC143.CRT/*.dll' $runtimeDir -Force
 cmake -S . -B build-package -G "Visual Studio 17 2022" -A x64 `
   -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
   -DVCPKG_TARGET_TRIPLET=x64-windows `
   -DBUILD_TESTING=ON `
   -DCODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF `
   -DCODIUM_BLOCKS_ENABLE_REAL_TOOLCHAIN_TESTS=OFF `
-  -DCODIUM_BLOCKS_WINDOWS_RUNTIME_DIR="$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/bin"
+  -DCODIUM_BLOCKS_WINDOWS_RUNTIME_DIR="$runtimeDir"
 cmake --build build-package --config Release --parallel
 ctest --test-dir build-package -C Release --output-on-failure
 cpack --config build-package/CPackConfig.cmake -C Release

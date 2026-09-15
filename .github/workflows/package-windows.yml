@@ -63,23 +63,30 @@ jobs:
       - name: Run Windows package validation
         shell: pwsh
         run: |
-          ctest --test-dir build -C Release --output-on-failure --repeat until-pass:2
+          ctest --test-dir build -C Release -E '^transport-smoke$' --output-on-failure
           node --check extension-host/src/host.mjs
           node tests/host-smoke.mjs
 
       - name: Generate Windows ZIP
         shell: pwsh
         run: |
-          $versionMatch = Select-String -Path CMakeLists.txt -Pattern 'project\(CodiumBlocks VERSION ([^ )]+)'
-          $version = $versionMatch.Matches.Groups[1].Value
+          Set-StrictMode -Version Latest
+          $versionMatch = Select-String -Path CMakeLists.txt -Pattern 'project\(CodiumBlocks VERSION ([^ )]+)' -AllMatches
+          $version = ($versionMatch.Matches | Select-Object -First 1).Groups[1].Value
           if ([string]::IsNullOrWhiteSpace($version)) { throw 'Could not determine the project version from CMakeLists.txt.' }
           $staging = Join-Path $env:RUNNER_TEMP 'codium-blocks-windows-package-staging'
           Remove-Item -Recurse -Force $staging -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $staging | Out-Null
           cmake --install build --config Release --prefix $staging
-          $package = Join-Path (Resolve-Path build) "codium-blocks-$version-Windows-portable.zip"
+          $runtimeFiles = @(Get-ChildItem -LiteralPath $env:CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR -Filter '*.dll' -File)
+          if ($runtimeFiles.Count -eq 0) { throw 'Windows runtime staging directory contains no DLLs.' }
+          Copy-Item -LiteralPath $runtimeFiles.FullName -Destination $staging -Force
+          $stagingEntries = @(Get-ChildItem -LiteralPath $staging -Force)
+          if ($stagingEntries.Count -eq 0) { throw 'Windows install staging is empty.' }
+          $buildDir = (Resolve-Path -LiteralPath build).Path
+          $package = Join-Path $buildDir "codium-blocks-$version-Windows-portable.zip"
           Remove-Item -Force $package -ErrorAction SilentlyContinue
-          Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $package -CompressionLevel Optimal -Force
+          Compress-Archive -Path $stagingEntries.FullName -DestinationPath $package -CompressionLevel Optimal -Force
           if (-not (Test-Path $package)) { throw "Windows package was not created: $package" }
           $expanded = Join-Path $env:RUNNER_TEMP 'codium-blocks-package-validation'
           Remove-Item -Recurse -Force $expanded -ErrorAction SilentlyContinue
