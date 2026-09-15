@@ -67,20 +67,25 @@ jobs:
             }
             Remove-Item -Recurse -Force $llvmRoot -ErrorAction SilentlyContinue
             New-Item -ItemType Directory -Force -Path $llvmRoot | Out-Null
-            $sevenZipCandidates = @()
-            $programFiles = [Environment]::GetEnvironmentVariable('ProgramFiles')
-            $programFilesX86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
-            if ($programFiles) { $sevenZipCandidates += Join-Path $programFiles '7-Zip\7z.exe' }
-            if ($programFilesX86) { $sevenZipCandidates += Join-Path $programFilesX86 '7-Zip\7z.exe' }
-            $sevenZipCommand = Get-Command 7z.exe -ErrorAction SilentlyContinue
-            if ($sevenZipCommand) { $sevenZipCandidates += $sevenZipCommand.Path }
-            $sevenZip = $sevenZipCandidates |
-              Where-Object { $_ -and (Test-Path -LiteralPath $_) } |
-              Select-Object -First 1
-            if (-not $sevenZip) {
-              throw "7-Zip was not found on the windows-2022 runner. Checked: $($sevenZipCandidates -join '; ')"
+            $sevenZip = $null
+            foreach ($candidate in @(
+              'C:\Program Files\7-Zip\7z.exe',
+              'C:\Program Files (x86)\7-Zip\7z.exe'
+            )) {
+              if (Test-Path -LiteralPath $candidate) {
+                $sevenZip = $candidate
+                break
+              }
             }
-            $extractProcess = Start-Process -FilePath $sevenZip -ArgumentList @('x', $llvmInstaller, "-o$llvmRoot", '-y', '-aoa') -PassThru -NoNewWindow
+            if (-not $sevenZip) {
+              $sevenZipCommand = Get-Command -Name 7z.exe -CommandType Application -ErrorAction SilentlyContinue
+              if ($sevenZipCommand) { $sevenZip = $sevenZipCommand.Path }
+            }
+            if (-not $sevenZip) {
+              throw '7-Zip was not found on the windows-2022 runner.'
+            }
+            $extractArguments = "x `"$llvmInstaller`" -o`"$llvmRoot`" -y -aoa"
+            $extractProcess = Start-Process -FilePath $sevenZip -ArgumentList $extractArguments -WorkingDirectory $env:RUNNER_TEMP -PassThru -NoNewWindow
             if (-not $extractProcess.WaitForExit(900000)) {
               taskkill.exe /PID $extractProcess.Id /T /F | Out-Null
               throw 'LLVM 18.1.8 installer extraction exceeded the 15-minute timeout.'
@@ -97,15 +102,13 @@ jobs:
           $pythonDll = Join-Path $pythonRoot 'python310.dll'
           if (-not (Test-Path $pythonDll)) { throw "Configured Python runtime is missing python310.dll: $pythonDll" }
           $pythonLib = Join-Path $pythonRoot 'Lib'
-          $pythonDlls = Join-Path $pythonRoot 'DLLs'
           if (-not (Test-Path (Join-Path $pythonLib 'encodings'))) { throw "Configured Python runtime is missing its standard library: $pythonLib" }
-          if (-not (Test-Path $pythonDlls)) { throw "Configured Python runtime is missing its DLL directory: $pythonDlls" }
           Copy-Item -Force $pythonDll (Join-Path $llvmBin 'python310.dll')
           $env:PYTHONHOME = $pythonRoot
           $env:PYTHONPATH = $pythonLib
           "PYTHONHOME=$pythonRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PYTHONPATH=$pythonLib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "$pythonDlls" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "$pythonRoot" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           $llvmBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Install pinned Rust toolchain
         shell: pwsh

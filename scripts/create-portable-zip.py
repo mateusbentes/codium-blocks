@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
@@ -45,8 +46,9 @@ def main() -> int:
             info.compress_type = ZIP_DEFLATED
             info.external_attr = 0o100644 << 16
             try:
-                archive.writestr(info, path.read_bytes())
-            except OSError as error:
+                with path.open("rb") as source, archive.open(info, "w") as target:
+                    shutil.copyfileobj(source, target, length=1024 * 1024)
+            except (OSError, RuntimeError, ValueError) as error:
                 raise SystemExit(f"portable ZIP could not read {path}: {error}") from error
     with ZipFile(output, "r") as archive:
         corrupt = archive.testzip()

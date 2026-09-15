@@ -260,40 +260,17 @@ async function probe(adapter) {
       delete launchArguments.stopAtBeginningOfMainSubprogram;
     }
     if (adapter.id === 'lldb-dap') {
-      // LLDB-DAP can defer the launch response until configuration is complete.
-      // Follow the DAP launch flow used by real clients: send launch,
-      // configuration requests, and configurationDone without awaiting one
-      // response before issuing the next request. Breakpoints are allowed to
-      // be pending before the target exists and resolve when it is created.
-      // Keep the debuggee stopped at entry so stack, scopes, and variables
-      // are inspected before the smoke resumes it.
-      launchArguments.stopOnEntry = true;
+      // LLVM 18 can defer the launch response until configuration is complete,
+      // while some builds do not emit an initialized event. Keep the target
+      // stopped at entry, send configurationDone alongside launch, and defer
+      // breakpoint requests until the target exists. This avoids relying on
+      // pending pre-target breakpoints whose behavior differs across macOS,
+      // Linux, and Windows builds of the same LLDB-DAP release.
       const launchResponse = session.request('launch', launchArguments);
-      const sourceBreakpointResponse = session.request('setBreakpoints', {
-        source: { path: sourceFile },
-        breakpoints: [{ line: adapter.breakpointLine }],
-        sourceModified: false,
-      });
-      const functionBreakpointResponse = supports(capabilities, 'supportsFunctionBreakpoints')
-        ? session.request('setFunctionBreakpoints', { breakpoints: [{ name: 'helper' }] })
-          .then((response) => ({ response }))
-          .catch((error) => ({ error }))
-        : Promise.resolve(null);
       const configurationDoneResponse = supports(capabilities, 'supportsConfigurationDoneRequest')
         ? session.request('configurationDone')
         : Promise.resolve();
-      const [, sourceBreakpoint, functionBreakpoint] = await Promise.all([
-        launchResponse,
-        sourceBreakpointResponse,
-        functionBreakpointResponse,
-        configurationDoneResponse,
-      ]);
-      result.sourceBreakpoint = sourceBreakpoint.body?.breakpoints ?? [];
-      if (functionBreakpoint) {
-        result.functionBreakpoint = functionBreakpoint.error
-          ? { unsupportedReason: String(functionBreakpoint.error?.message ?? functionBreakpoint.error) }
-          : functionBreakpoint.response.body?.breakpoints ?? [];
-      }
+      await Promise.all([launchResponse, configurationDoneResponse]);
     } else {
       await session.request('launch', launchArguments);
       if (supports(capabilities, 'supportsConfigurationDoneRequest')) await session.request('configurationDone');
@@ -303,15 +280,13 @@ async function probe(adapter) {
       throw new Error(`${adapter.id}: full scenario ended before a stopped event (${firstEvent.event})`);
     }
     result.stopped = true;
-    if (adapter.id !== 'lldb-dap') {
-      const sourceBreakpoint = await session.request('setBreakpoints', {
-        source: { path: sourceFile },
-        breakpoints: [{ line: adapter.breakpointLine }],
-        sourceModified: false,
-      });
-      result.sourceBreakpoint = sourceBreakpoint.body?.breakpoints ?? [];
-    }
-    if (adapter.id !== 'lldb-dap' && supports(capabilities, 'supportsFunctionBreakpoints')) {
+    const sourceBreakpoint = await session.request('setBreakpoints', {
+      source: { path: sourceFile },
+      breakpoints: [{ line: adapter.breakpointLine }],
+      sourceModified: false,
+    });
+    result.sourceBreakpoint = sourceBreakpoint.body?.breakpoints ?? [];
+    if (supports(capabilities, 'supportsFunctionBreakpoints')) {
       try {
         const response = await session.request('setFunctionBreakpoints', {
           breakpoints: [{ name: 'helper' }],
