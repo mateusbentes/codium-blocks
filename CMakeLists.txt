@@ -908,6 +908,7 @@ if(BUILD_TESTING)
         install-layout-smoke PROPERTIES TIMEOUT 90)
     if(WIN32)
         set_property(TEST transport-smoke PROPERTY LABELS conpty)
+        set_property(TEST fuzz-host-smoke PROPERTY ENVIRONMENT "CODIUM_BLOCKS_FUZZ_ITERATIONS=16")
     endif()
 endif()
 

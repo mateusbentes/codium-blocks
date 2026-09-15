@@ -49,6 +49,8 @@ jobs:
       - name: Install pinned LLVM and Python runtime
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
           $llvmRoot = Join-Path $env:RUNNER_TEMP 'llvm-18.1.8'
           $llvmBin = Join-Path $llvmRoot 'bin'
           $requiredTools = @('clang.exe', 'clang-cl.exe', 'clangd.exe', 'lldb-dap.exe', 'llvm-config.exe')
@@ -95,7 +97,16 @@ jobs:
           if (-not $pythonRoot) { throw 'Unable to locate the configured Python runtime.' }
           $pythonDll = Join-Path $pythonRoot 'python310.dll'
           if (-not (Test-Path $pythonDll)) { throw "Configured Python runtime is missing python310.dll: $pythonDll" }
+          $pythonLib = Join-Path $pythonRoot 'Lib'
+          $pythonDlls = Join-Path $pythonRoot 'DLLs'
+          if (-not (Test-Path (Join-Path $pythonLib 'encodings'))) { throw "Configured Python runtime is missing its standard library: $pythonLib" }
+          if (-not (Test-Path $pythonDlls)) { throw "Configured Python runtime is missing its DLL directory: $pythonDlls" }
           Copy-Item -Force $pythonDll (Join-Path $llvmBin 'python310.dll')
+          $env:PYTHONHOME = $pythonRoot
+          $env:PYTHONPATH = $pythonLib
+          "PYTHONHOME=$pythonRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PYTHONPATH=$pythonLib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "$pythonDlls" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           $llvmBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Install pinned Rust toolchain
         shell: pwsh

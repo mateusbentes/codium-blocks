@@ -4,6 +4,7 @@
 
 
 import { readFile } from 'node:fs/promises';
+import { once } from 'node:events';
 import { dirname } from 'node:path';
 import { spawn } from 'node:child_process';
 
@@ -147,17 +148,43 @@ async function verifyVersion(adapter, command) {
 }
 
 async function closeSession(session) {
-  if (!session || session.closed) return;
-  try {
-    const request = session.request('disconnect', { terminateDebuggee: false });
-    await Promise.race([request, new Promise((resolve) => setTimeout(resolve, 3000))]);
-  } catch {}
+  if (!session) return;
+  if (!session.closed) {
+    try {
+      const request = session.request('disconnect', { terminateDebuggee: false });
+      await Promise.race([request, new Promise((resolve) => setTimeout(resolve, 3000))]);
+    } catch {}
+  }
   try { session.child.stdin.end(); } catch {}
-  await new Promise((resolve) => {
-    if (session.child.exitCode !== null || session.child.signalCode !== null) return resolve();
-    const timer = setTimeout(() => { try { session.child.kill(); } catch {} resolve(); }, 3000);
-    session.child.once('close', () => { clearTimeout(timer); resolve(); });
-  });
+  if (session.child.exitCode === null && session.child.signalCode === null) {
+    await Promise.race([
+      once(session.child, 'close'),
+      new Promise((resolve) => setTimeout(resolve, 1000)),
+    ]);
+  }
+  if (session.child.exitCode === null && session.child.signalCode === null) {
+    if (process.platform === 'win32' && session.child.pid) {
+      await new Promise((resolve) => {
+        const killer = spawn('taskkill', ['/PID', String(session.child.pid), '/T', '/F'], { stdio: 'ignore' });
+        const finish = () => { clearTimeout(timer); resolve(); };
+        const timer = setTimeout(() => { try { killer.kill(); } catch {} resolve(); }, 2000);
+        killer.once('close', finish);
+        killer.once('error', () => { try { session.child.kill(); } catch {} finish(); });
+      });
+    } else {
+      try { session.child.kill('SIGTERM'); } catch {}
+    }
+    await Promise.race([
+      once(session.child, 'close'),
+      new Promise((resolve) => setTimeout(resolve, 1000)),
+    ]);
+  }
+  // A debuggee can inherit the adapter's stdio handles. Destroy them after
+  // the bounded cleanup window so Node cannot remain alive waiting for a
+  // descendant that the adapter failed to terminate.
+  try { session.child.stdin.destroy(); } catch {}
+  try { session.child.stdout.destroy(); } catch {}
+  try { session.child.stderr.destroy(); } catch {}
 }
 
 async function probe(adapter) {
@@ -232,22 +259,17 @@ async function probe(adapter) {
       delete launchArguments.cwd;
       delete launchArguments.stopAtBeginningOfMainSubprogram;
     }
-    let sourceBreakpointResponse;
     if (adapter.id === 'lldb-dap') {
       // LLDB-DAP can defer its launch response until configuration is complete.
-      // Send the launch, source breakpoint, and configuration barrier without
-      // waiting between them, then await all three responses.
-      launchArguments.stopOnEntry = false;
+      // Send launch and the configuration barrier without waiting for the
+      // launch response. Keep the debuggee stopped at entry; setting source
+      // breakpoints after that stop avoids a Windows LLDB-DAP race while still
+      // exercising the complete stopped/stack/scopes/variables scenario.
       const launchResponse = session.request('launch', launchArguments);
-      sourceBreakpointResponse = session.request('setBreakpoints', {
-        source: { path: sourceFile },
-        breakpoints: [{ line: adapter.breakpointLine }],
-        sourceModified: false,
-      });
       const configurationDoneResponse = supports(capabilities, 'supportsConfigurationDoneRequest')
         ? session.request('configurationDone')
         : Promise.resolve();
-      await Promise.all([launchResponse, sourceBreakpointResponse, configurationDoneResponse]);
+      await Promise.all([launchResponse, configurationDoneResponse]);
     } else {
       await session.request('launch', launchArguments);
       if (supports(capabilities, 'supportsConfigurationDoneRequest')) await session.request('configurationDone');
@@ -257,16 +279,12 @@ async function probe(adapter) {
       throw new Error(`${adapter.id}: full scenario ended before a stopped event (${firstEvent.event})`);
     }
     result.stopped = true;
-    if (sourceBreakpointResponse) {
-      result.sourceBreakpoint = (await sourceBreakpointResponse).body?.breakpoints ?? [];
-    } else {
-      const sourceBreakpoint = await session.request('setBreakpoints', {
-        source: { path: sourceFile },
-        breakpoints: [{ line: adapter.breakpointLine }],
-        sourceModified: false,
-      });
-      result.sourceBreakpoint = sourceBreakpoint.body?.breakpoints ?? [];
-    }
+    const sourceBreakpoint = await session.request('setBreakpoints', {
+      source: { path: sourceFile },
+      breakpoints: [{ line: adapter.breakpointLine }],
+      sourceModified: false,
+    });
+    result.sourceBreakpoint = sourceBreakpoint.body?.breakpoints ?? [];
     if (supports(capabilities, 'supportsFunctionBreakpoints')) {
       try {
         const response = await session.request('setFunctionBreakpoints', {

@@ -448,25 +448,43 @@ function sendLanguageServerMessage(message) {
   languageServer.child.stdin.write(header + body);
 }
 
+async function terminateChildTree(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  if (child.exitCode === null && child.signalCode === null) {
+    if (process.platform === 'win32' && child.pid) {
+      await new Promise((resolvePromise) => {
+        let finished = false;
+        const finish = () => {
+          if (finished) return;
+          finished = true;
+          clearTimeout(timer);
+          resolvePromise();
+        };
+        const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+        const timer = setTimeout(() => {
+          try { killer.kill(); } catch {}
+          finish();
+        }, 2000);
+        killer.once('close', finish);
+        killer.once('error', () => { try { child.kill(); } catch {} finish(); });
+      });
+    } else {
+      try { child.kill(); } catch {}
+    }
+    if (child.exitCode === null && child.signalCode === null) {
+      await Promise.race([once(child, 'exit'), new Promise((resolvePromise) => setTimeout(resolvePromise, 1000))]);
+      if (child.exitCode === null && child.signalCode === null) {
+        try { child.kill('SIGKILL'); } catch {}
+      }
+    }
+  }
+}
+
 async function stopLanguageServer() {
   if (!languageServer) return false;
   const state = languageServer;
   languageServer = null;
-  if (state.child.exitCode === null && !state.child.killed) {
-    if (process.platform === 'win32' && state.child.pid) {
-      await new Promise((resolvePromise) => {
-        const killer = spawn('taskkill', ['/PID', String(state.child.pid), '/T', '/F'], { stdio: 'ignore' });
-        killer.once('close', resolvePromise);
-        killer.once('error', () => { try { state.child.kill(); } catch {} resolvePromise(); });
-      });
-    } else {
-      state.child.kill();
-    }
-    if (state.child.exitCode === null) {
-      await Promise.race([once(state.child, 'exit'), new Promise((resolvePromise) => setTimeout(resolvePromise, 1000))]);
-      if (state.child.exitCode === null) state.child.kill('SIGKILL');
-    }
-  }
+  await terminateChildTree(state.child);
   return true;
 }
 
