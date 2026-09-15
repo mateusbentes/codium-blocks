@@ -85,19 +85,7 @@ jobs:
           if ($stagingEntries.Count -eq 0) { throw 'Windows install staging is empty.' }
           $buildDir = (Resolve-Path -LiteralPath build).Path
           $package = Join-Path $buildDir "codium-blocks-$version-Windows-portable.zip"
-          Remove-Item -Force $package -ErrorAction SilentlyContinue
-          try {
-            Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $package -CompressionLevel Optimal -Force -ErrorAction Stop
-          } catch {
-            Write-Warning "Compress-Archive failed; using ZipFile fallback: $($_.Exception.Message)"
-            Remove-Item -Force $package -ErrorAction SilentlyContinue
-            Add-Type -AssemblyName System.IO.Compression.FileSystem
-            [System.IO.Compression.ZipFile]::CreateFromDirectory(
-              $staging,
-              $package,
-              [System.IO.Compression.CompressionLevel]::Optimal,
-              $false)
-          }
+          python scripts/create-portable-zip.py --root $staging --output $package
           if (-not (Test-Path $package)) { throw "Windows package was not created: $package" }
           $expanded = Join-Path $env:RUNNER_TEMP 'codium-blocks-package-validation'
           Remove-Item -Recurse -Force $expanded -ErrorAction SilentlyContinue

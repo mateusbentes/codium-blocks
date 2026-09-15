@@ -453,9 +453,19 @@ async function stopLanguageServer() {
   const state = languageServer;
   languageServer = null;
   if (state.child.exitCode === null && !state.child.killed) {
-    state.child.kill();
-    await Promise.race([once(state.child, 'exit'), new Promise((resolvePromise) => setTimeout(resolvePromise, 1000))]);
-    if (state.child.exitCode === null) state.child.kill('SIGKILL');
+    if (process.platform === 'win32' && state.child.pid) {
+      await new Promise((resolvePromise) => {
+        const killer = spawn('taskkill', ['/PID', String(state.child.pid), '/T', '/F'], { stdio: 'ignore' });
+        killer.once('close', resolvePromise);
+        killer.once('error', () => { try { state.child.kill(); } catch {} resolvePromise(); });
+      });
+    } else {
+      state.child.kill();
+    }
+    if (state.child.exitCode === null) {
+      await Promise.race([once(state.child, 'exit'), new Promise((resolvePromise) => setTimeout(resolvePromise, 1000))]);
+      if (state.child.exitCode === null) state.child.kill('SIGKILL');
+    }
   }
   return true;
 }

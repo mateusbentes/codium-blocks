@@ -232,23 +232,41 @@ async function probe(adapter) {
       delete launchArguments.cwd;
       delete launchArguments.stopAtBeginningOfMainSubprogram;
     }
-    // DAP launch sequencing allows configurationDone to be sent before the
-    // launch response. LLDB-DAP can defer that response until configuration
-    // is complete; awaiting it first deadlocks the macOS adapter.
-    const launchResponse = session.request('launch', launchArguments);
-    if (supports(capabilities, 'supportsConfigurationDoneRequest')) await session.request('configurationDone');
-    await launchResponse;
+    let sourceBreakpointResponse;
+    if (adapter.id === 'lldb-dap') {
+      // LLDB-DAP can defer its launch response until configuration is complete.
+      // Send the launch, source breakpoint, and configuration barrier without
+      // waiting between them, then await all three responses.
+      launchArguments.stopOnEntry = false;
+      const launchResponse = session.request('launch', launchArguments);
+      sourceBreakpointResponse = session.request('setBreakpoints', {
+        source: { path: sourceFile },
+        breakpoints: [{ line: adapter.breakpointLine }],
+        sourceModified: false,
+      });
+      const configurationDoneResponse = supports(capabilities, 'supportsConfigurationDoneRequest')
+        ? session.request('configurationDone')
+        : Promise.resolve();
+      await Promise.all([launchResponse, sourceBreakpointResponse, configurationDoneResponse]);
+    } else {
+      await session.request('launch', launchArguments);
+      if (supports(capabilities, 'supportsConfigurationDoneRequest')) await session.request('configurationDone');
+    }
     const firstEvent = await session.event(['stopped', 'terminated', 'exited'], 'initial stop');
     if (firstEvent.event !== 'stopped') {
       throw new Error(`${adapter.id}: full scenario ended before a stopped event (${firstEvent.event})`);
     }
     result.stopped = true;
-    const sourceBreakpoint = await session.request('setBreakpoints', {
-      source: { path: sourceFile },
-      breakpoints: [{ line: adapter.breakpointLine }],
-      sourceModified: false,
-    });
-    result.sourceBreakpoint = sourceBreakpoint.body?.breakpoints ?? [];
+    if (sourceBreakpointResponse) {
+      result.sourceBreakpoint = (await sourceBreakpointResponse).body?.breakpoints ?? [];
+    } else {
+      const sourceBreakpoint = await session.request('setBreakpoints', {
+        source: { path: sourceFile },
+        breakpoints: [{ line: adapter.breakpointLine }],
+        sourceModified: false,
+      });
+      result.sourceBreakpoint = sourceBreakpoint.body?.breakpoints ?? [];
+    }
     if (supports(capabilities, 'supportsFunctionBreakpoints')) {
       try {
         const response = await session.request('setFunctionBreakpoints', {
