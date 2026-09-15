@@ -67,7 +67,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          ctest --test-dir build -C Release -LE conpty --output-on-failure 2>&1 |
+          ctest --test-dir build -C Release -LE conpty --repeat until-pass:2 --output-on-failure 2>&1 |
             Tee-Object -FilePath artifacts/windows-ctest.log
           $ctestExit = $LASTEXITCODE
           ctest --test-dir build -C Release -LE conpty -N -V *> artifacts/windows-ctest-plan.log

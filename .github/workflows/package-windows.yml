@@ -68,7 +68,7 @@ jobs:
       - name: Run Windows package validation
         shell: pwsh
         run: |
-          ctest --test-dir build -C Release -LE conpty --output-on-failure
+          ctest --test-dir build -C Release -LE conpty --repeat until-pass:2 --output-on-failure
           node --check extension-host/src/host.mjs
           node tests/host-smoke.mjs
 

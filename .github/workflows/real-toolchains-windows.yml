@@ -53,42 +53,38 @@ jobs:
           Set-StrictMode -Version Latest
           $llvmRoot = Join-Path $env:RUNNER_TEMP 'llvm-18.1.8'
           $llvmBin = Join-Path $llvmRoot 'bin'
-          $requiredTools = @('clang.exe', 'clang-cl.exe', 'clangd.exe', 'lldb-dap.exe', 'llvm-config.exe')
+          $requiredTools = @('clang.exe', 'clang-cl.exe', 'clangd.exe', 'lldb-dap.exe')
           $cacheComplete = (Test-Path $llvmBin) -and (($requiredTools | Where-Object {
             -not (Test-Path (Join-Path $llvmBin $_))
           }).Count -eq 0)
           if (-not $cacheComplete) {
-            $llvmArchive = Join-Path $env:RUNNER_TEMP 'clang+llvm-18.1.8-x86_64-pc-windows-msvc.tar.xz'
-            $llvmUrl = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang%2Bllvm-18.1.8-x86_64-pc-windows-msvc.tar.xz'
-            $llvmSha256 = '22c5907db053026cc2a8ff96d21c0f642a90d24d66c23c6d28ee7b1d572b82e8'
-            curl.exe --fail --location --retry 3 --retry-delay 2 --connect-timeout 30 --max-time 900 --output $llvmArchive $llvmUrl
-            if ((Get-FileHash -Algorithm SHA256 $llvmArchive).Hash.ToLowerInvariant() -ne $llvmSha256) {
-              throw 'LLVM 18.1.8 Windows archive checksum mismatch.'
+            $llvmInstaller = Join-Path $env:RUNNER_TEMP 'LLVM-18.1.8-win64.exe'
+            $llvmUrl = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/LLVM-18.1.8-win64.exe'
+            $llvmSha256 = '94af030060d88cc17e9f00ef1663ebdc1126b35e16bebdfa1e807984b70abd8f'
+            curl.exe --fail --location --retry 3 --retry-delay 2 --connect-timeout 30 --max-time 900 --output $llvmInstaller $llvmUrl
+            if ((Get-FileHash -Algorithm SHA256 $llvmInstaller).Hash.ToLowerInvariant() -ne $llvmSha256) {
+              throw 'LLVM 18.1.8 Windows installer checksum mismatch.'
             }
             Remove-Item -Recurse -Force $llvmRoot -ErrorAction SilentlyContinue
-            $extractRoot = Join-Path $env:RUNNER_TEMP 'llvm-18.1.8-extracted'
-            Remove-Item -Recurse -Force $extractRoot -ErrorAction SilentlyContinue
-            New-Item -ItemType Directory -Force -Path $extractRoot | Out-Null
-            $sevenZip = (Get-Command 7z.exe -ErrorAction Stop).Source
-            $xzProcess = Start-Process -FilePath $sevenZip -ArgumentList @('x', $llvmArchive, "-o$extractRoot", '-y') -PassThru -NoNewWindow
-            if (-not $xzProcess.WaitForExit(900000)) {
-              taskkill.exe /PID $xzProcess.Id /T /F | Out-Null
-              throw 'LLVM 18.1.8 xz extraction exceeded the 15-minute timeout.'
-            }
-            if ($xzProcess.ExitCode -ne 0) { throw "LLVM xz extraction failed with exit code $($xzProcess.ExitCode)." }
-            $tarArchive = Get-ChildItem -LiteralPath $extractRoot -Filter '*.tar' -File | Select-Object -First 1
-            if (-not $tarArchive) { throw 'LLVM xz extraction did not produce a tar archive.' }
             New-Item -ItemType Directory -Force -Path $llvmRoot | Out-Null
-            $tarProcess = Start-Process -FilePath $sevenZip -ArgumentList @('x', $tarArchive.FullName, "-o$llvmRoot", '-y') -PassThru -NoNewWindow
-            if (-not $tarProcess.WaitForExit(900000)) {
-              taskkill.exe /PID $tarProcess.Id /T /F | Out-Null
-              throw 'LLVM tar extraction exceeded the 15-minute timeout.'
+            $sevenZipCommand = Get-Command 7z.exe -ErrorAction SilentlyContinue
+            $sevenZipCandidates = @(
+              (Join-Path $env:ProgramFiles '7-Zip/7z.exe'),
+              (Join-Path ${env:ProgramFiles(x86)} '7-Zip/7z.exe')
+            )
+            if ($sevenZipCommand) { $sevenZipCandidates += $sevenZipCommand.Source }
+            $sevenZip = $sevenZipCandidates |
+              Where-Object { $_ -and (Test-Path -LiteralPath $_) } |
+              Select-Object -First 1
+            if (-not $sevenZip) { throw '7-Zip was not found on the windows-2022 runner.' }
+            $extractProcess = Start-Process -FilePath $sevenZip -ArgumentList @('x', $llvmInstaller, "-o$llvmRoot", '-y', '-aoa') -PassThru -NoNewWindow
+            if (-not $extractProcess.WaitForExit(900000)) {
+              taskkill.exe /PID $extractProcess.Id /T /F | Out-Null
+              throw 'LLVM 18.1.8 installer extraction exceeded the 15-minute timeout.'
             }
-            if ($tarProcess.ExitCode -ne 0) { throw "LLVM tar extraction failed with exit code $($tarProcess.ExitCode)." }
-            $archiveRoot = Get-ChildItem -LiteralPath $llvmRoot -Directory | Select-Object -First 1
-            if (-not $archiveRoot) { throw 'LLVM tar extraction did not contain a top-level directory.' }
-            Copy-Item -Recurse -Force (Join-Path $archiveRoot.FullName '*') $llvmRoot
-            Remove-Item -Recurse -Force $archiveRoot.FullName
+            if ($extractProcess.ExitCode -ne 0) { throw "LLVM installer extraction failed with exit code $($extractProcess.ExitCode)." }
+            Remove-Item -Recurse -Force (Join-Path $llvmRoot '$PLUGINSDIR') -ErrorAction SilentlyContinue
+            Remove-Item -Force (Join-Path $llvmRoot 'Uninstall.exe'), (Join-Path $llvmRoot 'uninstall.log') -ErrorAction SilentlyContinue
           }
           foreach ($tool in $requiredTools) {
             if (-not (Test-Path (Join-Path $llvmBin $tool))) { throw "Pinned LLVM tool is missing: $tool" }
@@ -152,12 +148,23 @@ jobs:
       - name: Verify pinned versions
         shell: pwsh
         run: |
-          clangd.exe --version | Select-String '18.1.8'
-          rust-analyzer.exe --version | Select-String '1.82.0'
-          gopls.exe version | Select-String 'v0.17.1'
-          pyright.cmd --version | Select-String '1.1.390'
-          & clang.exe --version | Select-String '18.1.8'
-          & lldb-dap.exe --help 2>&1 | Select-String -SimpleMatch 'LLDB DAP'
+          function Assert-OutputContains([string] $label, [string] $output, [string] $expected) {
+            if ($output -notmatch [regex]::Escape($expected)) {
+              throw "$label did not report the pinned value '$expected': $output"
+            }
+          }
+          $clangdVersion = (& clangd.exe --version 2>&1 | Out-String)
+          Assert-OutputContains 'clangd' $clangdVersion '18.1.8'
+          $rustAnalyzerVersion = (& rust-analyzer.exe --version 2>&1 | Out-String)
+          Assert-OutputContains 'rust-analyzer' $rustAnalyzerVersion '1.82.0'
+          $goplsVersion = (& gopls.exe version 2>&1 | Out-String)
+          Assert-OutputContains 'gopls' $goplsVersion 'v0.17.1'
+          $pyrightVersion = (& pyright.cmd --version 2>&1 | Out-String)
+          Assert-OutputContains 'pyright' $pyrightVersion '1.1.390'
+          $clangVersion = (& clang.exe --version 2>&1 | Out-String)
+          Assert-OutputContains 'clang' $clangVersion '18.1.8'
+          $lldbHelp = (& lldb-dap.exe --help 2>&1 | Out-String)
+          Assert-OutputContains 'lldb-dap startup' $lldbHelp 'LLDB DAP'
       - name: Run strict real LSP matrix
         shell: pwsh
         env:
