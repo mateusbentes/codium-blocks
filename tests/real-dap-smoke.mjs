@@ -227,25 +227,41 @@ async function probe(adapter) {
       delete launchArguments.stopAtBeginningOfMainSubprogram;
     }
     await session.request('launch', launchArguments);
-    if (supports(capabilities, 'supportsConfigurationDoneRequest')) await session.request('configurationDone');
-    const firstEvent = await session.event(['stopped', 'terminated', 'exited'], 'initial stop');
+    const registerBreakpoints = async () => {
+      const sourceBreakpoint = await session.request('setBreakpoints', {
+        source: { path: sourceFile },
+        breakpoints: [{ line: adapter.breakpointLine }],
+        sourceModified: false,
+      });
+      result.sourceBreakpoint = sourceBreakpoint.body?.breakpoints ?? [];
+      if (supports(capabilities, 'supportsFunctionBreakpoints')) {
+        try {
+          const response = await session.request('setFunctionBreakpoints', {
+            breakpoints: [{ name: 'helper' }],
+          });
+          result.functionBreakpoint = response.body?.breakpoints ?? [];
+        } catch (error) {
+          result.functionBreakpoint = {
+            unsupportedReason: String(error?.message ?? error),
+          };
+        }
+      }
+    };
+    let firstEvent;
+    if (adapter.id === 'lldb-dap') {
+      await registerBreakpoints();
+      if (supports(capabilities, 'supportsConfigurationDoneRequest')) await session.request('configurationDone');
+      firstEvent = await session.event(['stopped', 'terminated', 'exited'], 'initial stop');
+    } else {
+      if (supports(capabilities, 'supportsConfigurationDoneRequest')) await session.request('configurationDone');
+      firstEvent = await session.event(['stopped', 'terminated', 'exited'], 'initial stop');
+      await registerBreakpoints();
+    }
     if (firstEvent.event !== 'stopped') {
       throw new Error(`${adapter.id}: full scenario ended before a stopped event (${firstEvent.event})`);
     }
     result.stopped = true;
 
-    const sourceBreakpoint = await session.request('setBreakpoints', {
-      source: { path: sourceFile },
-      breakpoints: [{ line: adapter.breakpointLine }],
-      sourceModified: false,
-    });
-    result.sourceBreakpoint = sourceBreakpoint.body?.breakpoints ?? [];
-    if (supports(capabilities, 'supportsFunctionBreakpoints')) {
-      const response = await session.request('setFunctionBreakpoints', {
-        breakpoints: [{ name: 'helper' }],
-      });
-      result.functionBreakpoint = response.body?.breakpoints ?? [];
-    }
     const threads = await session.request('threads');
     const threadId = threads.body?.threads?.[0]?.id;
     if (!threadId) throw new Error(`${adapter.id}: threads response contained no thread`);

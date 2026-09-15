@@ -905,7 +905,7 @@ if(BUILD_TESTING)
         transport-smoke terminal-screen-smoke terminal-profile-smoke debug-model-smoke
         debugger-provider-contract-smoke native-contributions-smoke compatibility-smoke
         problem-model-smoke codeblocks-bridge-smoke codeblocks-host-smoke codeblocks-adapter-smoke
-        install-layout-smoke PROPERTIES TIMEOUT 90)
+        install-layout-smoke PROPERTIES TIMEOUT 90 LABELS portable)
     if(WIN32)
         set_property(TEST transport-smoke PROPERTY LABELS conpty)
     endif()
