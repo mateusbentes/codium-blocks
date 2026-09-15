@@ -232,8 +232,12 @@ async function probe(adapter) {
       delete launchArguments.cwd;
       delete launchArguments.stopAtBeginningOfMainSubprogram;
     }
-    await session.request('launch', launchArguments);
+    // DAP launch sequencing allows configurationDone to be sent before the
+    // launch response. LLDB-DAP can defer that response until configuration
+    // is complete; awaiting it first deadlocks the macOS adapter.
+    const launchResponse = session.request('launch', launchArguments);
     if (supports(capabilities, 'supportsConfigurationDoneRequest')) await session.request('configurationDone');
+    await launchResponse;
     const firstEvent = await session.event(['stopped', 'terminated', 'exited'], 'initial stop');
     if (firstEvent.event !== 'stopped') {
       throw new Error(`${adapter.id}: full scenario ended before a stopped event (${firstEvent.event})`);

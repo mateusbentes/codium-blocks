@@ -89,7 +89,7 @@ jobs:
           try {
             $tar = Join-Path ([Environment]::SystemDirectory) 'tar.exe'
             if (-not (Test-Path -LiteralPath $tar)) { $tar = (Get-Command tar.exe -ErrorAction Stop).Source }
-            & $tar -c -f $package --format=zip -C $staging .
+            & $tar -caf $package -C $staging .
             if ($LASTEXITCODE -ne 0) { throw "tar.exe returned exit code $LASTEXITCODE." }
           } catch {
             Write-Warning "tar.exe failed; using Compress-Archive fallback: $($_.Exception.Message)"

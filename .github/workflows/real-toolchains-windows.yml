@@ -27,17 +27,26 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.23.6'
+          cache: false
       - name: Set up Python for LLDB-DAP
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.10.11'
-      - name: Restore pinned LLVM toolchain cache
-        id: llvm-cache
+      - name: Restore pinned Windows toolchain cache
+        id: toolchain-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
-          path: ${{ runner.temp }}/llvm-18.1.8
-          key: codium-blocks-real-windows-llvm-18.1.8-${{ runner.os }}-${{ runner.arch }}-${{ github.ref_name }}
-      - name: Install pinned Windows toolchains
+          path: |
+            ${{ runner.temp }}/llvm-18.1.8
+            ~/.rustup/toolchains/1.82.0-x86_64-pc-windows-msvc
+          key: codium-blocks-real-windows-toolchains-llvm-18.1.8-rust-1.82.0-${{ runner.os }}-${{ runner.arch }}
+          restore-keys: |
+            codium-blocks-real-windows-toolchains-llvm-18.1.8-rust-1.82.0-${{ runner.os }}-${{ runner.arch }}-
+      - name: Install pinned LLVM and Python runtime
         shell: pwsh
         run: |
           $llvmRoot = Join-Path $env:RUNNER_TEMP 'llvm-18.1.8'
@@ -75,34 +84,47 @@ jobs:
           if (-not (Test-Path $pythonDll)) { throw "Configured Python runtime is missing python310.dll: $pythonDll" }
           Copy-Item -Force $pythonDll (Join-Path $llvmBin 'python310.dll')
           $llvmBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Install pinned Rust toolchain
+        shell: pwsh
+        run: |
           $rustupInit = Join-Path $env:RUNNER_TEMP 'rustup-init.exe'
           $rustupVersion = '1.28.2'
           $rustupBase = "https://static.rust-lang.org/rustup/archive/$rustupVersion/x86_64-pc-windows-msvc"
-          Invoke-WebRequest -Uri "$rustupBase/rustup-init.exe" -OutFile $rustupInit
-          Invoke-WebRequest -Uri "$rustupBase/rustup-init.exe.sha256" -OutFile "$rustupInit.sha256"
+          Invoke-WebRequest -Uri "$rustupBase/rustup-init.exe" -OutFile $rustupInit -TimeoutSec 120
+          Invoke-WebRequest -Uri "$rustupBase/rustup-init.exe.sha256" -OutFile "$rustupInit.sha256" -TimeoutSec 120
           $expected = ((Get-Content "$rustupInit.sha256" -Raw).Trim() -split '\s+')[0].ToUpperInvariant()
           $actual = (Get-FileHash -Algorithm SHA256 $rustupInit).Hash.ToUpperInvariant()
           if ($expected -ne $actual) { throw 'rustup-init.exe checksum mismatch.' }
-          & $rustupInit -y --default-toolchain none --profile minimal
+          & $rustupInit -y --no-modify-path --default-toolchain none --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw "rustup-init.exe failed with exit code $LASTEXITCODE." }
           $cargoBin = Join-Path $env:USERPROFILE '.cargo/bin'
           $env:Path = "$cargoBin;$env:Path"
           "$cargoBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          rustup toolchain install 1.82.0 --profile minimal
-          rustup component add rust-analyzer --toolchain 1.82.0
+          rustup set auto-self-update disable
+          rustup toolchain install 1.82.0 --profile minimal --component rust-analyzer --no-self-update
           $rustAnalyzerBin = Join-Path $env:USERPROFILE '.rustup/toolchains/1.82.0-x86_64-pc-windows-msvc/bin'
+          if (-not (Test-Path (Join-Path $rustAnalyzerBin 'rust-analyzer.exe'))) { throw 'Pinned rust-analyzer.exe was not installed.' }
           "$rustAnalyzerBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Install pinned Go, gopls, and Pyright
+        shell: pwsh
+        run: |
           New-Item -ItemType Directory -Force -Path (Join-Path $env:USERPROFILE '.local/bin') | Out-Null
           $env:GOBIN = Join-Path $env:USERPROFILE '.local/bin'
-          $env:GOTOOLCHAIN = 'go1.23.6'
+          $env:GOTOOLCHAIN = 'local'
+          $goVersion = go version
+          if ($goVersion -notmatch 'go1.23.6') { throw "Unexpected Go version: $goVersion" }
           go install golang.org/x/tools/gopls@v0.17.1
+          if (-not (Test-Path (Join-Path $env:GOBIN 'gopls.exe'))) { throw 'Pinned gopls.exe was not installed.' }
           $env:GOBIN | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           npm install --global pyright@1.1.390
-      - name: Save pinned LLVM toolchain cache
-        if: steps.llvm-cache.outputs.cache-hit != 'true'
+      - name: Save pinned Windows toolchain cache
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
-          path: ${{ runner.temp }}/llvm-18.1.8
-          key: codium-blocks-real-windows-llvm-18.1.8-${{ runner.os }}-${{ runner.arch }}-${{ github.ref_name }}
+          path: |
+            ${{ runner.temp }}/llvm-18.1.8
+            ~/.rustup/toolchains/1.82.0-x86_64-pc-windows-msvc
+          key: codium-blocks-real-windows-toolchains-llvm-18.1.8-rust-1.82.0-${{ runner.os }}-${{ runner.arch }}
       - name: Verify pinned versions
         shell: pwsh
         run: |
