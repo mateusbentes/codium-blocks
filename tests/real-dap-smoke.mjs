@@ -236,13 +236,13 @@ async function probe(adapter) {
 
     const sourceBreakpoint = await session.request('setBreakpoints', {
       source: { path: sourceFile },
-      breakpoints: [{ line: adapter.breakpointLine, condition: 'global_counter >= 0', hitCondition: '1' }],
+      breakpoints: [{ line: adapter.breakpointLine }],
       sourceModified: false,
     });
     result.sourceBreakpoint = sourceBreakpoint.body?.breakpoints ?? [];
     if (supports(capabilities, 'supportsFunctionBreakpoints')) {
       const response = await session.request('setFunctionBreakpoints', {
-        breakpoints: [{ name: 'helper', condition: 'global_counter >= 0', hitCondition: '1' }],
+        breakpoints: [{ name: 'helper' }],
       });
       result.functionBreakpoint = response.body?.breakpoints ?? [];
     }

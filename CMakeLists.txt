@@ -748,11 +748,6 @@ install(DIRECTORY extensions DESTINATION ${CODIUM_BLOCKS_INSTALL_DATA_DIR})
 install(DIRECTORY locales DESTINATION ${CODIUM_BLOCKS_INSTALL_DATA_DIR})
 install(FILES README.md CHANGELOG.md LICENSE COPYING DESTINATION ${CODIUM_BLOCKS_INSTALL_DOC_DIR})
 install(DIRECTORY docs protocol DESTINATION ${CODIUM_BLOCKS_INSTALL_DOC_DIR})
-if(WIN32 AND CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR)
-    install(DIRECTORY "${CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR}/"
-        DESTINATION ${CMAKE_INSTALL_BINDIR}
-        FILES_MATCHING PATTERN "*.dll")
-endif()
 
 if(UNIX AND NOT APPLE)
     foreach(icon_size IN ITEMS 16 24 32 48 64 128 256 512)
@@ -911,6 +906,9 @@ if(BUILD_TESTING)
         debugger-provider-contract-smoke native-contributions-smoke compatibility-smoke
         problem-model-smoke codeblocks-bridge-smoke codeblocks-host-smoke codeblocks-adapter-smoke
         install-layout-smoke PROPERTIES TIMEOUT 90)
+    if(WIN32)
+        set_property(TEST transport-smoke PROPERTY LABELS conpty)
+    endif()
 endif()
 
 message(STATUS "Codium::Blocks ${PROJECT_VERSION}: native wxWidgets core + optional Node.js extension host")

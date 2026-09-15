@@ -65,7 +65,7 @@ jobs:
 
       - name: Run Windows CTest
         shell: pwsh
-        run: ctest --test-dir build -C Release -E '^transport-smoke$' --output-on-failure
+        run: ctest --test-dir build -C Release -LE conpty --output-on-failure
 
       - name: Run Windows ConPTY smoke
         shell: pwsh

@@ -51,8 +51,8 @@ jobs:
               throw 'LLVM 18.1.8 installer checksum mismatch.'
             }
             Remove-Item -Recurse -Force $llvmRoot -ErrorAction SilentlyContinue
-            $installer = Start-Process -FilePath $llvmInstaller -ArgumentList @('/S', "/D=$llvmRoot") -Wait -PassThru
-            if ($installer.ExitCode -ne 0) { throw "LLVM installer failed with exit code $($installer.ExitCode)." }
+            & $llvmInstaller '/S' "/D=$llvmRoot"
+            if ($LASTEXITCODE -ne 0) { throw "LLVM installer failed with exit code $LASTEXITCODE." }
           }
           foreach ($tool in $requiredTools) {
             if (-not (Test-Path (Join-Path $llvmBin $tool))) { throw "Pinned LLVM tool is missing: $tool" }
