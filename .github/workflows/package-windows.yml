@@ -37,7 +37,7 @@ jobs:
       - name: Install Windows packaging dependencies
         shell: pwsh
         run: |
-          vcpkg install wxwidgets:x64-windows
+          vcpkg install wxwidgets:x64-windows openssl:x64-windows
           $runtimeDir = Join-Path $env:RUNNER_TEMP 'codium-blocks-windows-runtime'
           Remove-Item -Recurse -Force $runtimeDir -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
@@ -135,6 +135,8 @@ jobs:
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'wx*.dll')) { throw 'Windows package is missing wxWidgets runtime DLLs.' }
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'vcruntime140*.dll')) { throw 'Windows package is missing the Microsoft Visual C++ runtime.' }
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'msvcp140*.dll')) { throw 'Windows package is missing the Microsoft C++ standard library runtime.' }
+          if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'libcrypto*.dll')) { throw 'Windows package is missing the OpenSSL crypto runtime DLL.' }
+          if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'libssl*.dll')) { throw 'Windows package is missing the OpenSSL SSL runtime DLL.' }
           Invoke-LoggedNative 'Generating Windows package SBOM' 'python' @('scripts/generate-sbom.py', '--root', $expanded, '--version', $version, '--output', 'build/codium-blocks-windows-package.spdx.json')
           Invoke-LoggedNative 'Validating Windows package SBOM JSON' 'python' @('-m', 'json.tool', 'build/codium-blocks-windows-package.spdx.json')
           $dataRoot = Join-Path $env:RUNNER_TEMP 'codium-blocks-package-data'
@@ -145,8 +147,17 @@ jobs:
           $stderr = Join-Path $env:RUNNER_TEMP 'codium-blocks-package.stderr.log'
           $previousDataRoot = $env:CODIUM_BLOCKS_DATA
           $env:CODIUM_BLOCKS_DATA = $dataRoot
+          $packageBin = Split-Path -Parent $executable
+          $dumpbin = Get-Command dumpbin.exe -ErrorAction SilentlyContinue
+          if ($dumpbin) {
+            Invoke-LoggedNative 'Inspecting packaged executable dependencies' $dumpbin.Source @('/DEPENDENTS', $executable)
+          }
+          $packageEnvironment = @{
+            CODIUM_BLOCKS_DATA = $dataRoot
+            PATH = "$packageBin;$env:PATH"
+          }
           $process = Start-Process -FilePath $executable -WorkingDirectory (Split-Path $executable) -PassThru `
-            -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+            -RedirectStandardOutput $stdout -RedirectStandardError $stderr -Environment $packageEnvironment
           Start-Sleep -Seconds 4
           $process.Refresh()
           if ($process.HasExited) {

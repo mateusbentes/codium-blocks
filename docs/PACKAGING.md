@@ -24,7 +24,7 @@ A typical non-bundle installation therefore has this shape:
 |---|---|---|---|
 | Linux | Debian package and compressed tar archive | `DEB` and `TGZ` | The Debian package derives shared-library dependencies. The TGZ requires a compatible wxWidgets/GTK, OpenSSL, C++ runtime, and glibc environment. Node.js is recommended rather than required by the native core. |
 | macOS | Disk image containing the application bundle | `DragNDrop` locally; deterministic `hdiutil` image in CI | The install step applies CMake BundleUtilities fixup and the package workflow creates the CI image directly from the fresh staging prefix before checking external dependencies. The bundle remains unsigned and unnotarized until a later distribution decision. |
-| Windows | Portable ZIP archive | `ZIP` | The package workflow includes configured wxWidgets runtime DLLs and the x64 Microsoft Visual C++ runtime DLLs. The artifact is still validated only on the `windows-2022` runner and is not a signed installer. |
+| Windows | Portable ZIP archive | `ZIP` | The package workflow includes configured wxWidgets and OpenSSL runtime DLLs together with the x64 Microsoft Visual C++ runtime DLLs. The artifact is still validated only on the `windows-2022` runner and is not a signed installer. |
 
 The standard package is built with `CODIUM_BLOCKS_ENABLE_CODEBLOCKS_ADAPTER=OFF`. The Code::Blocks adapter requires a matched SDK, resources, plugins, and ABI identity, so it remains a separately tested optional integration rather than a hidden dependency of the normal download.
 
@@ -88,12 +88,13 @@ The local CPack command is useful for developer experimentation. The macOS packa
 
 Mount the resulting DMG, copy `codium-blocks.app` to an application directory, and run it from there. The current artifact is unsigned and unnotarized; macOS security prompts and Gatekeeper behavior therefore remain a release concern rather than a solved claim.
 
-On Windows, configure wxWidgets through vcpkg and pass a private directory containing the wxWidgets and matching Microsoft Visual C++ runtime DLLs:
+On Windows, configure wxWidgets and OpenSSL through vcpkg and pass a private directory containing their runtime DLLs together with the matching Microsoft Visual C++ runtime DLLs:
 
 ```powershell
 $runtimeDir = Join-Path $env:TEMP 'codium-blocks-runtime'
 Remove-Item -Recurse -Force $runtimeDir -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
+vcpkg install wxwidgets:x64-windows openssl:x64-windows
 Copy-Item "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/bin/*.dll" $runtimeDir -Force
 # Copy the x64 Microsoft.VC143.CRT DLLs from the Visual Studio installation.
 # The exact redist path is versioned by the installed Visual Studio toolset.
@@ -110,9 +111,9 @@ ctest --test-dir build-package -C Release --output-on-failure
 cpack --config build-package/CPackConfig.cmake -C Release -B build-package
 ```
 
-For a local ZIP, `CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR` must contain both the vcpkg wxWidgets DLLs and the matching x64 Microsoft Visual C++ runtime DLLs. The package workflow creates this combined directory automatically, installs into a fresh staging prefix for inspection, and creates the distributable archive with CPack's native Windows ZIP generator. It validates the resulting ZIP with Python's standard-library reader and .NET extraction before checking resources, catalogs, licenses, the SBOM, and startup. A local developer should copy the DLLs into a private staging directory rather than relying on DLLs installed only in the Visual Studio environment.
+For a local ZIP, `CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR` must contain the vcpkg wxWidgets and OpenSSL DLLs together with the matching x64 Microsoft Visual C++ runtime DLLs. The package workflow creates this combined directory automatically, installs into a fresh staging prefix for inspection, and creates the distributable archive with CPack's native Windows ZIP generator. It validates the resulting ZIP with Python's standard-library reader and .NET extraction before checking resources, catalogs, licenses, the SBOM, dependency closure, and startup. A local developer should copy the DLLs into a private staging directory rather than relying on DLLs installed only in the Visual Studio environment.
 
-Extract the ZIP on a Windows x64 machine and start `bin\codium-blocks.exe`. The package workflow copies the matching wxWidgets and Microsoft Visual C++ runtime DLLs into the archive, but the CI runner is not a complete clean-consumer proof; SmartScreen, architecture, and future Windows servicing behavior remain release concerns.
+Extract the ZIP on a Windows x64 machine and start `bin\codium-blocks.exe`. The package workflow copies the matching wxWidgets, OpenSSL, and Microsoft Visual C++ runtime DLLs into the archive, but the CI runner is not a complete clean-consumer proof; SmartScreen, architecture, and future Windows servicing behavior remain release concerns.
 
 Each package workflow creates a SHA-256 checksum with package basenames and an SPDX 2.3 inventory of the staged or extracted product. A checksum confirms artifact integrity after transfer, while an SBOM records the files and hashes that were scanned; neither is a code-signing mechanism, provenance attestation, notarization, or trust anchor. The source-level dependency and action-pin audit is produced separately by `quality-security.yml`.
 
