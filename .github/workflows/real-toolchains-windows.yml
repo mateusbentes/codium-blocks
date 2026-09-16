@@ -69,8 +69,9 @@ jobs:
             $extractRoot = Join-Path $env:RUNNER_TEMP 'llvm-18.1.8-extracted'
             Remove-Item -Recurse -Force $extractRoot -ErrorAction SilentlyContinue
             New-Item -ItemType Directory -Force -Path $extractRoot | Out-Null
-            $tar = (Get-Command tar.exe -CommandType Application -ErrorAction Stop).Source
-            & $tar -xJf $llvmArchive -C $extractRoot
+            $tar = Join-Path $env:WINDIR 'System32\tar.exe'
+            if (-not (Test-Path -LiteralPath $tar)) { throw "Native Windows tar.exe was not found: $tar" }
+            & $tar -xf $llvmArchive -C $extractRoot
             if ($LASTEXITCODE -ne 0) { throw "LLVM archive extraction failed with exit code $LASTEXITCODE." }
             $topLevel = @(Get-ChildItem -LiteralPath $extractRoot -Directory)
             if ($topLevel.Count -ne 1) { throw "LLVM archive had an unexpected top-level layout: $extractRoot" }

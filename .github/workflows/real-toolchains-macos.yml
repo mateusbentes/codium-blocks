@@ -82,7 +82,9 @@ jobs:
         run: |
           debugserver=$(xcrun --find debugserver)
           test -x "$debugserver"
-          echo "LLDB_DEBUGSERVER_PATH=$debugserver" >> "$GITHUB_ENV"
+          debugserver_dir=$(dirname "$debugserver")
+          test -x "$debugserver_dir/debugserver"
+          echo "$debugserver_dir" >> "$GITHUB_PATH"
       - name: Run strict real DAP matrix
         env:
           CODIUM_BLOCKS_REQUIRE_REAL_DAP: '1'
