@@ -27,6 +27,8 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
+      - name: Validate matrix contracts
+        run: node tests/integration-matrix-smoke.mjs
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -80,13 +82,29 @@ jobs:
             -o /tmp/codium-blocks-real-dap-debuggee
       - name: Select signed macOS debugserver
         run: |
-          debugserver=$(xcrun --find debugserver)
-          test -x "$debugserver"
-          debugserver_dir=$(dirname "$debugserver")
-          test -x "$debugserver_dir/debugserver"
+          developer_dir=$(xcode-select --print-path)
+          debugserver=''
+          for candidate in \
+            "$developer_dir/../SharedFrameworks/LLDB.framework/Versions/A/Resources/debugserver" \
+            "$developer_dir/Library/PrivateFrameworks/LLDB.framework/Versions/A/Resources/debugserver"; do
+            if test -x "$candidate"; then
+              debugserver="$candidate"
+              break
+            fi
+          done
+          if test -z "$debugserver"; then
+            echo "Could not locate the signed Xcode or Command Line Tools debugserver from $developer_dir" >&2
+            exit 1
+          fi
+          case "$debugserver" in
+            "$RUNNER_TEMP/llvm-18.1.8/"*)
+              echo "Refusing to use the LLVM archive debugserver; the macOS system debugserver is required." >&2
+              exit 1
+              ;;
+          esac
+          echo "Using signed macOS debugserver: $debugserver"
           codesign --verify --verbose "$debugserver"
           echo "LLDB_DEBUGSERVER_PATH=$debugserver" >> "$GITHUB_ENV"
-          echo "$debugserver_dir" >> "$GITHUB_PATH"
       - name: Run strict real DAP matrix
         env:
           CODIUM_BLOCKS_REQUIRE_REAL_DAP: '1'
@@ -107,5 +125,3 @@ jobs:
           path: |
             ${{ runner.temp }}/codium-blocks-real-dap.log
             ${{ runner.temp }}/lldb-dap-internal.log
-      - name: Validate matrix contracts
-        run: node tests/integration-matrix-smoke.mjs
