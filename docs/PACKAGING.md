@@ -107,10 +107,10 @@ cmake -S . -B build-package -G "Visual Studio 17 2022" -A x64 `
   -DCODIUM_BLOCKS_WINDOWS_RUNTIME_DIR="$runtimeDir"
 cmake --build build-package --config Release --parallel
 ctest --test-dir build-package -C Release --output-on-failure
-cpack --config build-package/CPackConfig.cmake -C Release
+cpack --config build-package/CPackConfig.cmake -C Release -B build-package
 ```
 
-For a local ZIP, `CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR` must contain both the vcpkg wxWidgets DLLs and the matching x64 Microsoft Visual C++ runtime DLLs. The package workflow creates this combined directory automatically, installs into a fresh staging prefix, and creates the archive with `scripts/create-portable-zip.py` using Python's standard-library `zipfile` implementation. Archive validation therefore does not depend on a second CPack ZIP pass. A local developer should copy the DLLs into a private staging directory rather than relying on DLLs installed only in the Visual Studio environment.
+For a local ZIP, `CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR` must contain both the vcpkg wxWidgets DLLs and the matching x64 Microsoft Visual C++ runtime DLLs. The package workflow creates this combined directory automatically, installs into a fresh staging prefix for inspection, and creates the distributable archive with CPack's native Windows ZIP generator. It validates the resulting ZIP with Python's standard-library reader and .NET extraction before checking resources, catalogs, licenses, the SBOM, and startup. A local developer should copy the DLLs into a private staging directory rather than relying on DLLs installed only in the Visual Studio environment.
 
 Extract the ZIP on a Windows x64 machine and start `bin\codium-blocks.exe`. The package workflow copies the matching wxWidgets and Microsoft Visual C++ runtime DLLs into the archive, but the CI runner is not a complete clean-consumer proof; SmartScreen, architecture, and future Windows servicing behavior remain release concerns.
 

@@ -110,20 +110,23 @@ jobs:
           if ($stagingEntries.Count -eq 0) { throw 'Windows install staging is empty.' }
           Log ("Staged files: " + ((Get-ChildItem -LiteralPath $staging -Recurse -File | ForEach-Object { $_.FullName.Substring($staging.Length + 1) }) -join ', '))
           $buildDir = (Resolve-Path -LiteralPath build).Path
-          $package = Join-Path $buildDir "codium-blocks-$version-Windows-portable.zip"
-          Invoke-LoggedNative "Creating ZIP $package" 'python' @('scripts/create-portable-zip.py', '--root', $staging, '--output', $package)
-          if (-not (Test-Path $package)) { throw "Windows package was not created: $package" }
-          Log ("ZIP size: " + (Get-Item -LiteralPath $package).Length + ' bytes')
-          Log ("ZIP SHA-256: " + (Get-FileHash -Algorithm SHA256 -LiteralPath $package).Hash.ToLowerInvariant())
+          Get-ChildItem -LiteralPath $buildDir -Filter 'codium-blocks-*.zip' -File -ErrorAction SilentlyContinue | Remove-Item -Force
+          Invoke-LoggedNative 'Creating native CPack ZIP' 'cpack' @('--config', 'build/CPackConfig.cmake', '-C', 'Release', '-G', 'ZIP', '-B', $buildDir)
+          $packages = @(Get-ChildItem -LiteralPath $buildDir -Filter 'codium-blocks-*.zip' -File)
+          if ($packages.Count -ne 1) { throw "Expected exactly one Windows ZIP from CPack, found $($packages.Count)." }
+          $packagePath = $packages[0].FullName
+          Log ("ZIP path: " + $packagePath)
+          Log ("ZIP size: " + $packages[0].Length + ' bytes')
+          Log ("ZIP SHA-256: " + (Get-FileHash -Algorithm SHA256 -LiteralPath $packagePath).Hash.ToLowerInvariant())
           Log 'Testing ZIP integrity with Python zipfile before native extraction'
-          Invoke-LoggedNative 'Testing ZIP integrity with Python zipfile' 'python' @('-m', 'zipfile', '-t', $package)
-          Invoke-LoggedNative 'Listing ZIP entries with Python zipfile' 'python' @('-m', 'zipfile', '-l', $package)
+          Invoke-LoggedNative 'Testing ZIP integrity with Python zipfile' 'python' @('-m', 'zipfile', '-t', $packagePath)
+          Invoke-LoggedNative 'Listing ZIP entries with Python zipfile' 'python' @('-m', 'zipfile', '-l', $packagePath)
           $expanded = Join-Path $env:RUNNER_TEMP 'codium-blocks-package-validation'
           Remove-Item -Recurse -Force $expanded -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $expanded | Out-Null
           Log "Expanding ZIP into $expanded"
           Add-Type -AssemblyName System.IO.Compression.FileSystem
-          [System.IO.Compression.ZipFile]::ExtractToDirectory($package, $expanded)
+          [System.IO.Compression.ZipFile]::ExtractToDirectory($packagePath, $expanded)
           Log 'Native .NET ZIP extraction completed.'
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'codium-blocks.exe')) { throw 'Windows package is missing the native executable.' }
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'en-US.tsv')) { throw 'Windows package is missing en-US.tsv.' }
@@ -154,8 +157,8 @@ jobs:
           Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
           if ($null -eq $previousDataRoot) { Remove-Item Env:CODIUM_BLOCKS_DATA -ErrorAction SilentlyContinue }
           else { $env:CODIUM_BLOCKS_DATA = $previousDataRoot }
-          $hashes = Get-FileHash -Algorithm SHA256 $package
-          $hashes | ForEach-Object { "$($_.Hash.ToLower())  $([System.IO.Path]::GetFileName($_.Path))" } | Set-Content build/codium-blocks-windows.sha256
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $packagePath).Hash.ToLowerInvariant()
+          "$hash  $([System.IO.Path]::GetFileName($packagePath))" | Set-Content build/codium-blocks-windows.sha256
           Log 'Windows package validation completed.'
           } catch {
             Log (($_ | Out-String).TrimEnd())

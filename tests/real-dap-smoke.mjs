@@ -253,9 +253,11 @@ async function probe(adapter) {
       // information.
       launchArguments.initCommands = ['settings set symbols.enable-external-lookup 0'];
       if (process.platform === 'darwin') {
-        // Hosted macOS runners may reject LLDB's default request to disable
-        // ASLR even though the signed system debugserver is usable.
-        launchArguments.initCommands.push('settings set target.disable-aslr false');
+        // LLDB-DAP 18 applies this launch field to the process flags before it
+        // contacts Apple's signed debugserver. Changing target.disable-aslr in
+        // initCommands is too early because the launch target does not exist
+        // yet, and can leave macOS waiting forever for its first stop.
+        launchArguments.disableASLR = false;
       }
       delete launchArguments.stopAtBeginningOfMainSubprogram;
     }

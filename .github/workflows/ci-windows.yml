@@ -67,7 +67,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          $ctestOutput = & ctest --test-dir build -C Release -LE "conpty|fuzz" --output-on-failure 2>&1
+          $ctestOutput = & ctest --test-dir build -C Release -LE "conpty|fuzz" --output-on-failure --stop-on-failure 2>&1
           $ctestExit = $LASTEXITCODE
           $ctestOutput | Set-Content -Path artifacts/windows-ctest.log -Encoding utf8
           $planOutput = & ctest --test-dir build -C Release -LE "conpty|fuzz" -N -V 2>&1
