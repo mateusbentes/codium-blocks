@@ -27,6 +27,9 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
+      - name: Validate matrix contracts
+        shell: pwsh
+        run: node tests/integration-matrix-smoke.mjs
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -54,7 +57,13 @@ jobs:
           $requiredTools = @('clang.exe', 'clang-cl.exe', 'clangd.exe', 'lldb-dap.exe')
           $requiredPaths = @($requiredTools | ForEach-Object { Join-Path $llvmBin $_ })
           $requiredPaths += Join-Path $llvmRoot 'lib/site-packages/lldb'
-          $cacheComplete = (($requiredPaths | Where-Object { -not (Test-Path -LiteralPath $_) }).Count -eq 0)
+          [array]$missingPaths = @(
+            $requiredPaths | Where-Object { -not (Test-Path -LiteralPath $_) }
+          )
+          $cacheComplete = ($missingPaths.Count -eq 0)
+          if (-not $cacheComplete) {
+            Write-Host "Pinned Windows toolchain cache is incomplete; missing: $($missingPaths -join ', ')"
+          }
           if (-not $cacheComplete) {
             $llvmInstaller = Join-Path $env:RUNNER_TEMP 'LLVM-18.1.8-win64.exe'
             $llvmUrl = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/LLVM-18.1.8-win64.exe'
@@ -180,6 +189,3 @@ jobs:
           CODIUM_BLOCKS_REAL_DAP_DEBUGGEE: ${{ runner.temp }}/codium-blocks-real-dap-debuggee.exe
           CODIUM_BLOCKS_REAL_DAP_SOURCE: ${{ github.workspace }}/tests/fixtures/real-dap-debuggee.cpp
         run: node tests/real-dap-smoke.mjs
-      - name: Validate matrix contracts
-        shell: pwsh
-        run: node tests/integration-matrix-smoke.mjs

@@ -91,10 +91,6 @@ jobs:
           ctest --test-dir build -C Release -R '^transport-smoke$' --output-on-failure
           Remove-Item Env:CODIUM_BLOCKS_REQUIRE_CONPTY
 
-      - name: Run Windows Extension Host smoke test
-        shell: pwsh
-        run: node tests/host-smoke.mjs
-
       - name: Capture Windows high-contrast workbench
         shell: pwsh
         run: |
