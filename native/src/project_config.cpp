@@ -177,7 +177,10 @@ void AddUniqueTargetPath(wxArrayString* paths, const wxString& value,
     resolved.Replace(wxS("$<CONFIG>"), configuration);
     wxFileName path(resolved);
     if (!path.IsAbsolute() && !workingDirectory.empty()) {
-        path = wxFileName(workingDirectory, resolved);
+        wxString combined = workingDirectory;
+        if (!combined.EndsWith(wxFILE_SEP_PATH)) combined += wxFILE_SEP_PATH;
+        combined += resolved;
+        path.Assign(combined);
     }
     const wxString fullPath = path.GetFullPath();
     if (paths->Index(fullPath) == wxNOT_FOUND) paths->Add(fullPath);
@@ -605,7 +608,10 @@ void ProjectConfig::LoadCodeBlocksProjects(const wxString& workspaceRoot)
     projectNames.Sort();
     for (const auto& projectName : projectNames) {
         wxString error;
-        LoadCodeBlocksProject(wxFileName(workspaceRoot, projectName).GetFullPath(), &error);
+        wxString projectPath = workspaceRoot;
+        if (!projectPath.EndsWith(wxFILE_SEP_PATH)) projectPath += wxFILE_SEP_PATH;
+        projectPath += projectName;
+        LoadCodeBlocksProject(wxFileName(projectPath).GetFullPath(), &error);
     }
 }
 

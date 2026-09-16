@@ -44,7 +44,7 @@ jobs:
           $vcpkgBin = Join-Path $env:VCPKG_INSTALLATION_ROOT 'installed/x64-windows/bin'
           Copy-Item (Join-Path $vcpkgBin '*.dll') $runtimeDir -Force
           $crt = Get-ChildItem -Path (Join-Path $env:ProgramFiles 'Microsoft Visual Studio/2022') -Recurse -Filter 'vcruntime140.dll' -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -match 'Microsoft\.VC143\.CRT' } |
+            Where-Object { $_.FullName -match '[\\/]x64[\\/]Microsoft\.VC143\.CRT[\\/]vcruntime140\.dll$' } |
             Select-Object -First 1
           if (-not $crt) { throw 'Could not locate the x64 Microsoft Visual C++ runtime directory.' }
           Copy-Item (Join-Path $crt.DirectoryName '*.dll') $runtimeDir -Force

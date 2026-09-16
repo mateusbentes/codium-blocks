@@ -3900,7 +3900,10 @@ private:
             problem.message = event.message;
             problem.path = event.filePath;
             if (!problem.path.empty() && !wxFileName(problem.path).IsAbsolute()) {
-                problem.path = wxFileName(WorkspaceDirectory(), problem.path).GetFullPath();
+                wxString combined = WorkspaceDirectory();
+                if (!combined.EndsWith(wxFILE_SEP_PATH)) combined += wxFILE_SEP_PATH;
+                combined += problem.path;
+                problem.path = wxFileName(combined).GetFullPath();
             }
             problem.line = std::max(0, event.line - 1);
             problem.column = std::max(0, event.column - 1);

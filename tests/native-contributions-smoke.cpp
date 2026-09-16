@@ -64,6 +64,12 @@ int main()
         std::cerr << "native-contributions-smoke: SCM discard failed: " << error.ToStdString() << "\n";
         return 9;
     }
+    wxFileName::Mkdir(root + wxFILE_SEP_PATH + wxS("nested"), wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+    std::ofstream(root.ToStdString() + "/nested/child.txt") << "nested";
+    if (!scm.Stage(wxS("nested/child.txt"), &error)) {
+        std::cerr << "native-contributions-smoke: nested SCM path failed: " << error.ToStdString() << "\n";
+        return 10;
+    }
 
     codium::CustomEditorRegistry editors;
     editors.Register(wxS(".json"), wxS("json-custom-editor"), wxS("JSON editor"), 10, true);
@@ -71,14 +77,14 @@ int main()
         !editors.Resolve(wxS("main.cpp")).empty() || editors.Descriptors().size() != 1 ||
         !editors.Descriptors()[0].supportsText || editors.Descriptors()[0].priority != 10) {
         std::cerr << "native-contributions-smoke: custom editor resolution failed\n";
-        return 10;
+        return 11;
     }
     if (!codium::WebviewResourcePolicy::IsAllowedUri(wxS("file://") + root + wxS("/view.html"), root) ||
         codium::WebviewResourcePolicy::IsAllowedUri(wxS("https://example.com/view.html"), root) ||
         codium::WebviewResourcePolicy::SanitizeHtml(wxS("<script>alert(1)</script><p onclick=\"x\">javascript:bad</p>")).Find(wxS("<script")) != wxNOT_FOUND ||
         codium::WebviewResourcePolicy::SanitizeHtml(wxS("<p onclick=\"x\">bad</p>")).Find(wxS("onclick")) != wxNOT_FOUND) {
         std::cerr << "native-contributions-smoke: webview resource policy failed\n";
-        return 11;
+        return 12;
     }
     std::filesystem::remove_all(root.ToStdString());
     std::cout << "native-contributions-smoke: ok — Tree Views, SCM, and custom editors\n";

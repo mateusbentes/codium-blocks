@@ -52,7 +52,12 @@ bool IsSafeRepositoryPath(const wxString& path, const wxString& root)
 {
     if (path.empty()) return false;
     wxFileName candidate(path);
-    if (!candidate.IsAbsolute()) candidate.Assign(root, path);
+    if (!candidate.IsAbsolute()) {
+        wxString combined = root;
+        if (!combined.EndsWith(wxFILE_SEP_PATH)) combined += wxFILE_SEP_PATH;
+        combined += path;
+        candidate.Assign(combined);
+    }
     return IsWithin(candidate.GetFullPath(), wxFileName(root).GetFullPath());
 }
 

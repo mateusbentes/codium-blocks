@@ -98,7 +98,7 @@ vcpkg install wxwidgets:x64-windows openssl:x64-windows
 Copy-Item "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/bin/*.dll" $runtimeDir -Force
 # Copy the x64 Microsoft.VC143.CRT DLLs from the Visual Studio installation.
 # The exact redist path is versioned by the installed Visual Studio toolset.
-Copy-Item 'C:/path/to/Microsoft.VC143.CRT/*.dll' $runtimeDir -Force
+Copy-Item 'C:/path/to/x64/Microsoft.VC143.CRT/*.dll' $runtimeDir -Force
 cmake -S . -B build-package -G "Visual Studio 17 2022" -A x64 `
   -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
   -DVCPKG_TARGET_TRIPLET=x64-windows `
@@ -111,7 +111,7 @@ ctest --test-dir build-package -C Release --output-on-failure
 cpack --config build-package/CPackConfig.cmake -C Release -B build-package
 ```
 
-For a local ZIP, `CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR` must contain the vcpkg wxWidgets and OpenSSL DLLs together with the matching x64 Microsoft Visual C++ runtime DLLs. The package workflow creates this combined directory automatically, installs into a fresh staging prefix for inspection, and creates the distributable archive with CPack's native Windows ZIP generator. It validates the resulting ZIP with Python's standard-library reader and .NET extraction before checking resources, catalogs, licenses, the SBOM, dependency closure, and startup. A local developer should copy the DLLs into a private staging directory rather than relying on DLLs installed only in the Visual Studio environment.
+For a local ZIP, `CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR` must contain the vcpkg wxWidgets and OpenSSL DLLs together with the matching x64 Microsoft Visual C++ runtime DLLs from the `x64/Microsoft.VC143.CRT` directory. The package workflow creates this combined directory automatically, installs into a fresh staging prefix for inspection, and creates the distributable archive with CPack's native Windows ZIP generator. It validates the resulting ZIP with Python's standard-library reader and .NET extraction before checking resources, catalogs, licenses, the SBOM, dependency closure, and startup. A local developer should copy the DLLs into a private staging directory rather than relying on DLLs installed only in the Visual Studio environment.
 
 Extract the ZIP on a Windows x64 machine and start `bin\codium-blocks.exe`. The package workflow copies the matching wxWidgets, OpenSSL, and Microsoft Visual C++ runtime DLLs into the archive, but the CI runner is not a complete clean-consumer proof; SmartScreen, architecture, and future Windows servicing behavior remain release concerns.
 
