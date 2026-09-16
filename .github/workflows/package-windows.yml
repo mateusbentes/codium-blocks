@@ -30,7 +30,7 @@ jobs:
           node-version: 22
 
       - name: Set up Python for packaging tools
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.10.11'
 
@@ -93,16 +93,23 @@ jobs:
           cmake --install build --config Release --prefix $staging 2>&1 | Tee-Object -FilePath $diagnostic -Append
           if ($LASTEXITCODE -ne 0) { throw "cmake --install failed with exit code $LASTEXITCODE." }
           $binDir = Join-Path $staging 'bin'
-          $runtimeFiles = @(Get-ChildItem -LiteralPath $binDir -Filter '*.dll' -File)
+          if (-not (Test-Path -LiteralPath $binDir -PathType Container)) { throw "Windows install did not create its bin directory: $binDir" }
+          if (Test-Path -LiteralPath $env:CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR -PathType Container) {
+            Copy-Item (Join-Path $env:CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR '*.dll') $binDir -Force
+            Log "Copied the prepared Windows runtime DLLs into $binDir"
+          }
+          $runtimeFiles = @(Get-ChildItem -LiteralPath $binDir -Filter '*.dll' -File -ErrorAction SilentlyContinue)
           if ($runtimeFiles.Count -eq 0) { throw 'Windows runtime staging directory contains no DLLs.' }
           $stagingEntries = @(Get-ChildItem -LiteralPath $staging -Force)
           if ($stagingEntries.Count -eq 0) { throw 'Windows install staging is empty.' }
+          Log ("Staged files: " + ((Get-ChildItem -LiteralPath $staging -Recurse -File | ForEach-Object { $_.FullName.Substring($staging.Length + 1) }) -join ', '))
           $buildDir = (Resolve-Path -LiteralPath build).Path
           $package = Join-Path $buildDir "codium-blocks-$version-Windows-portable.zip"
           Log "Creating ZIP $package"
           python scripts/create-portable-zip.py --root $staging --output $package 2>&1 | Tee-Object -FilePath $diagnostic -Append
           if ($LASTEXITCODE -ne 0) { throw "portable ZIP creation failed with exit code $LASTEXITCODE." }
           if (-not (Test-Path $package)) { throw "Windows package was not created: $package" }
+          Log ("ZIP size: " + (Get-Item -LiteralPath $package).Length + ' bytes')
           $expanded = Join-Path $env:RUNNER_TEMP 'codium-blocks-package-validation'
           Remove-Item -Recurse -Force $expanded -ErrorAction SilentlyContinue
           Log "Expanding ZIP into $expanded"

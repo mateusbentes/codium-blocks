@@ -84,6 +84,8 @@ jobs:
           test -x "$debugserver"
           debugserver_dir=$(dirname "$debugserver")
           test -x "$debugserver_dir/debugserver"
+          codesign --verify --verbose "$debugserver"
+          echo "LLDB_DEBUGSERVER_PATH=$debugserver" >> "$GITHUB_ENV"
           echo "$debugserver_dir" >> "$GITHUB_PATH"
       - name: Run strict real DAP matrix
         env:
