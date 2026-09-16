@@ -257,7 +257,6 @@ async function probe(adapter) {
         // ASLR even though the signed system debugserver is usable.
         launchArguments.initCommands.push('settings set target.disable-aslr false');
       }
-      delete launchArguments.cwd;
       delete launchArguments.stopAtBeginningOfMainSubprogram;
     }
     if (adapter.id === 'lldb-dap') {

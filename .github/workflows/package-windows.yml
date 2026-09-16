@@ -82,6 +82,13 @@ jobs:
           function Log([string] $message) {
             $message | Tee-Object -FilePath $diagnostic -Append
           }
+          function Invoke-LoggedNative([string] $label, [string] $program, [string[]] $arguments) {
+            Log $label
+            $nativeOutput = & $program @arguments 2>&1
+            $nativeExitCode = $LASTEXITCODE
+            foreach ($line in @($nativeOutput)) { Log ([string]$line) }
+            if ($nativeExitCode -ne 0) { throw "$label failed with exit code $nativeExitCode." }
+          }
           try {
           $cmakeText = Get-Content -LiteralPath CMakeLists.txt -Raw
           $version = [regex]::Match($cmakeText, 'project\(CodiumBlocks VERSION ([^ )]+)').Groups[1].Value
@@ -90,8 +97,7 @@ jobs:
           Remove-Item -Recurse -Force $staging -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $staging | Out-Null
           Log "Installing package into $staging"
-          cmake --install build --config Release --prefix $staging 2>&1 | Tee-Object -FilePath $diagnostic -Append
-          if ($LASTEXITCODE -ne 0) { throw "cmake --install failed with exit code $LASTEXITCODE." }
+          Invoke-LoggedNative 'Installing staged package' 'cmake' @('--install', 'build', '--config', 'Release', '--prefix', $staging)
           $binDir = Join-Path $staging 'bin'
           if (-not (Test-Path -LiteralPath $binDir -PathType Container)) { throw "Windows install did not create its bin directory: $binDir" }
           if (Test-Path -LiteralPath $env:CODIUM_BLOCKS_WINDOWS_RUNTIME_DIR -PathType Container) {
@@ -105,20 +111,20 @@ jobs:
           Log ("Staged files: " + ((Get-ChildItem -LiteralPath $staging -Recurse -File | ForEach-Object { $_.FullName.Substring($staging.Length + 1) }) -join ', '))
           $buildDir = (Resolve-Path -LiteralPath build).Path
           $package = Join-Path $buildDir "codium-blocks-$version-Windows-portable.zip"
-          Log "Creating ZIP $package"
-          python scripts/create-portable-zip.py --root $staging --output $package 2>&1 | Tee-Object -FilePath $diagnostic -Append
-          if ($LASTEXITCODE -ne 0) { throw "portable ZIP creation failed with exit code $LASTEXITCODE." }
+          Invoke-LoggedNative "Creating ZIP $package" 'python' @('scripts/create-portable-zip.py', '--root', $staging, '--output', $package)
           if (-not (Test-Path $package)) { throw "Windows package was not created: $package" }
           Log ("ZIP size: " + (Get-Item -LiteralPath $package).Length + ' bytes')
+          Log ("ZIP SHA-256: " + (Get-FileHash -Algorithm SHA256 -LiteralPath $package).Hash.ToLowerInvariant())
           Log 'Testing ZIP integrity with Python zipfile before native extraction'
-          python -m zipfile -t $package 2>&1 | Tee-Object -FilePath $diagnostic -Append
-          if ($LASTEXITCODE -ne 0) { throw "Python ZIP integrity check failed with exit code $LASTEXITCODE." }
-          python -m zipfile -l $package 2>&1 | Tee-Object -FilePath $diagnostic -Append
-          if ($LASTEXITCODE -ne 0) { throw "Python ZIP listing failed with exit code $LASTEXITCODE." }
+          Invoke-LoggedNative 'Testing ZIP integrity with Python zipfile' 'python' @('-m', 'zipfile', '-t', $package)
+          Invoke-LoggedNative 'Listing ZIP entries with Python zipfile' 'python' @('-m', 'zipfile', '-l', $package)
           $expanded = Join-Path $env:RUNNER_TEMP 'codium-blocks-package-validation'
           Remove-Item -Recurse -Force $expanded -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $expanded | Out-Null
           Log "Expanding ZIP into $expanded"
-          Expand-Archive -Path $package -DestinationPath $expanded -Force 2>&1 | Tee-Object -FilePath $diagnostic -Append
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::ExtractToDirectory($package, $expanded)
+          Log 'Native .NET ZIP extraction completed.'
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'codium-blocks.exe')) { throw 'Windows package is missing the native executable.' }
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'en-US.tsv')) { throw 'Windows package is missing en-US.tsv.' }
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'pt-BR.tsv')) { throw 'Windows package is missing pt-BR.tsv.' }
@@ -126,8 +132,8 @@ jobs:
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'wx*.dll')) { throw 'Windows package is missing wxWidgets runtime DLLs.' }
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'vcruntime140*.dll')) { throw 'Windows package is missing the Microsoft Visual C++ runtime.' }
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'msvcp140*.dll')) { throw 'Windows package is missing the Microsoft C++ standard library runtime.' }
-          python scripts/generate-sbom.py --root $expanded --version $version --output build/codium-blocks-windows-package.spdx.json
-          python -m json.tool build/codium-blocks-windows-package.spdx.json | Out-Null
+          Invoke-LoggedNative 'Generating Windows package SBOM' 'python' @('scripts/generate-sbom.py', '--root', $expanded, '--version', $version, '--output', 'build/codium-blocks-windows-package.spdx.json')
+          Invoke-LoggedNative 'Validating Windows package SBOM JSON' 'python' @('-m', 'json.tool', 'build/codium-blocks-windows-package.spdx.json')
           $dataRoot = Join-Path $env:RUNNER_TEMP 'codium-blocks-package-data'
           Remove-Item -Recurse -Force $dataRoot -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $dataRoot | Out-Null

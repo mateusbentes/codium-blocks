@@ -67,10 +67,13 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          ctest --test-dir build -C Release -LE "conpty|fuzz" --output-on-failure -VV 2>&1 |
-            Tee-Object -FilePath artifacts/windows-ctest.log
+          $ctestOutput = & ctest --test-dir build -C Release -LE "conpty|fuzz" --output-on-failure 2>&1
           $ctestExit = $LASTEXITCODE
-          ctest --test-dir build -C Release -LE "conpty|fuzz" -N -V *> artifacts/windows-ctest-plan.log
+          $ctestOutput | Set-Content -Path artifacts/windows-ctest.log -Encoding utf8
+          $planOutput = & ctest --test-dir build -C Release -LE "conpty|fuzz" -N -V 2>&1
+          $planExit = $LASTEXITCODE
+          $planOutput | Set-Content -Path artifacts/windows-ctest-plan.log -Encoding utf8
+          if ($planExit -ne 0) { throw "Windows CTest plan failed with exit code $planExit." }
           if ($ctestExit -ne 0) { exit $ctestExit }
 
       - name: Upload Windows CTest diagnostics

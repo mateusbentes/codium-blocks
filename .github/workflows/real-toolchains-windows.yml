@@ -43,9 +43,9 @@ jobs:
           path: |
             ${{ runner.temp }}/llvm-18.1.8
             ~/.rustup/toolchains/1.82.0-x86_64-pc-windows-msvc
-          key: codium-blocks-real-windows-toolchains-llvm-18.1.8-installer-python-3.10.11-rust-1.82.0-v6-${{ runner.os }}-${{ runner.arch }}
+          key: codium-blocks-real-windows-toolchains-llvm-18.1.8-archive-python-3.10.11-rust-1.82.0-v7-${{ runner.os }}-${{ runner.arch }}
           restore-keys: |
-            codium-blocks-real-windows-toolchains-llvm-18.1.8-installer-python-3.10.11-rust-1.82.0-v6-${{ runner.os }}-${{ runner.arch }}-
+            codium-blocks-real-windows-toolchains-llvm-18.1.8-archive-python-3.10.11-rust-1.82.0-v7-${{ runner.os }}-${{ runner.arch }}-
       - name: Install pinned LLVM and Python runtime
         shell: pwsh
         run: |
@@ -58,31 +58,32 @@ jobs:
           $requiredPaths += Join-Path $llvmRoot 'lib/site-packages/lldb'
           $cacheComplete = (($requiredPaths | Where-Object { -not (Test-Path -LiteralPath $_) }).Count -eq 0)
           if (-not $cacheComplete) {
-            $llvmInstaller = Join-Path $env:RUNNER_TEMP 'LLVM-18.1.8-win64.exe'
-            $llvmUrl = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/LLVM-18.1.8-win64.exe'
-            $llvmSha256 = '94af030060d88cc17e9f00ef1663ebdc1126b35e16bebdfa1e807984b70abd8f'
-            Remove-Item -LiteralPath $llvmInstaller -Force -ErrorAction SilentlyContinue
-            Write-Host "Downloading pinned LLVM installer to $llvmInstaller"
-            curl.exe --fail --location --retry 3 --retry-delay 2 --connect-timeout 30 --max-time 600 --output $llvmInstaller $llvmUrl
-            if ((Get-FileHash -Algorithm SHA256 $llvmInstaller).Hash.ToLowerInvariant() -ne $llvmSha256) {
-              throw 'LLVM 18.1.8 Windows installer checksum mismatch.'
-            }
-            if ((Get-Item -LiteralPath $llvmInstaller).Length -lt 350MB) {
-              throw 'LLVM 18.1.8 Windows installer is unexpectedly small.'
-            }
+            $llvmArchive = Join-Path $env:RUNNER_TEMP 'clang+llvm-18.1.8-x86_64-pc-windows-msvc.tar.xz'
+            $llvmExtractRoot = Join-Path $env:RUNNER_TEMP 'llvm-18.1.8-extracted'
+            $llvmUrl = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang%2Bllvm-18.1.8-x86_64-pc-windows-msvc.tar.xz'
+            $llvmSha256 = '22c5907db053026cc2a8ff96d21c0f642a90d24d66c23c6d28ee7b1d572b82e8'
+            Remove-Item -LiteralPath $llvmArchive -Force -ErrorAction SilentlyContinue
+            Remove-Item -Recurse -Force $llvmExtractRoot -ErrorAction SilentlyContinue
             Remove-Item -Recurse -Force $llvmRoot -ErrorAction SilentlyContinue
-            New-Item -ItemType Directory -Force -Path $llvmRoot | Out-Null
-            Write-Host "Installing LLVM silently into $llvmRoot"
-            $installerProcess = Start-Process -FilePath $llvmInstaller `
-              -ArgumentList @('/S', "/D=$llvmRoot") -PassThru -WindowStyle Hidden
-            if (-not $installerProcess.WaitForExit(600000)) {
-              try { $installerProcess.Kill() } catch {}
-              throw 'LLVM 18.1.8 Windows installer exceeded the 10-minute installation limit.'
+            Write-Host "Downloading pinned LLVM archive to $llvmArchive"
+            curl.exe --fail --location --retry 3 --retry-delay 2 --connect-timeout 30 --max-time 1200 --output $llvmArchive $llvmUrl
+            if ((Get-FileHash -Algorithm SHA256 $llvmArchive).Hash.ToLowerInvariant() -ne $llvmSha256) {
+              throw 'LLVM 18.1.8 Windows archive checksum mismatch.'
             }
-            if ($installerProcess.ExitCode -ne 0) {
-              throw "LLVM installer failed with exit code $($installerProcess.ExitCode)."
+            if ((Get-Item -LiteralPath $llvmArchive).Length -lt 900MB) {
+              throw 'LLVM 18.1.8 Windows archive is unexpectedly small.'
             }
-            if (-not (Test-Path -LiteralPath $llvmBin)) { throw "LLVM installer did not create its bin directory: $llvmBin" }
+            New-Item -ItemType Directory -Force -Path $llvmExtractRoot, $llvmRoot | Out-Null
+            Write-Host "Extracting LLVM archive with the native Windows tar.exe into $llvmExtractRoot"
+            & "$env:SystemRoot\System32\tar.exe" -xf $llvmArchive -C $llvmExtractRoot
+            if ($LASTEXITCODE -ne 0) { throw "Native Windows tar.exe failed with exit code $LASTEXITCODE." }
+            $archiveEntries = @(Get-ChildItem -LiteralPath $llvmExtractRoot -Force)
+            if ($archiveEntries.Count -ne 1 -or -not $archiveEntries[0].PSIsContainer) {
+              throw "LLVM archive did not contain exactly one top-level directory: $llvmExtractRoot"
+            }
+            Get-ChildItem -LiteralPath $archiveEntries[0].FullName -Force | Move-Item -Destination $llvmRoot
+            Remove-Item -Recurse -Force $llvmExtractRoot, $llvmArchive
+            if (-not (Test-Path -LiteralPath $llvmBin)) { throw "LLVM archive did not create its bin directory: $llvmBin" }
           }
           foreach ($tool in $requiredTools) {
             if (-not (Test-Path -LiteralPath (Join-Path $llvmBin $tool))) { throw "Pinned LLVM tool is missing: $tool" }
@@ -142,7 +143,7 @@ jobs:
           path: |
             ${{ runner.temp }}/llvm-18.1.8
             ~/.rustup/toolchains/1.82.0-x86_64-pc-windows-msvc
-          key: codium-blocks-real-windows-toolchains-llvm-18.1.8-installer-python-3.10.11-rust-1.82.0-v6-${{ runner.os }}-${{ runner.arch }}
+          key: codium-blocks-real-windows-toolchains-llvm-18.1.8-archive-python-3.10.11-rust-1.82.0-v7-${{ runner.os }}-${{ runner.arch }}
       - name: Verify pinned versions
         shell: pwsh
         run: |
