@@ -22,7 +22,7 @@
       "command": { "linux": "lldb-dap", "darwin": "lldb-dap", "win32": "lldb-dap.exe" },
       "versionCommand": { "linux": "lldb-18", "darwin": "llvm-config", "win32": "clang.exe" },
       "args": [],
-      "requiresInitializedEvent": false,
+      "requiresInitializedEvent": true,
       "versionArgs": ["--version"],
       "versionPattern": {
         "linux": "18\\.1\\.3",

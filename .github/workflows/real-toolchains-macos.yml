@@ -93,6 +93,7 @@ jobs:
           CODIUM_BLOCKS_REAL_DAP_TRACE: '1'
           CODIUM_BLOCKS_REAL_DAP_DEBUGGEE: /tmp/codium-blocks-real-dap-debuggee
           CODIUM_BLOCKS_REAL_DAP_SOURCE: ${{ github.workspace }}/tests/fixtures/real-dap-debuggee.cpp
+          LLDBDAP_LOG: ${{ runner.temp }}/lldb-dap-internal.log
         run: |
           set -o pipefail
           node tests/real-dap-smoke.mjs 2>&1 | tee "$RUNNER_TEMP/codium-blocks-real-dap.log"
@@ -103,6 +104,8 @@ jobs:
         with:
           if-no-files-found: ignore
           name: codium-blocks-macos-dap-diagnostics
-          path: ${{ runner.temp }}/codium-blocks-real-dap.log
+          path: |
+            ${{ runner.temp }}/codium-blocks-real-dap.log
+            ${{ runner.temp }}/lldb-dap-internal.log
       - name: Validate matrix contracts
         run: node tests/integration-matrix-smoke.mjs

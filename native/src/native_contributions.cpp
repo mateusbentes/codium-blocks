@@ -105,12 +105,21 @@ bool ScmModel::RunGit(const wxString& rootPath, const wxArrayString& arguments,
                       wxArrayString* output, wxString* error) const
 {
     wxString command = QuoteArgument(wxS("git"));
+#if defined(__WXMSW__)
+    wxExecuteEnv environment;
+    environment.cwd = rootPath;
+#else
     command += wxS(" ") + QuoteArgument(wxS("-C")) + wxS(" ") + QuoteArgument(rootPath);
+#endif
     for (const auto& argument : arguments) command += wxS(" ") + QuoteArgument(argument);
     wxArrayString errors;
     wxArrayString localOutput;
     wxArrayString& captured = output ? *output : localOutput;
+#if defined(__WXMSW__)
+    const long status = wxExecute(command, captured, errors, wxEXEC_SYNC, &environment);
+#else
     const long status = wxExecute(command, captured, errors, wxEXEC_SYNC);
+#endif
     if (status != 0) {
         if (error) *error = errors.IsEmpty() ? wxS("Git command failed.") : errors[0];
         return false;

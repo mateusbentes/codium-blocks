@@ -44,7 +44,12 @@ def main() -> int:
             archive_name = path.relative_to(root).as_posix()
             info = ZipInfo(archive_name, date_time=(1980, 1, 1, 0, 0, 0))
             info.compress_type = ZIP_DEFLATED
-            info.external_attr = 0o100644 << 16
+            # Mark entries as DOS/Windows files. Unix permission bits in the
+            # central directory are not needed by the portable package and
+            # confuse some Windows ZIP readers when combined with staged DLLs.
+            info.create_system = 0
+            info.external_attr = 0
+            info.internal_attr = 0
             try:
                 with path.open("rb") as source, archive.open(info, "w") as target:
                     shutil.copyfileobj(source, target, length=1024 * 1024)

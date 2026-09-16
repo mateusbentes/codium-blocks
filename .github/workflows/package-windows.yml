@@ -110,6 +110,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "portable ZIP creation failed with exit code $LASTEXITCODE." }
           if (-not (Test-Path $package)) { throw "Windows package was not created: $package" }
           Log ("ZIP size: " + (Get-Item -LiteralPath $package).Length + ' bytes')
+          Log 'Testing ZIP integrity with Python zipfile before native extraction'
+          python -m zipfile -t $package 2>&1 | Tee-Object -FilePath $diagnostic -Append
+          if ($LASTEXITCODE -ne 0) { throw "Python ZIP integrity check failed with exit code $LASTEXITCODE." }
+          python -m zipfile -l $package 2>&1 | Tee-Object -FilePath $diagnostic -Append
+          if ($LASTEXITCODE -ne 0) { throw "Python ZIP listing failed with exit code $LASTEXITCODE." }
           $expanded = Join-Path $env:RUNNER_TEMP 'codium-blocks-package-validation'
           Remove-Item -Recurse -Force $expanded -ErrorAction SilentlyContinue
           Log "Expanding ZIP into $expanded"

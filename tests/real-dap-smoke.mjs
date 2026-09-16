@@ -252,33 +252,22 @@ async function probe(adapter) {
       // bounded protocol smoke; the fixture already contains its own debug
       // information.
       launchArguments.initCommands = ['settings set symbols.enable-external-lookup 0'];
+      if (process.platform === 'darwin') {
+        // Hosted macOS runners may reject LLDB's default request to disable
+        // ASLR even though the signed system debugserver is usable.
+        launchArguments.initCommands.push('settings set target.disable-aslr false');
+      }
       delete launchArguments.cwd;
       delete launchArguments.stopAtBeginningOfMainSubprogram;
     }
     if (adapter.id === 'lldb-dap') {
-      // LLVM 18 can defer the launch response until configuration is complete.
-      // Send configurationDone after the normal initialized event when it is
-      // emitted, but do not deadlock adapters that omit that event. The
-      // bounded fallback keeps the request ordering valid on macOS while
-      // allowing the launch response and configurationDone response to finish
-      // together. Breakpoints remain deferred until the initial stop.
+      // DAP requires the adapter to announce readiness before the client sends
+      // configurationDone. LLDB-DAP may defer the launch response until that
+      // request arrives, so keep launch pending while waiting for initialized,
+      // then complete configuration and await both responses.
       const launchResponse = session.request('launch', launchArguments);
-      const initialized = await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => resolve(null), 5000);
-        session.waitFor(
-          (message) => message.type === 'event' && message.event === 'initialized',
-          'adapter initialized',
-          5000,
-        ).then((event) => {
-          clearTimeout(timeout);
-          resolve(event);
-        }).catch((error) => {
-          clearTimeout(timeout);
-          reject(error);
-        });
-      });
-      if (initialized && process.env.CODIUM_BLOCKS_REAL_DAP_TRACE === '1') {
-        console.error('real-dap-trace: initialized event observed before configurationDone');
+      if (adapter.requiresInitializedEvent !== false) {
+        await session.event(['initialized'], 'adapter initialized');
       }
       const configurationDoneResponse = supports(capabilities, 'supportsConfigurationDoneRequest')
         ? session.request('configurationDone')
