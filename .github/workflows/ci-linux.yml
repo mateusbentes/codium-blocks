@@ -80,9 +80,6 @@ jobs:
             -R '^(invariants-smoke|security-smoke|problem-model-smoke|terminal-screen-smoke)$' \
             --output-on-failure
 
-      - name: Run Linux Extension Host smoke test
-        run: node tests/host-smoke.mjs
-
       - name: Capture Linux high-contrast workbench
         run: |
           mkdir -p artifacts

@@ -27,6 +27,8 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
+      - name: Validate matrix contracts
+        run: node tests/integration-matrix-smoke.mjs
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -69,5 +71,3 @@ jobs:
           CODIUM_BLOCKS_REAL_DAP_DEBUGGEE: /tmp/codium-blocks-real-dap-debuggee
           CODIUM_BLOCKS_REAL_DAP_SOURCE: ${{ github.workspace }}/tests/fixtures/real-dap-debuggee.cpp
         run: node tests/real-dap-smoke.mjs
-      - name: Validate matrix contracts
-        run: node tests/integration-matrix-smoke.mjs

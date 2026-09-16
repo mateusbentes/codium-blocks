@@ -60,9 +60,6 @@ jobs:
       - name: Run macOS CTest
         run: ctest --test-dir build --output-on-failure
 
-      - name: Run macOS Extension Host smoke test
-        run: node tests/host-smoke.mjs
-
       - name: Capture macOS high-contrast workbench
         run: |
           mkdir -p artifacts

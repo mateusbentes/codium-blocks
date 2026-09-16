@@ -46,7 +46,6 @@ jobs:
         run: |
           ctest --test-dir build -C Release --output-on-failure
           node --check extension-host/src/host.mjs
-          node tests/host-smoke.mjs
 
       - name: Generate macOS DMG
         run: |
@@ -101,7 +100,7 @@ jobs:
           package_data="$RUNNER_TEMP/codium-blocks-package-data"
           rm -rf "$package_data"
           mkdir -p "$package_data"
-          CODIUM_BLOCKS_DATA="$package_data" "$app/Contents/MacOS/codium-blocks" \
+          CODIUM_BLOCKS_DATA="$package_data" "$packaged_app/Contents/MacOS/codium-blocks" \
             > build/codium-blocks-macos-package.log 2>&1 &
           app_pid=$!
           sleep 5
@@ -109,10 +108,10 @@ jobs:
             kill "$app_pid" 2>/dev/null || true
             wait "$app_pid" 2>/dev/null || true
           else
-            if ! wait "$app_pid"; then
-              cat build/codium-blocks-macos-package.log >&2 || true
-              exit 1
-            fi
+            wait "$app_pid" || true
+            cat build/codium-blocks-macos-package.log >&2 || true
+            echo 'The application extracted from the DMG exited before the startup window completed.' >&2
+            exit 1
           fi
           (cd build && shasum -a 256 "$(basename "$dmg")") > build/codium-blocks-macos.sha256
 

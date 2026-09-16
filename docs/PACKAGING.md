@@ -60,13 +60,15 @@ dpkg-deb --info build-package/codium-blocks-*.deb
 sudo apt install ./build-package/codium-blocks-*.deb
 ```
 
-The TGZ is a relocatable archive, not a distribution-independent binary. Extract it into a chosen prefix and verify that the host provides the documented shared libraries:
+The TGZ is a relocatable archive, not a distribution-independent binary. Extract it into a chosen prefix and verify that the host provides the documented shared libraries. The Linux package workflow performs this extraction in a temporary root and starts the extracted executable under Xvfb; it performs the same startup check for the staged install and for the DEB extracted into a temporary root:
 
 ```bash
 mkdir -p "$HOME/opt/codium-blocks"
 tar -xzf build-package/codium-blocks-*.tar.gz -C "$HOME/opt/codium-blocks" --strip-components=1
 "$HOME/opt/codium-blocks/bin/codium-blocks" --help 2>/dev/null || true
 ```
+
+The package workflow also checks the installed localization catalogs and changelog in each temporary root. These checks validate package layout and startup on the runner, but they do not prove compatibility with every Linux distribution or desktop environment.
 
 On macOS, enable the application bundle:
 
@@ -86,7 +88,7 @@ ctest --test-dir build-package -C Release --output-on-failure
 
 The local CPack command is useful for developer experimentation. The macOS package workflow intentionally creates its CI DMG with `hdiutil create -format UDZO` from a fresh install prefix, which avoids depending on CPack's host-specific DragNDrop staging details while preserving the same bundle contents.
 
-Mount the resulting DMG, copy `codium-blocks.app` to an application directory, and run it from there. The current artifact is unsigned and unnotarized; macOS security prompts and Gatekeeper behavior therefore remain a release concern rather than a solved claim.
+Mount the resulting DMG, copy `codium-blocks.app` to an application directory, and run it from there. The macOS package workflow mounts the generated DMG and starts the application from that mounted image before uploading it. The current artifact is unsigned and unnotarized; macOS security prompts and Gatekeeper behavior therefore remain a release concern rather than a solved claim.
 
 On Windows, configure wxWidgets and OpenSSL through vcpkg and pass a private directory containing their runtime DLLs together with the matching Microsoft Visual C++ runtime DLLs:
 
