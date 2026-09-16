@@ -67,10 +67,10 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          ctest --test-dir build -C Release -LE "conpty|fuzz" --output-on-failure 2>&1 |
+          ctest --test-dir build -C Release -LE conpty --output-on-failure -VV 2>&1 |
             Tee-Object -FilePath artifacts/windows-ctest.log
           $ctestExit = $LASTEXITCODE
-          ctest --test-dir build -C Release -LE "conpty|fuzz" -N -V *> artifacts/windows-ctest-plan.log
+          ctest --test-dir build -C Release -LE conpty -N -V *> artifacts/windows-ctest-plan.log
           if ($ctestExit -ne 0) { exit $ctestExit }
 
       - name: Upload Windows CTest diagnostics

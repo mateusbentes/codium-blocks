@@ -77,13 +77,21 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Set-StrictMode -Version Latest
+          $diagnostic = Join-Path $env:RUNNER_TEMP 'codium-blocks-windows-package.log'
+          Remove-Item -LiteralPath $diagnostic -Force -ErrorAction SilentlyContinue
+          function Log([string] $message) {
+            $message | Tee-Object -FilePath $diagnostic -Append
+          }
+          try {
           $cmakeText = Get-Content -LiteralPath CMakeLists.txt -Raw
           $version = [regex]::Match($cmakeText, 'project\(CodiumBlocks VERSION ([^ )]+)').Groups[1].Value
           if ([string]::IsNullOrWhiteSpace($version)) { throw 'Could not determine the project version from CMakeLists.txt.' }
           $staging = Join-Path $env:RUNNER_TEMP 'codium-blocks-windows-package-staging'
           Remove-Item -Recurse -Force $staging -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $staging | Out-Null
-          cmake --install build --config Release --prefix $staging
+          Log "Installing package into $staging"
+          cmake --install build --config Release --prefix $staging 2>&1 | Tee-Object -FilePath $diagnostic -Append
+          if ($LASTEXITCODE -ne 0) { throw "cmake --install failed with exit code $LASTEXITCODE." }
           $binDir = Join-Path $staging 'bin'
           $runtimeFiles = @(Get-ChildItem -LiteralPath $binDir -Filter '*.dll' -File)
           if ($runtimeFiles.Count -eq 0) { throw 'Windows runtime staging directory contains no DLLs.' }
@@ -91,11 +99,14 @@ jobs:
           if ($stagingEntries.Count -eq 0) { throw 'Windows install staging is empty.' }
           $buildDir = (Resolve-Path -LiteralPath build).Path
           $package = Join-Path $buildDir "codium-blocks-$version-Windows-portable.zip"
-          python scripts/create-portable-zip.py --root $staging --output $package
+          Log "Creating ZIP $package"
+          python scripts/create-portable-zip.py --root $staging --output $package 2>&1 | Tee-Object -FilePath $diagnostic -Append
+          if ($LASTEXITCODE -ne 0) { throw "portable ZIP creation failed with exit code $LASTEXITCODE." }
           if (-not (Test-Path $package)) { throw "Windows package was not created: $package" }
           $expanded = Join-Path $env:RUNNER_TEMP 'codium-blocks-package-validation'
           Remove-Item -Recurse -Force $expanded -ErrorAction SilentlyContinue
-          Expand-Archive -Path $package -DestinationPath $expanded
+          Log "Expanding ZIP into $expanded"
+          Expand-Archive -Path $package -DestinationPath $expanded -Force 2>&1 | Tee-Object -FilePath $diagnostic -Append
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'codium-blocks.exe')) { throw 'Windows package is missing the native executable.' }
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'en-US.tsv')) { throw 'Windows package is missing en-US.tsv.' }
           if (-not (Get-ChildItem -Path $expanded -Recurse -Filter 'pt-BR.tsv')) { throw 'Windows package is missing pt-BR.tsv.' }
@@ -127,6 +138,11 @@ jobs:
           else { $env:CODIUM_BLOCKS_DATA = $previousDataRoot }
           $hashes = Get-FileHash -Algorithm SHA256 $package
           $hashes | ForEach-Object { "$($_.Hash.ToLower())  $([System.IO.Path]::GetFileName($_.Path))" } | Set-Content build/codium-blocks-windows.sha256
+          Log 'Windows package validation completed.'
+          } catch {
+            Log (($_ | Out-String).TrimEnd())
+            throw
+          }
 
       - name: Upload Windows package diagnostics
         if: always()
@@ -137,6 +153,7 @@ jobs:
           path: |
             ${{ runner.temp }}/codium-blocks-package.stdout.log
             ${{ runner.temp }}/codium-blocks-package.stderr.log
+            ${{ runner.temp }}/codium-blocks-windows-package.log
 
       - name: Upload Windows package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

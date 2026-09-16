@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 from pathlib import Path
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 
 def main() -> int:
@@ -41,9 +42,13 @@ def main() -> int:
     with ZipFile(output, "w", compression=ZIP_DEFLATED, compresslevel=6, strict_timestamps=False) as archive:
         for path in files:
             archive_name = path.relative_to(root).as_posix()
+            info = ZipInfo(archive_name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = ZIP_DEFLATED
+            info.external_attr = 0o100644 << 16
             try:
-                archive.write(path, archive_name)
-            except (OSError, ValueError) as error:
+                with path.open("rb") as source, archive.open(info, "w") as target:
+                    shutil.copyfileobj(source, target, length=1024 * 1024)
+            except (OSError, RuntimeError, ValueError) as error:
                 raise SystemExit(f"portable ZIP could not read {path}: {error}") from error
     with ZipFile(output, "r") as archive:
         corrupt = archive.testzip()

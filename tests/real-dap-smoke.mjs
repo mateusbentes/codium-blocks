@@ -256,13 +256,30 @@ async function probe(adapter) {
       delete launchArguments.stopAtBeginningOfMainSubprogram;
     }
     if (adapter.id === 'lldb-dap') {
-      // LLVM 18 can defer the launch response until configuration is complete,
-      // while some builds do not emit an initialized event. Keep the target
-      // stopped at entry, send configurationDone alongside launch, and defer
-      // breakpoint requests until the target exists. This avoids relying on
-      // pending pre-target breakpoints whose behavior differs across macOS,
-      // Linux, and Windows builds of the same LLDB-DAP release.
+      // LLVM 18 can defer the launch response until configuration is complete.
+      // Send configurationDone after the normal initialized event when it is
+      // emitted, but do not deadlock adapters that omit that event. The
+      // bounded fallback keeps the request ordering valid on macOS while
+      // allowing the launch response and configurationDone response to finish
+      // together. Breakpoints remain deferred until the initial stop.
       const launchResponse = session.request('launch', launchArguments);
+      const initialized = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => resolve(null), 5000);
+        session.waitFor(
+          (message) => message.type === 'event' && message.event === 'initialized',
+          'adapter initialized',
+          5000,
+        ).then((event) => {
+          clearTimeout(timeout);
+          resolve(event);
+        }).catch((error) => {
+          clearTimeout(timeout);
+          reject(error);
+        });
+      });
+      if (initialized && process.env.CODIUM_BLOCKS_REAL_DAP_TRACE === '1') {
+        console.error('real-dap-trace: initialized event observed before configurationDone');
+      }
       const configurationDoneResponse = supports(capabilities, 'supportsConfigurationDoneRequest')
         ? session.request('configurationDone')
         : Promise.resolve();
