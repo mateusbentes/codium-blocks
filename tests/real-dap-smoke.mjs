@@ -256,13 +256,14 @@ async function probe(adapter) {
       delete launchArguments.stopAtBeginningOfMainSubprogram;
     }
     if (adapter.id === 'lldb-dap') {
-      // LLVM 18 can defer the launch response until configuration is complete,
-      // while some builds do not emit an initialized event. Keep the target
-      // stopped at entry, send configurationDone alongside launch, and defer
-      // breakpoint requests until the target exists. This avoids relying on
-      // pending pre-target breakpoints whose behavior differs across macOS,
-      // Linux, and Windows builds of the same LLDB-DAP release.
+      // LLVM 18 can defer the launch response until configuration is complete.
+      // Keep the request pending, wait for the standard initialized event, and
+      // only then complete configuration. This avoids sending configurationDone
+      // before LLDB-DAP has announced that the adapter is ready, which is
+      // unreliable on macOS. Breakpoints are still deferred until the target
+      // exists and the initial stop has been observed.
       const launchResponse = session.request('launch', launchArguments);
+      await session.event(['initialized'], 'adapter initialized');
       const configurationDoneResponse = supports(capabilities, 'supportsConfigurationDoneRequest')
         ? session.request('configurationDone')
         : Promise.resolve();

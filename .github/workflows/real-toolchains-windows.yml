@@ -43,9 +43,9 @@ jobs:
           path: |
             ${{ runner.temp }}/llvm-18.1.8
             ~/.rustup/toolchains/1.82.0-x86_64-pc-windows-msvc
-          key: codium-blocks-real-windows-toolchains-llvm-18.1.8-archive-python-3.10.11-rust-1.82.0-v3-${{ runner.os }}-${{ runner.arch }}
+          key: codium-blocks-real-windows-toolchains-llvm-18.1.8-installer-python-3.10.11-rust-1.82.0-v4-${{ runner.os }}-${{ runner.arch }}
           restore-keys: |
-            codium-blocks-real-windows-toolchains-llvm-18.1.8-archive-python-3.10.11-rust-1.82.0-v3-${{ runner.os }}-${{ runner.arch }}-
+            codium-blocks-real-windows-toolchains-llvm-18.1.8-installer-python-3.10.11-rust-1.82.0-v4-${{ runner.os }}-${{ runner.arch }}-
       - name: Install pinned LLVM and Python runtime
         shell: pwsh
         run: |
@@ -53,32 +53,56 @@ jobs:
           Set-StrictMode -Version Latest
           $llvmRoot = Join-Path $env:RUNNER_TEMP 'llvm-18.1.8'
           $llvmBin = Join-Path $llvmRoot 'bin'
-          $requiredTools = @('clang.exe', 'clang-cl.exe', 'clangd.exe', 'lldb-dap.exe', 'llvm-config.exe', 'python310.dll')
+          $requiredTools = @('clang.exe', 'clang-cl.exe', 'clangd.exe', 'lldb-dap.exe')
           $cacheComplete = (Test-Path $llvmBin) -and (($requiredTools | Where-Object {
             -not (Test-Path (Join-Path $llvmBin $_))
           }).Count -eq 0)
           if (-not $cacheComplete) {
-            $llvmArchive = Join-Path $env:RUNNER_TEMP 'clang+llvm-18.1.8-x86_64-pc-windows-msvc.tar.xz'
-            $llvmUrl = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang%2Bllvm-18.1.8-x86_64-pc-windows-msvc.tar.xz'
-            $llvmSha256 = '22c5907db053026cc2a8ff96d21c0f642a90d24d66c23c6d28ee7b1d572b82e8'
-            curl.exe --fail --location --retry 3 --retry-delay 2 --connect-timeout 30 --max-time 900 --output $llvmArchive $llvmUrl
-            if ((Get-FileHash -Algorithm SHA256 $llvmArchive).Hash.ToLowerInvariant() -ne $llvmSha256) {
-              throw 'LLVM 18.1.8 Windows archive checksum mismatch.'
+            $llvmInstaller = Join-Path $env:RUNNER_TEMP 'LLVM-18.1.8-win64.exe'
+            $llvmUrl = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/LLVM-18.1.8-win64.exe'
+            $llvmSha256 = '94af030060d88cc17e9f00ef1663ebdc1126b35e16bebdfa1e807984b70abd8f'
+            curl.exe --fail --location --retry 3 --retry-delay 2 --connect-timeout 30 --max-time 600 --output $llvmInstaller $llvmUrl
+            if ((Get-FileHash -Algorithm SHA256 $llvmInstaller).Hash.ToLowerInvariant() -ne $llvmSha256) {
+              throw 'LLVM 18.1.8 Windows installer checksum mismatch.'
             }
+            if ((Get-Item -LiteralPath $llvmInstaller).Length -lt 300MB) {
+              throw 'LLVM 18.1.8 Windows installer is unexpectedly small.'
+            }
+            $sevenZip = $null
+            $sevenZipCommand = Get-Command 7z.exe -CommandType Application -ErrorAction SilentlyContinue
+            if ($sevenZipCommand) { $sevenZip = $sevenZipCommand.Source }
+            if (-not $sevenZip) {
+              $sevenZipCommand = Get-Command 7zz.exe -CommandType Application -ErrorAction SilentlyContinue
+              if ($sevenZipCommand) { $sevenZip = $sevenZipCommand.Source }
+            }
+            if (-not $sevenZip) {
+              foreach ($candidate in @(
+                (Join-Path $env:ProgramFiles '7-Zip/7z.exe'),
+                (Join-Path ${env:ProgramFiles(x86)} '7-Zip/7z.exe')
+              )) {
+                if (Test-Path -LiteralPath $candidate) { $sevenZip = $candidate; break }
+              }
+            }
+            if (-not $sevenZip) { throw '7-Zip was not found on the windows-2022 runner.' }
             Remove-Item -Recurse -Force $llvmRoot -ErrorAction SilentlyContinue
             $extractRoot = Join-Path $env:RUNNER_TEMP 'llvm-18.1.8-extracted'
             Remove-Item -Recurse -Force $extractRoot -ErrorAction SilentlyContinue
             New-Item -ItemType Directory -Force -Path $extractRoot | Out-Null
-            $tar = Join-Path $env:WINDIR 'System32\tar.exe'
-            if (-not (Test-Path -LiteralPath $tar)) { throw "Native Windows tar.exe was not found: $tar" }
-            & $tar -xf $llvmArchive -C $extractRoot
-            if ($LASTEXITCODE -ne 0) { throw "LLVM archive extraction failed with exit code $LASTEXITCODE." }
-            $topLevel = @(Get-ChildItem -LiteralPath $extractRoot -Directory)
-            if ($topLevel.Count -ne 1) { throw "LLVM archive had an unexpected top-level layout: $extractRoot" }
+            Write-Host "Extracting LLVM with $sevenZip"
+            & $sevenZip x $llvmInstaller "-o$extractRoot" -y -bso1 -bsp1
+            if ($LASTEXITCODE -ne 0) { throw "LLVM installer extraction failed with exit code $LASTEXITCODE." }
+            $sourceRoot = $extractRoot
+            if (-not (Test-Path -LiteralPath (Join-Path $sourceRoot 'bin'))) {
+              $topLevel = @(Get-ChildItem -LiteralPath $extractRoot -Directory)
+              if ($topLevel.Count -eq 1) { $sourceRoot = $topLevel[0].FullName }
+            }
+            if (-not (Test-Path -LiteralPath (Join-Path $sourceRoot 'bin'))) {
+              throw "LLVM installer did not expose a bin directory after extraction: $extractRoot"
+            }
             New-Item -ItemType Directory -Force -Path $llvmRoot | Out-Null
-            Get-ChildItem -LiteralPath $topLevel[0].FullName -Force |
+            Get-ChildItem -LiteralPath $sourceRoot -Force |
               Copy-Item -Destination $llvmRoot -Recurse -Force
-            if (-not (Test-Path $llvmBin)) { throw "LLVM archive did not create its bin directory: $llvmBin" }
+            if (-not (Test-Path $llvmBin)) { throw "LLVM installer did not create its bin directory: $llvmBin" }
           }
           foreach ($tool in $requiredTools) {
             if (-not (Test-Path (Join-Path $llvmBin $tool))) { throw "Pinned LLVM tool is missing: $tool" }
@@ -138,7 +162,7 @@ jobs:
           path: |
             ${{ runner.temp }}/llvm-18.1.8
             ~/.rustup/toolchains/1.82.0-x86_64-pc-windows-msvc
-          key: codium-blocks-real-windows-toolchains-llvm-18.1.8-archive-python-3.10.11-rust-1.82.0-v3-${{ runner.os }}-${{ runner.arch }}
+          key: codium-blocks-real-windows-toolchains-llvm-18.1.8-installer-python-3.10.11-rust-1.82.0-v4-${{ runner.os }}-${{ runner.arch }}
       - name: Verify pinned versions
         shell: pwsh
         run: |
