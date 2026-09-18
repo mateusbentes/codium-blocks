@@ -1,5 +1,11 @@
 # Extension Security and Workspace Trust
 
+## Extension licensing boundary
+
+The Codium::Blocks core and the first-party `extensions/hello-codium/` demonstration extension are GPL-3.0-only. An independently authored extension is not required to use the GPL merely because it runs in the Codium::Blocks Extension Host. MIT, BSD, Apache-2.0, and proprietary extensions may retain their own licenses when they are distributed as independent works, preserve their own notices, and do not copy or link directly to GPL-covered implementation code. See [`docs/LICENSING.md`](LICENSING.md) for the complete policy.
+
+The out-of-process JSON Lines host contract is intended to support this separation, but it is not an automatic legal guarantee. Direct dynamic linking, copied GPL code, shared internal data structures, or another intimate integration can make the extension and the core a combined program. In that case, the applicable license obligations must be evaluated before distribution. A compatibility report, digest, signature, or workspace-trust decision never changes an extension's copyright or license.
+
 The extension installer treats a VSIX as untrusted input. It rejects absolute archive paths, drive-qualified paths, and parent-directory traversal. The archive is extracted into a staging directory rather than directly into the installed directory. The installer then locates `extension/package.json` (or a root `package.json`), validates safe `name`, `publisher`, and `version` fields, writes a `.codium-manifest.json` metadata record, and atomically commits the staged directory. An existing installation is moved to a rollback directory until the new commit succeeds.
 
 Every VSIX receives a SHA-256 digest. `InstallVerified` requires callers to provide an expected 64-character hexadecimal digest; a missing, malformed, or mismatched digest rejects the artifact before extraction. The generic `Install` entry point is intentionally disabled so an unverified package cannot be installed accidentally. `InstallSigned` additionally verifies a detached Ed25519 signature over the complete VSIX using OpenSSL when the optional crypto backend is available. Invalid keys, invalid signatures, and builds without OpenSSL are rejected rather than silently treated as signed. The metadata record contains the extension identity, version, digest, and trust marker.

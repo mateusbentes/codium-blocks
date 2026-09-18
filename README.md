@@ -244,4 +244,4 @@ A separate process reduces the impact of extension failures, but it is not a sec
 
 ## License
 
-The original Codium::Blocks prototype code in this repository is licensed under **GNU General Public License v3.0 only (GPL-3.0-only)**. A future integration with Code::Blocks must preserve the original project's GPL-3.0 notices and obligations. Third-party extensions and dependencies retain their own licenses.
+The Codium::Blocks core and first-party source in this repository are licensed under **GNU General Public License v3.0 only (GPL-3.0-only)**. This choice preserves the project's Code::Blocks-oriented GPL heritage and the freedoms of users of the main native application. It does not require independent third-party extensions to use the GPL: MIT, BSD, Apache-2.0, and proprietary extensions may retain their own licenses when they remain separate works, preserve their notices, and do not incorporate GPL-covered implementation code. Third-party dependencies also retain their own licenses. Read [`docs/LICENSING.md`](docs/LICENSING.md) for the scope, extension boundary, and distribution requirements.
